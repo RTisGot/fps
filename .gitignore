@@ -1,0 +1,34 @@
+# Unreal Engine generated files (keep source, content, config, and project files).
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# IDE and local workspace state.
+.vs/
+.idea/
+.vscode/
+*.sln
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.sdf
+*.code-workspace
+.codex/
+
+# Local secrets and temporary files.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.log
+*.tmp
+Thumbs.db
+.DS_Store
