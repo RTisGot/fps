@@ -6,6 +6,7 @@ Saved/
 
 # IDE and local workspace state.
 .vs/
+Plugins/VisualStudioTools/
 .idea/
 .vscode/
 *.sln
