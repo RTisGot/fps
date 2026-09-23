@@ -10,6 +10,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Engine/LocalPlayer.h"
+#include "SavaCharacterMovementComponent.h"
 #include "SavaGameUserSettings.h"
 #include "SavaSettingsWidget.h"
 #include "SavaSettingsMenuController.h"
@@ -23,9 +24,11 @@ DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 // AsavaCharacter
 
-AsavaCharacter::AsavaCharacter()
+// 親クラスが作る移動コンポーネントを、独自クラスに差し替えて生成する
+AsavaCharacter::AsavaCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<USavaCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
-	
+
 	GetCapsuleComponent()->InitCapsuleSize(55.f, 96.0f);
 		
 	//カメラコンポネントを作成
@@ -81,6 +84,22 @@ void AsavaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AsavaCharacter::Look);
+
+		// ダッシュ・しゃがみは押している間だけ有効にしたいので、押した瞬間と離した瞬間で分ける。
+		// Canceled も拾わないと、設定メニューを開いたときなどに押しっぱなし扱いが残る
+		if (SprintAction)
+		{
+			EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AsavaCharacter::SprintPressed);
+			EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AsavaCharacter::SprintReleased);
+			EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Canceled, this, &AsavaCharacter::SprintReleased);
+		}
+
+		if (CrouchAction)
+		{
+			EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &AsavaCharacter::CrouchPressed);
+			EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &AsavaCharacter::CrouchReleased);
+			EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Canceled, this, &AsavaCharacter::CrouchReleased);
+		}
 	}
 	else
 	{
@@ -121,6 +140,92 @@ void AsavaCharacter::Look(const FInputActionValue& Value)
 		AddControllerYawInput(LookAxisVector.X * MouseSensitivity);
 		const float PitchDirection = Settings && Settings->IsYInverted() ? -1.0f : 1.0f;
 		AddControllerPitchInput(LookAxisVector.Y * MouseSensitivity * PitchDirection);
+	}
+}
+
+USavaCharacterMovementComponent* AsavaCharacter::GetSavaMovement() const
+{
+	return Cast<USavaCharacterMovementComponent>(GetCharacterMovement());
+}
+
+// ダッシュ・しゃがみは「入力の意思」を移動コンポーネントへ伝えるだけ。
+// 実際の速度や状態の切り替えは移動コンポーネントが決める（サーバーと結果をそろえるため）
+void AsavaCharacter::SprintPressed()
+{
+	if (USavaCharacterMovementComponent* Movement = GetSavaMovement())
+	{
+		Movement->SetWantsToSprint(true);
+	}
+}
+
+void AsavaCharacter::SprintReleased()
+{
+	if (USavaCharacterMovementComponent* Movement = GetSavaMovement())
+	{
+		Movement->SetWantsToSprint(false);
+	}
+}
+
+void AsavaCharacter::CrouchPressed()
+{
+	Crouch();
+}
+
+void AsavaCharacter::CrouchReleased()
+{
+	UnCrouch();
+}
+
+bool AsavaCharacter::CanJumpInternal_Implementation() const
+{
+	// 標準ではしゃがみ中はジャンプできない。スライディング中だけ例外的に許可する
+	const USavaCharacterMovementComponent* Movement = GetSavaMovement();
+	if (Movement && Movement->IsSliding())
+	{
+		return JumpIsAllowedInternal();
+	}
+
+	return Super::CanJumpInternal_Implementation();
+}
+
+// しゃがむとカプセルが縮み、くっついているカメラも一瞬で下がる。
+// 縮んだ分をずれとして持っておき、Tick で 0 に戻すことで滑らかに見せる
+void AsavaCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	CrouchCameraOffset += ScaledHalfHeightAdjust;
+}
+
+void AsavaCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	CrouchCameraOffset -= ScaledHalfHeightAdjust;
+}
+
+void AsavaCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (FirstPersonCameraComponent)
+	{
+		DefaultCameraLocation = FirstPersonCameraComponent->GetRelativeLocation();
+	}
+}
+
+void AsavaCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// 見た目だけの処理なので、自分が操作しているキャラクターだけで十分
+	if (FirstPersonCameraComponent && IsLocallyControlled() && CrouchCameraOffset != 0.f)
+	{
+		CrouchCameraOffset = FMath::FInterpTo(CrouchCameraOffset, 0.f, DeltaSeconds, CrouchCameraInterpSpeed);
+		if (FMath::IsNearlyZero(CrouchCameraOffset, 0.01f))
+		{
+			CrouchCameraOffset = 0.f;
+		}
+
+		FirstPersonCameraComponent->SetRelativeLocation(DefaultCameraLocation + FVector(0.f, 0.f, CrouchCameraOffset));
 	}
 }
 
