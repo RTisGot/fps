@@ -17,7 +17,7 @@ class USavaSettingsMenuController;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
-
+class USavaCharacterMovementComponent;
 UCLASS(config=Game)
 class AsavaCharacter : public ACharacter
 {
@@ -47,6 +47,8 @@ class AsavaCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	class UInputAction* LookAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* SprintAction;
 	///
 	UPROPERTY(EditDefaultsOnly, Category = UI, meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<UUserWidget> SettingsWidgetClass;
@@ -60,7 +62,7 @@ class AsavaCharacter : public ACharacter
 	
 	
 public:
-	AsavaCharacter();
+	AsavaCharacter(const FObjectInitializer& ObjectInitializer);
 
 	//設定メニューを閉じる関数/
 	UFUNCTION(BlueprintCallable, Category = "UI|Settings")
@@ -72,6 +74,9 @@ protected:
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
+
+	void StartSprint();
+	void StopSprint();
 
 	
 	void ToggleSettingsMenu();
@@ -89,6 +94,6 @@ public:
 	USkeletalMeshComponent* GetMesh1P() const { return Mesh1P; }
 	/** Returns FirstPersonCameraComponent subobject **/
 	UCameraComponent* GetFirstPersonCameraComponent() const { return FirstPersonCameraComponent; }
-
+	USavaCharacterMovementComponent* GetSavaCharacterMovementComponent() const;
 };
 
