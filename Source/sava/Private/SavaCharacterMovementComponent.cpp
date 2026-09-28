@@ -31,7 +31,7 @@ float USavaCharacterMovementComponent::GetMaxSpeed() const {
 		return SlideMaxSpeed;
 	}
 	if (IsSprinting()) {
-		return SprintSpeed;
+		return Super::GetMaxSpeed() * SprintSpeedMultiplier;
 	}
 	return Super::GetMaxSpeed();
 }

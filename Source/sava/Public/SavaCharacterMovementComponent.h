@@ -43,7 +43,7 @@ class SAVA_API USavaCharacterMovementComponent : public UCharacterMovementCompon
 
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "0", ForceUnits = "cm/s"))
-		float SprintSpeed = 650.0f;
+		float SprintSpeedMultiplier = 1.35f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "Deg"))
 		float SprintMaxAngle = 50.0f;
