@@ -4,6 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "AbilitySystemInterface.h"
+#include "GameplayTagContainer.h"
+#include "AbilitySystem/SavaAbilitySet.h"
 #include "Logging/LogMacros.h"
 #include "savaCharacter.generated.h"
 
@@ -18,10 +21,27 @@ struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 class USavaCharacterMovementComponent;
+class USavaAbilitySystemComponent;
+class USavaInputConfig;
 UCLASS(config=Game)
-class AsavaCharacter : public ACharacter
+class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
+
+	//このキャラクターに持たせる能力のセット(スキル・ガジェット・武器の各担当が作ったもの)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Abilities", meta = (AllowPrivateAccess = "true"))
+	TArray<TObjectPtr<USavaAbilitySet>> AbilitySets;
+
+	//能力用のボタン(入力アクション → InputTag の対応表)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Abilities", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<USavaInputConfig> AbilityInputConfig;
+
+	//PlayerState にある ASC への参照(InitAbilitySystem で設定)
+	UPROPERTY(Transient)
+	TObjectPtr<USavaAbilitySystemComponent> AbilitySystemComponent;
+
+	//付与した能力の控え(キャラクターを離れるときに取り除く)
+	FSavaAbilitySet_GrantedHandles GrantedAbilityHandles;
 
 	/** Pawn mesh: 1st person view (arms; seen only by self) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=Mesh, meta = (AllowPrivateAccess = "true"))
@@ -77,6 +97,9 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	USavaAbilitySystemComponent* GetSavaAbilitySystemComponent() const { return AbilitySystemComponent; }
+
 	//設定メニューを閉じる関数/
 	UFUNCTION(BlueprintCallable, Category = "UI|Settings")
 	void CloseSettingsMenu();
@@ -99,7 +122,18 @@ protected:
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual bool CanJumpInternal_Implementation() const override;
 
-	
+	//能力のボタン
+	void Input_AbilityInputTagPressed(FGameplayTag InputTag);
+	void Input_AbilityInputTagReleased(FGameplayTag InputTag);
+
+	//GAS の初期化(サーバー: PossessedBy / クライアント: OnRep_PlayerState から呼ぶ)
+	void InitAbilitySystem();
+
+	virtual void PossessedBy(AController* NewController) override;
+	virtual void UnPossessed() override;
+	virtual void OnRep_PlayerState() override;
+
+
 	void ToggleSettingsMenu();
 
 

@@ -2,6 +2,8 @@
 
 
 #include "SavaCharacterMovementComponent.h"
+#include "AbilitySystem/SavaAttributeSet.h"
+#include "AbilitySystemGlobals.h"
 #include "GameFramework/Character.h"
 
 USavaCharacterMovementComponent::USavaCharacterMovementComponent()
@@ -33,10 +35,26 @@ float USavaCharacterMovementComponent::GetMaxSpeed() const {
 	if (IsSliding()) {
 		return SlideMaxSpeed;
 	}
+	//スキル等による速度変化(アドレナリン・減速など)は GAS の MoveSpeedMultiplier で受け取る
+	const float AbilitySpeedMultiplier = GetAbilityMoveSpeedMultiplier();
 	if (IsSprinting()) {
-		return Super::GetMaxSpeed() * SprintSpeedMultiplier;
+		return Super::GetMaxSpeed() * SprintSpeedMultiplier * AbilitySpeedMultiplier;
 	}
-	return Super::GetMaxSpeed();
+	return Super::GetMaxSpeed() * AbilitySpeedMultiplier;
+}
+
+float USavaCharacterMovementComponent::GetAbilityMoveSpeedMultiplier() const
+{
+	//サーバーとクライアントで同じ値になる(属性は複製・予測される)ので、補正の原因にならない
+	const UAbilitySystemComponent* AbilitySystem = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner());
+	if (!AbilitySystem)
+	{
+		return 1.0f;
+	}
+
+	bool bFound = false;
+	const float Multiplier = AbilitySystem->GetGameplayAttributeValue(USavaAttributeSet::GetMoveSpeedMultiplierAttribute(), bFound);
+	return bFound ? FMath::Max(Multiplier, 0.0f) : 1.0f;
 }
 
 void USavaCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)

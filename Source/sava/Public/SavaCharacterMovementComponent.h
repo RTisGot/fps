@@ -57,6 +57,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "1"))
 		float SprintSpeedMultiplier = 1.35f;
 
+	//前からこれだけ反れても走れる角度
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "Deg"))
 		float SprintMaxAngle = 50.0f;
 
@@ -67,6 +68,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Sava|Sprint")
 	bool IsSprinting() const;
+
+	//GAS の移動速度倍率(スキル・ガジェットによる加速/減速)。ASC がなければ 1.0
+	UFUNCTION(BlueprintPure, Category = "Sava|Abilities")
+	float GetAbilityMoveSpeedMultiplier() const;
 
 	USavaCharacterMovementComponent();
 
