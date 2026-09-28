@@ -39,7 +39,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Ability")
 	AsavaCharacter* GetSavaCharacterFromActorInfo() const;
 
-	//キャラクターの移動コンポーネント(グラップル・テレポートなど移動に関わる能力用)
+	//キャラクターの移動コンポーネント(キャラクターを動かす能力用)
 	UFUNCTION(BlueprintPure, Category = "Sava|Ability")
 	USavaCharacterMovementComponent* GetSavaMovementFromActorInfo() const;
 
@@ -56,7 +56,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Cooldown")
 	FScalableFloat CooldownDuration;
 
-	//クールダウン中に付くタグ(例: Cooldown.Skill.Adrenaline)。能力ごとに別のタグにする
+	//クールダウン中に付くタグ(例: Cooldown.Skill.<能力名>)。能力ごとに別のタグにする
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Cooldown", meta = (Categories = "Cooldown"))
 	FGameplayTagContainer CooldownTags;
 

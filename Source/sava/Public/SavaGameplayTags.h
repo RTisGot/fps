@@ -5,7 +5,7 @@
 #include "NativeGameplayTags.h"
 
 //C++ から使う GameplayTag の一覧。エディタのタグ一覧にも自動で表示される
-//スキルごとのクールダウンタグ(Cooldown.Skill.Adrenaline など)は各担当がエディタで追加する
+//スキルごとのクールダウンタグ(Cooldown.Skill.<能力名> など)は各担当がエディタで追加する
 namespace SavaGameplayTags
 {
 	//入力(どのボタンで発動するか)

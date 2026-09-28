@@ -35,7 +35,7 @@ float USavaCharacterMovementComponent::GetMaxSpeed() const {
 	if (IsSliding()) {
 		return SlideMaxSpeed;
 	}
-	//スキル等による速度変化(アドレナリン・減速など)は GAS の MoveSpeedMultiplier で受け取る
+	//スキル等による速度変化(加速・減速など)は GAS の MoveSpeedMultiplier で受け取る
 	const float AbilitySpeedMultiplier = GetAbilityMoveSpeedMultiplier();
 	if (IsSprinting()) {
 		return Super::GetMaxSpeed() * SprintSpeedMultiplier * AbilitySpeedMultiplier;

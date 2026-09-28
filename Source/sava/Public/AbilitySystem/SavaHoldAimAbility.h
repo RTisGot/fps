@@ -13,9 +13,9 @@ class USavaAbilityTask_Tick;
 UENUM(BlueprintType)
 enum class ESavaAimMode : uint8
 {
-	//視線の先の地面・壁(物を置く位置、テレポート先など)
+	//視線の先の地面・壁(物を置く位置、移動先など)
 	PointOnSurface,
-	//放物線(グレネードなど)。確定時の Transform は「投げる位置と向き」になる
+	//放物線(投げる物)。確定時の Transform は「投げる位置と向き」になる
 	ProjectileArc,
 };
 

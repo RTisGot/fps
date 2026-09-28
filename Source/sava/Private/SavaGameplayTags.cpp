@@ -20,5 +20,5 @@ namespace SavaGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(SetByCaller_Healing, "SetByCaller.Healing", "回復量");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(SetByCaller_Cooldown, "SetByCaller.Cooldown", "クールダウン秒数");
 
-	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Cooldown, "Cooldown", "クールダウン中を表すタグの親(例: Cooldown.Skill.Adrenaline)");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Cooldown, "Cooldown", "クールダウン中を表すタグの親(例: Cooldown.Skill.<能力名>)");
 }

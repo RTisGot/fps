@@ -6,7 +6,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "SavaCharacterMovementComponent.generated.h"
 
-//MOVE_Custom のサブモード(壁走りなど、今後の独自移動はここに追加する)
+//MOVE_Custom のサブモード(今後の独自移動はここに追加する)
 enum ESavaCustomMovementMode : uint8
 {
 	CMOVE_None = 0,

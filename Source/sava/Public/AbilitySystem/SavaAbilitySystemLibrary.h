@@ -18,7 +18,7 @@ class SAVA_API USavaAbilitySystemLibrary : public UBlueprintFunctionLibrary
 
 public:
 	//ダメージを与える(サーバーのみ)。相手が ASC を持たない場合は何もせず false を返す
-	//DamageInstigator: 攻撃したプレイヤーのキャラクター / DamageCauser: 弾・グレネードなど
+	//DamageInstigator: 攻撃したプレイヤーのキャラクター / DamageCauser: 弾など、実際に当たった物
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Sava|Damage")
 	static bool ApplyDamage(AActor* DamageInstigator, AActor* Target, float Damage, AActor* DamageCauser);
 
@@ -26,7 +26,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Sava|Damage")
 	static bool ApplyHealing(AActor* HealInstigator, AActor* Target, float Amount);
 
-	//任意の GameplayEffect を相手に付ける(サーバーのみ。スタンなど)
+	//任意の GameplayEffect を相手に付ける(サーバーのみ。状態異常など)
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Sava|Effect")
 	static FActiveGameplayEffectHandle ApplyEffectToTarget(AActor* EffectInstigator, AActor* Target, TSubclassOf<UGameplayEffect> EffectClass, float Level = 1.0f);
 
