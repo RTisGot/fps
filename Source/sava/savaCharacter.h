@@ -49,6 +49,17 @@ class AsavaCharacter : public ACharacter
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* SprintAction;
+
+	/** Crouch / Slide Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* CrouchAction;
+
+	//しゃがみ切り替え時にカメラが目標の高さへ追いつく速さ
+	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0"))
+	float CrouchCameraInterpSpeed = 12.0f;
+
+	FVector CameraBaseLocation = FVector::ZeroVector; //カメラ本来の相対位置
+	FVector CrouchCameraOffset = FVector::ZeroVector; //しゃがみ切り替え直後のずれ(0 へ補間する)
 	///
 	UPROPERTY(EditDefaultsOnly, Category = UI, meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<UUserWidget> SettingsWidgetClass;
@@ -64,6 +75,8 @@ class AsavaCharacter : public ACharacter
 public:
 	AsavaCharacter(const FObjectInitializer& ObjectInitializer);
 
+	virtual void Tick(float DeltaSeconds) override;
+
 	//設定メニューを閉じる関数/
 	UFUNCTION(BlueprintCallable, Category = "UI|Settings")
 	void CloseSettingsMenu();
@@ -77,6 +90,14 @@ protected:
 
 	void StartSprint();
 	void StopSprint();
+
+	void StartCrouch();
+	void StopCrouch();
+
+	virtual void BeginPlay() override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual bool CanJumpInternal_Implementation() const override;
 
 	
 	void ToggleSettingsMenu();
