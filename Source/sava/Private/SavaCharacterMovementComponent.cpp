@@ -8,6 +8,9 @@ USavaCharacterMovementComponent::USavaCharacterMovementComponent()
 {
 	//しゃがみを有効化(初期値は false で Crouch() が何もしない)
 	NavAgentProps.bCanCrouch = true;
+
+	//補正時に独自の状態も送る
+	SetMoveResponseDataContainer(SavaMoveResponseDataContainer);
 }
 
 bool USavaCharacterMovementComponent::IsSprinting() const
@@ -42,6 +45,30 @@ void USavaCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
 	bWantsToSprint = (Flags & FSavedMove_Character::FLAG_Custom_0) != 0;
 }
 
+//--------------------------------Air
+
+void USavaCharacterMovementComponent::PhysFalling(float DeltaTime, int32 Iterations)
+{
+	ApplyAirOverspeedDecay(DeltaTime);
+	Super::PhysFalling(DeltaTime, Iterations);
+}
+
+void USavaCharacterMovementComponent::ApplyAirOverspeedDecay(float DeltaTime)
+{
+	//基準速度を超えた分だけを指数的に減らす(基準以下の通常ジャンプには影響しない)
+	const float SoftCap = MaxWalkSpeed * AirSpeedSoftCapMultiplier;
+	const float Speed = Velocity.Size2D();
+	if (Speed <= SoftCap)
+	{
+		return;
+	}
+
+	const float NewSpeed = SoftCap + (Speed - SoftCap) * FMath::Exp(-AirOverspeedDecayRate * DeltaTime);
+	const float Scale = NewSpeed / Speed;
+	Velocity.X *= Scale;
+	Velocity.Y *= Scale;
+}
+
 //--------------------------------Slide
 
 bool USavaCharacterMovementComponent::IsSliding() const
@@ -71,6 +98,11 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 	const bool bCanChangeState = CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy;
 	const bool bWasCrouching = IsCrouching();
 
+	if (bCanChangeState)
+	{
+		SlideBoostCooldownRemaining = FMath::Max(SlideBoostCooldownRemaining - DeltaSeconds, 0.0f);
+	}
+
 	//しゃがみボタンを離したらスライディング終了(立ち上がりは下の Super が行う)
 	if (bCanChangeState && IsSliding() && !bWantsToCrouch)
 	{
@@ -90,7 +122,12 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 
 void USavaCharacterMovementComponent::EnterSlide()
 {
-	Velocity += Velocity.GetSafeNormal2D() * SlideEnterImpulse;
+	//ブーストはクールダウンが終わっているときだけ(連続スライディングで無限に加速しないように)
+	if (SlideBoostCooldownRemaining <= 0.0f)
+	{
+		Velocity += Velocity.GetSafeNormal2D() * SlideEnterImpulse;
+		SlideBoostCooldownRemaining = SlideBoostCooldown;
+	}
 	SetMovementMode(MOVE_Custom, CMOVE_Slide);
 
 	//地面にいるので、しゃがみ/立ち上がりは足元を基準にする(Custom モードでは既定で false になる)
@@ -199,6 +236,39 @@ FNetworkPredictionData_Client* USavaCharacterMovementComponent::GetPredictionDat
 		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_Sava(*this);
 	}
 	return ClientPredictionData;
+}
+
+void USavaCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse)
+{
+	//補正時はサーバーの値に合わせる(この後、保存済みの入力が再実行されて現在まで進む)
+	if (MoveResponse.IsCorrection())
+	{
+		SlideBoostCooldownRemaining = static_cast<const FSavaCharacterMoveResponseDataContainer&>(MoveResponse).SlideBoostCooldownRemaining;
+	}
+	Super::ClientHandleMoveResponse(MoveResponse);
+}
+
+void FSavaCharacterMoveResponseDataContainer::ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment)
+{
+	Super::ServerFillResponseData(CharacterMovement, PendingAdjustment);
+
+	//このコンテナは USavaCharacterMovementComponent にしか設定しない
+	SlideBoostCooldownRemaining = static_cast<const USavaCharacterMovementComponent&>(CharacterMovement).GetSlideBoostCooldownRemaining();
+}
+
+bool FSavaCharacterMoveResponseDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
+{
+	if (!Super::Serialize(CharacterMovement, Ar, PackageMap))
+	{
+		return false;
+	}
+
+	//補正のときだけ送る(問題なしの応答では送らない)
+	if (IsCorrection())
+	{
+		Ar << SlideBoostCooldownRemaining;
+	}
+	return !Ar.IsError();
 }
 
 USavaCharacterMovementComponent::FNetworkPredictionData_Client_Sava::FNetworkPredictionData_Client_Sava(const UCharacterMovementComponent& ClientMovement)
