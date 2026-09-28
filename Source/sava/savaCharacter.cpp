@@ -2,6 +2,7 @@
 
 #include "savaCharacter.h"
 #include "savaProjectile.h"
+#include "SavaCharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -23,7 +24,8 @@ DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 // AsavaCharacter
 
-AsavaCharacter::AsavaCharacter()
+AsavaCharacter::AsavaCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<USavaCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	
 	GetCapsuleComponent()->InitCapsuleSize(55.f, 96.0f);
@@ -81,6 +83,14 @@ void AsavaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AsavaCharacter::Look);
+
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AsavaCharacter::StartSprint);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AsavaCharacter::StopSprint);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Canceled, this, &AsavaCharacter::StopSprint);
+
+		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &AsavaCharacter::StartCrouch);
+		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &AsavaCharacter::StopCrouch);
+		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Canceled, this, &AsavaCharacter::StopCrouch);
 	}
 	else
 	{
@@ -122,6 +132,78 @@ void AsavaCharacter::Look(const FInputActionValue& Value)
 		const float PitchDirection = Settings && Settings->IsYInverted() ? -1.0f : 1.0f;
 		AddControllerPitchInput(LookAxisVector.Y * MouseSensitivity * PitchDirection);
 	}
+}
+
+void AsavaCharacter::StartSprint() {
+	GetSavaCharacterMovementComponent()->StartSprint();
+}
+
+void AsavaCharacter::StopSprint() {
+	GetSavaCharacterMovementComponent()->StopSprint();
+}
+
+void AsavaCharacter::StartCrouch() {
+	Crouch();
+}
+
+void AsavaCharacter::StopCrouch() {
+	UnCrouch();
+}
+
+void AsavaCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	CameraBaseLocation = FirstPersonCameraComponent->GetRelativeLocation();
+}
+
+void AsavaCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	//しゃがみ切り替え時のカメラのずれを滑らかに戻す(見た目だけの処理)
+	if (!CrouchCameraOffset.IsZero())
+	{
+		CrouchCameraOffset = FMath::VInterpTo(CrouchCameraOffset, FVector::ZeroVector, DeltaSeconds, CrouchCameraInterpSpeed);
+		FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation + CrouchCameraOffset);
+	}
+}
+
+void AsavaCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	//地上ではカプセルが足元基準で縮み、カメラが一瞬で下がるので、元の高さから補間させる
+	if (GetCharacterMovement()->bCrouchMaintainsBaseLocation)
+	{
+		CrouchCameraOffset.Z += ScaledHalfHeightAdjust;
+		FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation + CrouchCameraOffset);
+	}
+}
+
+void AsavaCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+
+	if (GetCharacterMovement()->bCrouchMaintainsBaseLocation)
+	{
+		CrouchCameraOffset.Z -= ScaledHalfHeightAdjust;
+		FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation + CrouchCameraOffset);
+	}
+}
+
+bool AsavaCharacter::CanJumpInternal_Implementation() const
+{
+	//通常はしゃがみ中ジャンプ不可だが、スライディング中は許可する(スライディングジャンプ)
+	if (GetSavaCharacterMovementComponent()->IsSliding())
+	{
+		return JumpIsAllowedInternal();
+	}
+	return Super::CanJumpInternal_Implementation();
+}
+
+USavaCharacterMovementComponent* AsavaCharacter::GetSavaCharacterMovementComponent() const
+{
+	return CastChecked<USavaCharacterMovementComponent>(GetCharacterMovement());
 }
 
 //設定画面の開閉
@@ -186,6 +268,9 @@ void AsavaCharacter::ToggleSettingsMenu()
 void AsavaCharacter::CloseSettingsMenu()
 {
 	if (SettingsMenuController) SettingsMenuController->Discard();
+
+	StopSprint();
+	StopCrouch();
 	if (SettingsWidget)
 	{
 		SettingsWidget->RemoveFromParent();//現在表示されている親から外す。
