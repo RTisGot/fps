@@ -29,13 +29,14 @@ class SAVA_API USavaCharacterMovementComponent : public UCharacterMovementCompon
 	class FNetworkPredictionData_Client_Sava : public FNetworkPredictionData_Client_Character
 	{
 	public:
+		typedef FNetworkPredictionData_Client_Character Super;
 		FNetworkPredictionData_Client_Sava(const UCharacterMovementComponent& ClientMovement);
 		virtual FSavedMovePtr AllocateNewMove() override;
 	};
 
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "0", ForceUnits = "cm/s"))
-		float MaxSpeed = 650.0f;
+		float SprintSpeed = 650.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "Deg"))
 		float SprintMaxAngle = 50.0f;

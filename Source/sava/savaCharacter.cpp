@@ -205,6 +205,8 @@ void AsavaCharacter::ToggleSettingsMenu()
 void AsavaCharacter::CloseSettingsMenu()
 {
 	if (SettingsMenuController) SettingsMenuController->Discard();
+
+	StopSprint();
 	if (SettingsWidget)
 	{
 		SettingsWidget->RemoveFromParent();//現在表示されている親から外す。

@@ -6,7 +6,7 @@
 
 bool USavaCharacterMovementComponent::IsSprinting() const
 {
-	if(!bWantsToSprint || !IsMovingOnGround() || IsCrouchIng() || !UpdatedComponent)
+	if(!bWantsToSprint || !IsMovingOnGround() || IsCrouching() || !UpdatedComponent)
 	{
 		return false;
 	}
@@ -21,8 +21,8 @@ bool USavaCharacterMovementComponent::IsSprinting() const
 }
 
 float USavaCharacterMovementComponent::GetMaxSpeed() const {
-	if (isSprinting()) {
-		return MaxSpeed;
+	if (IsSprinting()) {
+		return SprintSpeed;
 	}
 	return Super::GetMaxSpeed();
 }
@@ -40,6 +40,7 @@ FNetworkPredictionData_Client* USavaCharacterMovementComponent::GetPredictionDat
 	if (!ClientPredictionData)
 	{
 		USavaCharacterMovementComponent* MutableThis = const_cast<USavaCharacterMovementComponent*>(this);
+		MutableThis->ClientPredictionData = new FNetworkPredictionData_Client_Sava(*this);
 	}
 	return ClientPredictionData;
 }
