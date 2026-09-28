@@ -2,6 +2,7 @@
 
 #include "savaCharacter.h"
 #include "savaProjectile.h"
+#include "SavaCharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -23,7 +24,8 @@ DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 // AsavaCharacter
 
-AsavaCharacter::AsavaCharacter()
+AsavaCharacter::AsavaCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<USavaCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	
 	GetCapsuleComponent()->InitCapsuleSize(55.f, 96.0f);
@@ -81,6 +83,10 @@ void AsavaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AsavaCharacter::Look);
+
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &AsavaCharacter::StartSprint);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &AsavaCharacter::StopSprint);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Canceled, this, &AsavaCharacter::StopSprint);
 	}
 	else
 	{
@@ -122,6 +128,19 @@ void AsavaCharacter::Look(const FInputActionValue& Value)
 		const float PitchDirection = Settings && Settings->IsYInverted() ? -1.0f : 1.0f;
 		AddControllerPitchInput(LookAxisVector.Y * MouseSensitivity * PitchDirection);
 	}
+}
+
+void AsavaCharacter::StartSprint() {
+	GetSavaCharacterMovementComponent()->StartSprint();
+}
+
+void AsavaCharacter::StopSprint() {
+	GetSavaCharacterMovementComponent()->StopSprint();
+}
+
+USavaCharacterMovementComponent* AsavaCharacter::GetSavaCharacterMovementComponent() const
+{
+	return CastChecked<USavaCharacterMovementComponent>(GetCharacterMovement());
 }
 
 //設定画面の開閉
