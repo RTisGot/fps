@@ -6,11 +6,22 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "SavaCharacterMovementComponent.generated.h"
 
-//MOVE_Custom のサブモード
+//MOVE_Custom のサブモード(壁走りなど、今後の独自移動はここに追加する)
 enum ESavaCustomMovementMode : uint8
 {
 	CMOVE_None = 0,
 	CMOVE_Slide,
+};
+
+//サーバーが位置を補正するときに、独自の移動状態も一緒に送るためのデータ
+struct FSavaCharacterMoveResponseDataContainer : FCharacterMoveResponseDataContainer
+{
+	using Super = FCharacterMoveResponseDataContainer;
+
+	float SlideBoostCooldownRemaining = 0.0f;
+
+	virtual void ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment) override;
+	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap) override;
 };
 
 UCLASS()
@@ -42,8 +53,9 @@ class SAVA_API USavaCharacterMovementComponent : public UCharacterMovementCompon
 	};
 
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "0", ForceUnits = "cm/s"))
-		float SprintSpeed = 650.0f;
+	//ダッシュ時の速度倍率(歩き速度 MaxWalkSpeed に掛ける)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "1"))
+		float SprintSpeedMultiplier = 1.35f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "Deg"))
 		float SprintMaxAngle = 50.0f;
@@ -90,22 +102,46 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0", ForceUnits = "cm/s^2"))
 	float SlideSteerAcceleration = 400.0f;
 
+	//開始時のブースト(SlideEnterImpulse)が再び出るまでの時間。クールダウン中もスライディング自体はできる
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0", ForceUnits = "s"))
+	float SlideBoostCooldown = 2.0f;
+
 	UFUNCTION(BlueprintPure, Category = "Sava|Slide")
 	bool IsSliding() const;
+
+	//ブーストのクールダウン残り時間(UI表示用)
+	UFUNCTION(BlueprintPure, Category = "Sava|Slide")
+	float GetSlideBoostCooldownRemaining() const { return SlideBoostCooldownRemaining; }
+
+	//空中で減速し始める水平速度 = 歩き速度 MaxWalkSpeed × この倍率
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Air", meta = (ClampMin = "1"))
+	float AirSpeedSoftCapMultiplier = 1.35f;
+
+	//空中で基準速度を超えた分が減る速さ(1秒あたり。0.5 なら約1.4秒で超過分が半分になる)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Air", meta = (ClampMin = "0"))
+	float AirOverspeedDecayRate = 0.5f;
 
 	virtual bool IsMovingOnGround() const override;
 	virtual bool CanAttemptJump() const override;
 	virtual float GetMaxSpeed() const override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
+	virtual void ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse) override;
 
 protected:
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual void PhysCustom(float DeltaTime, int32 Iterations) override;
+	virtual void PhysFalling(float DeltaTime, int32 Iterations) override;
 
 private:
 	void EnterSlide();
 	void PhysSlide(float DeltaTime, int32 Iterations);
+	void ApplyAirOverspeedDecay(float DeltaTime);
 
 	bool bWantsToSprint = false;
+
+	//移動の計算の中で減らす(Timer は使わない)。補正時はサーバーの値に合わせる
+	float SlideBoostCooldownRemaining = 0.0f;
+
+	FSavaCharacterMoveResponseDataContainer SavaMoveResponseDataContainer;
 };
