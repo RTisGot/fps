@@ -4,6 +4,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "AbilitySystemInterface.h"
+#include "GameplayTagContainer.h"
+#include "AbilitySystem/SavaAbilitySet.h"
 #include "Logging/LogMacros.h"
 #include "savaCharacter.generated.h"
 
@@ -18,10 +21,27 @@ struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 class USavaCharacterMovementComponent;
+class USavaAbilitySystemComponent;
+class USavaInputConfig;
 UCLASS(config=Game)
-class AsavaCharacter : public ACharacter
+class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
+
+	//このキャラクターに持たせる能力のセット(スキル・ガジェット・武器の各担当が作ったもの)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Abilities", meta = (AllowPrivateAccess = "true"))
+	TArray<TObjectPtr<USavaAbilitySet>> AbilitySets;
+
+	//能力用のボタン(入力アクション → InputTag の対応表)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Abilities", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<USavaInputConfig> AbilityInputConfig;
+
+	//PlayerState にある ASC への参照(InitAbilitySystem で設定)
+	UPROPERTY(Transient)
+	TObjectPtr<USavaAbilitySystemComponent> AbilitySystemComponent;
+
+	//付与した能力の控え(キャラクターを離れるときに取り除く)
+	FSavaAbilitySet_GrantedHandles GrantedAbilityHandles;
 
 	/** Pawn mesh: 1st person view (arms; seen only by self) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=Mesh, meta = (AllowPrivateAccess = "true"))
@@ -60,6 +80,18 @@ class AsavaCharacter : public ACharacter
 
 	FVector CameraBaseLocation = FVector::ZeroVector; //カメラ本来の相対位置
 	FVector CrouchCameraOffset = FVector::ZeroVector; //しゃがみ切り替え直後のずれ(0 へ補間する)
+
+	//壁走り中にカメラを壁と反対側へ傾ける角度(マイナスにすると壁側へ傾く)
+	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "-45", ClampMax = "45", ForceUnits = "Deg"))
+	float WallRunCameraTiltAngle = 12.0f;
+
+	//カメラの傾きが目標の角度へ追いつく速さ
+	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0"))
+	float WallRunCameraTiltSpeed = 8.0f;
+
+	//壁走り中の壁の向き。他のプレイヤー(SimulatedProxy)へ同期する(アニメーション・演出用)
+	UPROPERTY(Replicated)
+	FVector_NetQuantizeNormal ReplicatedWallRunNormal;
 	///
 	UPROPERTY(EditDefaultsOnly, Category = UI, meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<UUserWidget> SettingsWidgetClass;
@@ -76,6 +108,18 @@ public:
 	AsavaCharacter(const FObjectInitializer& ObjectInitializer);
 
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	//壁走り中の壁の向き(壁から外向き)。壁走りしていなければゼロ。自分・サーバー・他のプレイヤーのどれでも有効
+	UFUNCTION(BlueprintPure, Category = "Movement|WallRun")
+	FVector GetWallRunNormal() const;
+
+	//壁走り中の壁の位置: 右なら 1、左なら -1、壁走りしていなければ 0(アニメーション用)
+	UFUNCTION(BlueprintPure, Category = "Movement|WallRun")
+	float GetWallRunSide() const;
+
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	USavaAbilitySystemComponent* GetSavaAbilitySystemComponent() const { return AbilitySystemComponent; }
 
 	//設定メニューを閉じる関数/
 	UFUNCTION(BlueprintCallable, Category = "UI|Settings")
@@ -99,7 +143,21 @@ protected:
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual bool CanJumpInternal_Implementation() const override;
 
-	
+	//壁走り中のカメラの傾き(自分の画面だけの演出)
+	void UpdateWallRunCameraTilt(float DeltaSeconds);
+
+	//能力のボタン
+	void Input_AbilityInputTagPressed(FGameplayTag InputTag);
+	void Input_AbilityInputTagReleased(FGameplayTag InputTag);
+
+	//GAS の初期化(サーバー: PossessedBy / クライアント: OnRep_PlayerState から呼ぶ)
+	void InitAbilitySystem();
+
+	virtual void PossessedBy(AController* NewController) override;
+	virtual void UnPossessed() override;
+	virtual void OnRep_PlayerState() override;
+
+
 	void ToggleSettingsMenu();
 
 
