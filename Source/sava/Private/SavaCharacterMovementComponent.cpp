@@ -339,8 +339,8 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 		else if (IsFalling())
 		{
 			TryStartWallRun();
-		}
 	}
+		}
 
 	//しゃがみ / 立ち上がり
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
