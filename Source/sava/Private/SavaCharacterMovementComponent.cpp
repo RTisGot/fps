@@ -4,7 +4,15 @@
 #include "SavaCharacterMovementComponent.h"
 #include "AbilitySystem/SavaAttributeSet.h"
 #include "AbilitySystemGlobals.h"
+#include "Components/CapsuleComponent.h"
+#include "Engine/World.h"
 #include "GameFramework/Character.h"
+
+namespace
+{
+	//壁走り中、壁から離れないように壁へ押し付ける速さ
+	constexpr float WallRunStickSpeed = 200.0f;
+}
 
 USavaCharacterMovementComponent::USavaCharacterMovementComponent()
 {
@@ -81,10 +89,205 @@ void USavaCharacterMovementComponent::ApplyAirOverspeedDecay(float DeltaTime)
 		return;
 	}
 
-	const float NewSpeed = SoftCap + (Speed - SoftCap) * FMath::Exp(-AirOverspeedDecayRate * DeltaTime);
-	const float Scale = NewSpeed / Speed;
+	const float Scale = ApplyOverspeedDecay(Speed, SoftCap, DeltaTime) / Speed;
 	Velocity.X *= Scale;
 	Velocity.Y *= Scale;
+}
+
+float USavaCharacterMovementComponent::ApplyOverspeedDecay(float Speed, float SoftCap, float DeltaTime) const
+{
+	if (Speed <= SoftCap)
+	{
+		return Speed;
+	}
+	return SoftCap + (Speed - SoftCap) * FMath::Exp(-AirOverspeedDecayRate * DeltaTime);
+}
+
+//--------------------------------WallRun
+
+bool USavaCharacterMovementComponent::IsWallRunning() const
+{
+	return MovementMode == MOVE_Custom && CustomMovementMode == CMOVE_WallRun;
+}
+
+bool USavaCharacterMovementComponent::TraceMovementLine(const FVector& Start, const FVector& End, FHitResult& OutHit) const
+{
+	//キャラクターの移動と同じ当たり判定の設定で線を飛ばす
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(SavaWallRun), false, CharacterOwner);
+	FCollisionResponseParams ResponseParams;
+	InitCollisionParams(Params, ResponseParams);
+	return GetWorld()->LineTraceSingleByChannel(OutHit, Start, End, UpdatedComponent->GetCollisionObjectType(), Params, ResponseParams);
+}
+
+bool USavaCharacterMovementComponent::FindWallRunWall(const FVector& Direction, FHitResult& OutHit) const
+{
+	const float Radius = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	const FVector Start = UpdatedComponent->GetComponentLocation();
+	const FVector End = Start + Direction.GetSafeNormal2D() * (Radius + WallRunCheckDistance);
+	return TraceMovementLine(Start, End, OutHit) && IsValidWallRunWall(OutHit);
+}
+
+bool USavaCharacterMovementComponent::IsValidWallRunWall(const FHitResult& Hit) const
+{
+	//ほぼ垂直な面だけ。他のプレイヤーには張り付かない
+	return Hit.bBlockingHit
+		&& FMath::Abs(Hit.ImpactNormal.Z) <= WallRunMaxWallNormalZ
+		&& !Cast<APawn>(Hit.GetActor());
+}
+
+bool USavaCharacterMovementComponent::HasWallRunInput(const FVector& RunDirection, const FVector& Normal) const
+{
+	//壁沿いに進む入力があり、壁から大きく離れる入力ではないこと
+	const FVector InputDir = FVector(Acceleration.X, Acceleration.Y, 0.0f).GetSafeNormal();
+	return !InputDir.IsNearlyZero()
+		&& FVector::DotProduct(InputDir, RunDirection) > 0.1f
+		&& FVector::DotProduct(InputDir, Normal) < 0.7f;
+}
+
+bool USavaCharacterMovementComponent::TryStartWallRun()
+{
+	//しゃがみ中(着地スライディング狙い)や、速く落下中は張り付かない
+	if (bWantsToCrouch || Velocity.Z < -WallRunMaxEntryFallSpeed)
+	{
+		return false;
+	}
+
+	const FVector Horizontal(Velocity.X, Velocity.Y, 0.0f);
+	if (Horizontal.SizeSquared() < FMath::Square(WallRunMinSpeed))
+	{
+		return false;
+	}
+
+	//足元の近くに床があるなら始めない
+	const float HalfHeight = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const FVector Feet = UpdatedComponent->GetComponentLocation() - FVector(0.0f, 0.0f, HalfHeight);
+	FHitResult GroundHit;
+	if (TraceMovementLine(Feet, Feet - FVector(0.0f, 0.0f, WallRunMinHeight), GroundHit))
+	{
+		return false;
+	}
+
+	//進行方向の左右に壁を探す
+	const FVector Side = FVector::CrossProduct(FVector::UpVector, Horizontal.GetSafeNormal());
+	for (const float Sign : { 1.0f, -1.0f })
+	{
+		FHitResult WallHit;
+		if (!FindWallRunWall(Side * Sign, WallHit))
+		{
+			continue;
+		}
+
+		//着地する前に走った壁には、もう一度張り付かない
+		const FVector Normal = WallHit.ImpactNormal.GetSafeNormal2D();
+		if (!LastWallRunNormal.IsZero() && FVector::DotProduct(Normal, LastWallRunNormal) > 0.9f)
+		{
+			continue;
+		}
+
+		const FVector RunDir = FVector::VectorPlaneProject(Horizontal, Normal).GetSafeNormal();
+		if (!HasWallRunInput(RunDir, Normal))
+		{
+			continue;
+		}
+
+		//水平の勢いは壁沿いの向きに保ち、上下の速度は抑える
+		WallRunNormal = Normal;
+		WallRunElapsed = 0.0f;
+		Velocity = RunDir * Horizontal.Size() + FVector(0.0f, 0.0f, FMath::Clamp(Velocity.Z, 0.0f, WallRunMaxEntryUpSpeed));
+		SetMovementMode(MOVE_Custom, CMOVE_WallRun);
+		return true;
+	}
+	return false;
+}
+
+void USavaCharacterMovementComponent::ExitWallRun()
+{
+	LastWallRunNormal = WallRunNormal;
+	SetMovementMode(MOVE_Falling);
+}
+
+bool USavaCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
+{
+	//壁走り中のジャンプはウォールジャンプ: 壁沿いの勢いを保ったまま、壁から離れる方向と上に飛ぶ
+	if (IsWallRunning())
+	{
+		if (!CharacterOwner || !CharacterOwner->CanJump())
+		{
+			return false;
+		}
+
+		Velocity = FVector(Velocity.X, Velocity.Y, 0.0f) + WallRunNormal * WallJumpOffSpeed;
+		Velocity.Z = WallJumpUpSpeed;
+		ExitWallRun();
+		return true;
+	}
+	return Super::DoJump(bReplayingMoves, DeltaTime);
+}
+
+void USavaCharacterMovementComponent::PhysWallRun(float DeltaTime, int32 Iterations)
+{
+	if (DeltaTime < MIN_TICK_TIME)
+	{
+		return;
+	}
+	WallRunElapsed += DeltaTime;
+
+	//壁がまだ横にあるか確認(壁の向きは毎フレーム更新して、曲がった壁にも沿う)
+	FHitResult WallHit;
+	const bool bHasWall = FindWallRunWall(-WallRunNormal, WallHit);
+	if (bHasWall)
+	{
+		WallRunNormal = WallHit.ImpactNormal.GetSafeNormal2D();
+	}
+
+	const FVector Horizontal(Velocity.X, Velocity.Y, 0.0f);
+	const FVector RunDir = FVector::VectorPlaneProject(Horizontal, WallRunNormal).GetSafeNormal();
+
+	//終了: 壁がない / 時間切れ / 壁沿いの入力がない / 遅すぎる
+	if (!bHasWall || WallRunElapsed >= WallRunMaxDuration || !HasWallRunInput(RunDir, WallRunNormal)
+		|| Horizontal.SizeSquared() < FMath::Square(WallRunMinSpeed))
+	{
+		ExitWallRun();
+		StartNewPhysics(DeltaTime, Iterations);
+		return;
+	}
+
+	//水平: 目標速度まで加速し、超えている分は空中と同じ割合で減らす
+	const float TargetSpeed = MaxWalkSpeed * WallRunSpeedMultiplier * GetAbilityMoveSpeedMultiplier();
+	float Speed = Horizontal.Size();
+	Speed = Speed < TargetSpeed
+		? FMath::Min(Speed + WallRunAcceleration * DeltaTime, TargetSpeed)
+		: ApplyOverspeedDecay(Speed, TargetSpeed, DeltaTime);
+
+	//上下: 弱い重力でゆっくり下がる
+	const float VerticalSpeed = Velocity.Z + GetGravityZ() * WallRunGravityScale * DeltaTime;
+	Velocity = RunDir * Speed + FVector(0.0f, 0.0f, VerticalSpeed);
+
+	//移動(壁に少し押し付けて、離れないようにする)
+	Iterations++;
+	bJustTeleported = false;
+	const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+	const FVector Delta = (Velocity - WallRunNormal * WallRunStickSpeed) * DeltaTime;
+	FHitResult Hit(1.0f);
+	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
+
+	if (Hit.Time < 1.0f)
+	{
+		//床に着いたら着地(着地スライディングの判定もここで行われる)
+		if (IsValidLandingSpot(UpdatedComponent->GetComponentLocation(), Hit))
+		{
+			ProcessLanded(Hit, DeltaTime * (1.0f - Hit.Time), Iterations);
+			return;
+		}
+		HandleImpact(Hit, DeltaTime, Delta);
+		SlideAlongSurface(Delta, 1.0f - Hit.Time, Hit.Normal, Hit, true);
+	}
+
+	//実際に動いた量から速度を更新(壁への押し付け分は次のフレームで取り除かれる)
+	if (!bJustTeleported)
+	{
+		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
+	}
 }
 
 //--------------------------------Slide
@@ -102,8 +305,8 @@ bool USavaCharacterMovementComponent::IsMovingOnGround() const
 
 bool USavaCharacterMovementComponent::CanAttemptJump() const
 {
-	//通常はしゃがみボタン押下中はジャンプ不可だが、スライディング中は許可する
-	if (IsSliding())
+	//通常はしゃがみボタン押下中はジャンプ不可だが、スライディング中は許可する。壁走り中はウォールジャンプ
+	if (IsSliding() || IsWallRunning())
 	{
 		return IsJumpAllowed();
 	}
@@ -127,6 +330,19 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 		SetMovementMode(MOVE_Walking);
 	}
 
+	//壁走り: しゃがみで壁から降りる / 落下中に条件を満たす壁があれば開始
+	if (bCanChangeState)
+	{
+		if (IsWallRunning() && bWantsToCrouch)
+		{
+			ExitWallRun();
+		}
+		else if (IsFalling())
+		{
+			TryStartWallRun();
+		}
+	}
+
 	//しゃがみ / 立ち上がり
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
 
@@ -142,6 +358,9 @@ void USavaCharacterMovementComponent::SetPostLandedPhysics(const FHitResult& Hit
 {
 	//ここで歩き状態になる(床の取得・縦方向の速度の除去も済む)
 	Super::SetPostLandedPhysics(Hit);
+
+	//着地したので、どの壁にもまた張り付ける
+	LastWallRunNormal = FVector::ZeroVector;
 
 	//地上のブレーキがかかる前に判定する。しゃがみ(カプセル縮小)がまだなら次のフレームで行われる
 	if (bSlideOnLanding && bWantsToCrouch && MovementMode == MOVE_Walking
@@ -168,9 +387,16 @@ void USavaCharacterMovementComponent::EnterSlide()
 
 void USavaCharacterMovementComponent::PhysCustom(float DeltaTime, int32 Iterations)
 {
-	if (CustomMovementMode == CMOVE_Slide)
+	switch (CustomMovementMode)
 	{
+	case CMOVE_Slide:
 		PhysSlide(DeltaTime, Iterations);
+		break;
+	case CMOVE_WallRun:
+		PhysWallRun(DeltaTime, Iterations);
+		break;
+	default:
+		break;
 	}
 	Super::PhysCustom(DeltaTime, Iterations);
 }
@@ -274,7 +500,11 @@ void USavaCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterM
 	//補正時はサーバーの値に合わせる(この後、保存済みの入力が再実行されて現在まで進む)
 	if (MoveResponse.IsCorrection())
 	{
-		SlideBoostCooldownRemaining = static_cast<const FSavaCharacterMoveResponseDataContainer&>(MoveResponse).SlideBoostCooldownRemaining;
+		const FSavaCharacterMoveResponseDataContainer& SavaResponse = static_cast<const FSavaCharacterMoveResponseDataContainer&>(MoveResponse);
+		SlideBoostCooldownRemaining = SavaResponse.SlideBoostCooldownRemaining;
+		WallRunNormal = SavaResponse.WallRunNormal;
+		WallRunElapsed = SavaResponse.WallRunElapsed;
+		LastWallRunNormal = SavaResponse.LastWallRunNormal;
 	}
 	Super::ClientHandleMoveResponse(MoveResponse);
 }
@@ -284,7 +514,11 @@ void FSavaCharacterMoveResponseDataContainer::ServerFillResponseData(const UChar
 	Super::ServerFillResponseData(CharacterMovement, PendingAdjustment);
 
 	//このコンテナは USavaCharacterMovementComponent にしか設定しない
-	SlideBoostCooldownRemaining = static_cast<const USavaCharacterMovementComponent&>(CharacterMovement).GetSlideBoostCooldownRemaining();
+	const USavaCharacterMovementComponent& SavaMovement = static_cast<const USavaCharacterMovementComponent&>(CharacterMovement);
+	SlideBoostCooldownRemaining = SavaMovement.SlideBoostCooldownRemaining;
+	WallRunNormal = SavaMovement.WallRunNormal;
+	WallRunElapsed = SavaMovement.WallRunElapsed;
+	LastWallRunNormal = SavaMovement.LastWallRunNormal;
 }
 
 bool FSavaCharacterMoveResponseDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
@@ -298,6 +532,9 @@ bool FSavaCharacterMoveResponseDataContainer::Serialize(UCharacterMovementCompon
 	if (IsCorrection())
 	{
 		Ar << SlideBoostCooldownRemaining;
+		Ar << WallRunNormal;
+		Ar << WallRunElapsed;
+		Ar << LastWallRunNormal;
 	}
 	return !Ar.IsError();
 }
