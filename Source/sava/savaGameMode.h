@@ -13,6 +13,13 @@ class AsavaGameMode : public AGameModeBase
 
 public:
 	AsavaGameMode();
+
+	virtual void PostLogin(APlayerController* NewPlayer) override;
+
+protected:
+	//チーム数(3v3 なら 2)。参加者は人数の少ないチームへ自動で振り分ける
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Team", meta = (ClampMin = "1"))
+	int32 NumTeams = 2;
 };
 
 

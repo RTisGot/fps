@@ -3,6 +3,9 @@
 #include "savaCharacter.h"
 #include "savaProjectile.h"
 #include "SavaCharacterMovementComponent.h"
+#include "AbilitySystem/SavaAbilitySystemComponent.h"
+#include "AbilitySystem/SavaInputConfig.h"
+#include "Player/SavaPlayerState.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -18,6 +21,7 @@
 #include "InputCoreTypes.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Misc/PackageName.h"
+#include "Net/UnrealNetwork.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -91,6 +95,21 @@ void AsavaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &AsavaCharacter::StartCrouch);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Completed, this, &AsavaCharacter::StopCrouch);
 		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Canceled, this, &AsavaCharacter::StopCrouch);
+
+		// Abilities(対応表に書かれたボタンを、同じ InputTag を持つ能力へ流す)
+		if (AbilityInputConfig)
+		{
+			for (const FSavaInputAction& Entry : AbilityInputConfig->AbilityInputActions)
+			{
+				if (!Entry.InputAction || !Entry.InputTag.IsValid())
+				{
+					continue;
+				}
+				EnhancedInputComponent->BindAction(Entry.InputAction, ETriggerEvent::Started, this, &AsavaCharacter::Input_AbilityInputTagPressed, Entry.InputTag);
+				EnhancedInputComponent->BindAction(Entry.InputAction, ETriggerEvent::Completed, this, &AsavaCharacter::Input_AbilityInputTagReleased, Entry.InputTag);
+				EnhancedInputComponent->BindAction(Entry.InputAction, ETriggerEvent::Canceled, this, &AsavaCharacter::Input_AbilityInputTagReleased, Entry.InputTag);
+			}
+		}
 	}
 	else
 	{
@@ -166,6 +185,67 @@ void AsavaCharacter::Tick(float DeltaSeconds)
 		CrouchCameraOffset = FMath::VInterpTo(CrouchCameraOffset, FVector::ZeroVector, DeltaSeconds, CrouchCameraInterpSpeed);
 		FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation + CrouchCameraOffset);
 	}
+
+	//壁の向きを他のプレイヤーへ同期する(サーバーだけが書き込む。値が変わったときだけ送られる)
+	if (HasAuthority())
+	{
+		const USavaCharacterMovementComponent* SavaMovement = GetSavaCharacterMovementComponent();
+		ReplicatedWallRunNormal = SavaMovement->IsWallRunning() ? SavaMovement->GetWallRunNormal() : FVector::ZeroVector;
+	}
+
+	UpdateWallRunCameraTilt(DeltaSeconds);
+}
+
+void AsavaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	//自分とサーバーは移動コンポーネントが持っているので、他のプレイヤーにだけ送る
+	DOREPLIFETIME_CONDITION(AsavaCharacter, ReplicatedWallRunNormal, COND_SimulatedOnly);
+}
+
+FVector AsavaCharacter::GetWallRunNormal() const
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		return ReplicatedWallRunNormal;
+	}
+
+	const USavaCharacterMovementComponent* SavaMovement = GetSavaCharacterMovementComponent();
+	return SavaMovement->IsWallRunning() ? SavaMovement->GetWallRunNormal() : FVector::ZeroVector;
+}
+
+float AsavaCharacter::GetWallRunSide() const
+{
+	//壁の向きは壁から外向きなので、右の壁なら右方向と逆向きになる
+	const FVector WallNormal = GetWallRunNormal();
+	if (WallNormal.IsNearlyZero())
+	{
+		return 0.0f;
+	}
+	return FVector::DotProduct(WallNormal, GetActorRightVector()) < 0.0f ? 1.0f : -1.0f;
+}
+
+void AsavaCharacter::UpdateWallRunCameraTilt(float DeltaSeconds)
+{
+	//視点の回転に傾き(ロール)を足す。カメラに付いた腕も一緒に傾き、狙う方向には影響しない
+	APlayerController* PlayerController = Cast<APlayerController>(Controller);
+	if (!PlayerController || !IsLocallyControlled())
+	{
+		return;
+	}
+
+	//右の壁なら左へ、左の壁なら右へ傾ける
+	const float TargetRoll = -GetWallRunSide() * WallRunCameraTiltAngle;
+	FRotator ControlRotation = PlayerController->GetControlRotation();
+	const float CurrentRoll = FRotator::NormalizeAxis(ControlRotation.Roll);
+	if (CurrentRoll == TargetRoll)
+	{
+		return;
+	}
+
+	ControlRotation.Roll = FMath::FInterpTo(CurrentRoll, TargetRoll, DeltaSeconds, WallRunCameraTiltSpeed);
+	PlayerController->SetControlRotation(ControlRotation);
 }
 
 void AsavaCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
@@ -204,6 +284,82 @@ bool AsavaCharacter::CanJumpInternal_Implementation() const
 USavaCharacterMovementComponent* AsavaCharacter::GetSavaCharacterMovementComponent() const
 {
 	return CastChecked<USavaCharacterMovementComponent>(GetCharacterMovement());
+}
+
+//--------------------------------Abilities
+
+UAbilitySystemComponent* AsavaCharacter::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComponent;
+}
+
+void AsavaCharacter::InitAbilitySystem()
+{
+	ASavaPlayerState* SavaPlayerState = GetPlayerState<ASavaPlayerState>();
+	if (!SavaPlayerState)
+	{
+		if (GetPlayerState())
+		{
+			UE_LOG(LogTemplateCharacter, Error, TEXT("'%s' PlayerState is not ASavaPlayerState. Set the GameMode's Player State Class to SavaPlayerState."), *GetNameSafe(this));
+		}
+		return;
+	}
+
+	AbilitySystemComponent = SavaPlayerState->GetSavaAbilitySystemComponent();
+	//持ち主 = PlayerState、体 = このキャラクター
+	AbilitySystemComponent->InitAbilityActorInfo(SavaPlayerState, this);
+
+	//能力の付与はサーバーだけが行う(クライアントへは自動で伝わる)
+	if (HasAuthority())
+	{
+		GrantedAbilityHandles.TakeFromAbilitySystem(AbilitySystemComponent);
+		for (const USavaAbilitySet* AbilitySet : AbilitySets)
+		{
+			if (AbilitySet)
+			{
+				AbilitySet->GiveToAbilitySystem(AbilitySystemComponent, &GrantedAbilityHandles);
+			}
+		}
+	}
+}
+
+void AsavaCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	InitAbilitySystem();
+}
+
+void AsavaCharacter::UnPossessed()
+{
+	//このキャラクターで付与した能力を取り除く(次のキャラクターで付与し直す)
+	if (AbilitySystemComponent && HasAuthority())
+	{
+		AbilitySystemComponent->CancelAllAbilities();
+		GrantedAbilityHandles.TakeFromAbilitySystem(AbilitySystemComponent);
+	}
+	Super::UnPossessed();
+}
+
+void AsavaCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+	InitAbilitySystem();
+}
+
+void AsavaCharacter::Input_AbilityInputTagPressed(FGameplayTag InputTag)
+{
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->AbilityInputTagPressed(InputTag);
+	}
+}
+
+void AsavaCharacter::Input_AbilityInputTagReleased(FGameplayTag InputTag)
+{
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->AbilityInputTagReleased(InputTag);
+	}
 }
 
 //設定画面の開閉
