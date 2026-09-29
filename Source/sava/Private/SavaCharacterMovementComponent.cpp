@@ -13,6 +13,13 @@ USavaCharacterMovementComponent::USavaCharacterMovementComponent()
 	//しゃがみを有効化(初期値は false で Crouch() が何もしない)
 	NavAgentProps.bCanCrouch = true;
 
+	//エンジン標準の移動の値(調整済みの値を初期値にする)
+	MaxWalkSpeed = 800.0f;
+	MaxAcceleration = 4000.0f;					//約0.2秒で最高速
+	BrakingDecelerationWalking = 4000.0f;		//手を離すとすぐ止まる
+	AirControl = 0.6f;							//空中でも方向を変えやすく
+	BrakingDecelerationFalling = 0.0f;			//空中で減速しない(超過分の減速は AirOverspeedDecayRate)
+
 	//補正時に独自の状態も送る
 	SetMoveResponseDataContainer(SavaMoveResponseDataContainer);
 }
@@ -65,6 +72,71 @@ void USavaCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
 	bWantsToSprint = (Flags & FSavedMove_Character::FLAG_Custom_0) != 0;
 }
 
+//--------------------------------Blueprint events
+
+TEnumAsByte<ESavaCustomMovementMode> USavaCharacterMovementComponent::GetCustomMovementModeType() const
+{
+	return MovementMode == MOVE_Custom ? static_cast<ESavaCustomMovementMode>(CustomMovementMode) : CMOVE_None;
+}
+
+void USavaCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode)
+{
+	Super::OnMovementModeChanged(PreviousMovementMode, PreviousCustomMode);
+
+	const bool bWallJumped = bWallJumpedThisMove;
+	bWallJumpedThisMove = false;
+
+	const ESavaCustomMovementMode OldMode = PreviousMovementMode == MOVE_Custom
+		? static_cast<ESavaCustomMovementMode>(PreviousCustomMode) : CMOVE_None;
+	const ESavaCustomMovementMode NewMode = GetCustomMovementModeType();
+	if (OldMode == NewMode)
+	{
+		return;
+	}
+
+	//補正の後に入力を再実行している間は、同じ演出が二重に出るので知らせない
+	if (CharacterOwner && CharacterOwner->bClientUpdating)
+	{
+		return;
+	}
+
+	switch (OldMode)
+	{
+	case CMOVE_Slide:
+		OnSlideEnded.Broadcast();
+		break;
+	case CMOVE_WallRun:
+		OnWallRunEnded.Broadcast();
+		if (bWallJumped)
+		{
+			OnWallJumped.Broadcast();
+		}
+		break;
+	case CMOVE_Mantle:
+		OnMantleEnded.Broadcast();
+		break;
+	default:
+		break;
+	}
+
+	switch (NewMode)
+	{
+	case CMOVE_Slide:
+		OnSlideStarted.Broadcast();
+		break;
+	case CMOVE_WallRun:
+		OnWallRunStarted.Broadcast();
+		break;
+	case CMOVE_Mantle:
+		OnMantleStarted.Broadcast();
+		break;
+	default:
+		break;
+	}
+
+	OnCustomMovementModeChanged.Broadcast(OldMode, NewMode);
+}
+
 //--------------------------------Air
 
 void USavaCharacterMovementComponent::PhysFalling(float DeltaTime, int32 Iterations)
@@ -104,6 +176,15 @@ bool USavaCharacterMovementComponent::IsWallRunning() const
 	return MovementMode == MOVE_Custom && CustomMovementMode == CMOVE_WallRun;
 }
 
+FVector USavaCharacterMovementComponent::GetWallRunDirection() const
+{
+	if (!IsWallRunning())
+	{
+		return FVector::ZeroVector;
+	}
+	return FVector::VectorPlaneProject(FVector(Velocity.X, Velocity.Y, 0.0f), WallRunNormal).GetSafeNormal();
+}
+
 bool USavaCharacterMovementComponent::TraceMovementLine(const FVector& Start, const FVector& End, FHitResult& OutHit) const
 {
 	//キャラクターの移動と同じ当たり判定の設定で線を飛ばす
@@ -140,8 +221,8 @@ bool USavaCharacterMovementComponent::HasWallRunInput(const FVector& RunDirectio
 
 bool USavaCharacterMovementComponent::TryStartWallRun()
 {
-	//しゃがみ中(着地スライディング狙い)や、速く落下中は張り付かない
-	if (bWantsToCrouch || Velocity.Z < -WallRunMaxEntryFallSpeed)
+	//空中でしゃがみを押した(着地スライディング狙い)ときや、速く落下中は張り付かない
+	if (bCrouchPressedInAir || Velocity.Z < -WallRunMaxEntryFallSpeed)
 	{
 		return false;
 	}
@@ -152,13 +233,17 @@ bool USavaCharacterMovementComponent::TryStartWallRun()
 		return false;
 	}
 
-	//足元の近くに床があるなら始めない
-	const float HalfHeight = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	const FVector Feet = UpdatedComponent->GetComponentLocation() - FVector(0.0f, 0.0f, HalfHeight);
-	FHitResult GroundHit;
-	if (TraceMovementLine(Feet, Feet - FVector(0.0f, 0.0f, WallRunMinHeight), GroundHit))
+	//落下中に足元の近くに床があるなら始めない(着地寸前に張り付かないように)
+	//上昇中はジャンプした直後でも張り付ける
+	if (Velocity.Z <= 0.0f)
 	{
-		return false;
+		const float HalfHeight = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		const FVector Feet = UpdatedComponent->GetComponentLocation() - FVector(0.0f, 0.0f, HalfHeight);
+		FHitResult GroundHit;
+		if (TraceMovementLine(Feet, Feet - FVector(0.0f, 0.0f, WallRunMinHeight), GroundHit))
+		{
+			return false;
+		}
 	}
 
 	//進行方向の左右に壁を探す
@@ -180,6 +265,13 @@ bool USavaCharacterMovementComponent::TryStartWallRun()
 
 		const FVector RunDir = FVector::VectorPlaneProject(Horizontal, Normal).GetSafeNormal();
 		if (!HasWallRunInput(RunDir, Normal))
+		{
+			continue;
+		}
+
+		//後ろ向き(進行方向と逆を見ている)では張り付かない
+		const FVector Facing = UpdatedComponent->GetForwardVector().GetSafeNormal2D();
+		if (FVector::DotProduct(Facing, RunDir) < FMath::Cos(FMath::DegreesToRadians(WallRunMaxEntryLookAngle)))
 		{
 			continue;
 		}
@@ -216,6 +308,7 @@ bool USavaCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTi
 		//着地前の2回目以降は上に上がらない(壁の間を登り続けられないように)
 		Velocity.Z = WallJumpCountSinceLanded == 0 ? WallJumpUpSpeed : WallJumpRepeatUpSpeed;
 		++WallJumpCountSinceLanded;
+		bWallJumpedThisMove = true;
 		ExitWallRun();
 		return true;
 	}
@@ -289,6 +382,121 @@ void USavaCharacterMovementComponent::PhysWallRun(float DeltaTime, int32 Iterati
 	}
 }
 
+//--------------------------------Mantle
+
+bool USavaCharacterMovementComponent::IsMantling() const
+{
+	return MovementMode == MOVE_Custom && CustomMovementMode == CMOVE_Mantle;
+}
+
+bool USavaCharacterMovementComponent::IsCapsuleSweepClear(const FVector& Start, const FVector& End) const
+{
+	//今のカプセルの形で、Start から End まで何にも当たらずに動けるか
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(SavaMantle), false, CharacterOwner);
+	FCollisionResponseParams ResponseParams;
+	InitCollisionParams(Params, ResponseParams);
+	const FCollisionShape Shape = CharacterOwner->GetCapsuleComponent()->GetCollisionShape();
+	FHitResult Hit;
+	return !GetWorld()->SweepSingleByChannel(Hit, Start, End, UpdatedComponent->GetComponentQuat(),
+		UpdatedComponent->GetCollisionObjectType(), Shape, Params, ResponseParams);
+}
+
+bool USavaCharacterMovementComponent::TryStartMantle()
+{
+	//前進の入力がなければ登らない
+	const FVector InputDir = FVector(Acceleration.X, Acceleration.Y, 0.0f).GetSafeNormal();
+	if (InputDir.IsNearlyZero())
+	{
+		return false;
+	}
+
+	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
+	const float Radius = Capsule->GetScaledCapsuleRadius();
+	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	const FVector Location = UpdatedComponent->GetComponentLocation();
+	const FVector Feet = Location - FVector(0.0f, 0.0f, HalfHeight);
+	const FVector Facing = UpdatedComponent->GetForwardVector().GetSafeNormal2D();
+
+	//1. 正面の壁: よじ登る高さの下限から前へ線を飛ばす
+	const FVector WallTraceStart = Feet + FVector(0.0f, 0.0f, MantleMinHeight);
+	FHitResult WallHit;
+	if (!TraceMovementLine(WallTraceStart, WallTraceStart + Facing * (Radius + MantleCheckDistance), WallHit)
+		|| !IsValidWallRunWall(WallHit))
+	{
+		return false;
+	}
+
+	//入力と視線が壁の方を向いていること
+	const FVector TowardWall = -WallHit.ImpactNormal.GetSafeNormal2D();
+	const float MinDot = FMath::Cos(FMath::DegreesToRadians(MantleMaxAngle));
+	if (FVector::DotProduct(InputDir, TowardWall) < MinDot || FVector::DotProduct(Facing, TowardWall) < MinDot)
+	{
+		return false;
+	}
+
+	//2. 縁の上面: 壁の少し奥の、上限の高さから下へ線を飛ばす
+	const FVector TopTraceStart = FVector(WallHit.ImpactPoint.X, WallHit.ImpactPoint.Y, Feet.Z + MantleMaxHeight) + TowardWall * Radius;
+	const FVector TopTraceEnd = FVector(TopTraceStart.X, TopTraceStart.Y, Feet.Z + MantleMinHeight);
+	FHitResult TopHit;
+	if (!TraceMovementLine(TopTraceStart, TopTraceEnd, TopHit) || TopHit.bStartPenetrating || !IsWalkable(TopHit))
+	{
+		return false;
+	}
+
+	//3. 登った先にカプセルが入り、上→前の経路がふさがっていないこと
+	const FVector Target = TopHit.ImpactPoint + FVector(0.0f, 0.0f, HalfHeight + 2.0f);
+	const FVector Above = FVector(Location.X, Location.Y, Target.Z);
+	if (!IsCapsuleSweepClear(Location, Above) || !IsCapsuleSweepClear(Above, Target))
+	{
+		return false;
+	}
+
+	//高い縁ほど時間をかける
+	const float LedgeHeight = TopHit.ImpactPoint.Z - Feet.Z;
+	MantleDuration = FMath::GetMappedRangeValueClamped(FVector2D(MantleMinHeight, MantleMaxHeight),
+		FVector2D(MantleMinDuration, MantleMaxDuration), LedgeHeight);
+	MantleElapsed = 0.0f;
+	MantleStartLocation = Location;
+	MantleTargetLocation = Target;
+	MantleExitDirection = TowardWall;
+	Velocity = FVector::ZeroVector;
+	SetMovementMode(MOVE_Custom, CMOVE_Mantle);
+	return true;
+}
+
+void USavaCharacterMovementComponent::PhysMantle(float DeltaTime, int32 Iterations)
+{
+	if (DeltaTime < MIN_TICK_TIME)
+	{
+		return;
+	}
+
+	MantleElapsed = FMath::Min(MantleElapsed + DeltaTime, MantleDuration);
+	const float Alpha = MantleDuration > 0.0f ? MantleElapsed / MantleDuration : 1.0f;
+
+	//先に上がり切ってから前へ進む(縁の角に引っかからないように)
+	constexpr float VerticalPortion = 0.6f;
+	const float UpAlpha = FMath::InterpEaseOut(0.0f, 1.0f, FMath::Clamp(Alpha / VerticalPortion, 0.0f, 1.0f), 2.0f);
+	const float ForwardAlpha = FMath::Clamp((Alpha - VerticalPortion) / (1.0f - VerticalPortion), 0.0f, 1.0f);
+
+	FVector NewLocation = FMath::Lerp(MantleStartLocation, MantleTargetLocation, ForwardAlpha);
+	NewLocation.Z = FMath::Lerp(MantleStartLocation.Z, MantleTargetLocation.Z, UpAlpha);
+
+	Iterations++;
+	bJustTeleported = false;
+	const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+	FHitResult Hit(1.0f);
+	SafeMoveUpdatedComponent(NewLocation - OldLocation, UpdatedComponent->GetComponentQuat(), true, Hit);
+	Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
+
+	//登り終えたら、縁の上を前へ少し進みながら歩きに戻る
+	if (Alpha >= 1.0f)
+	{
+		Velocity = MantleExitDirection * MaxWalkSpeed * MantleExitSpeedMultiplier;
+		SetMovementMode(MOVE_Walking);
+	}
+}
+
 //--------------------------------Slide
 
 bool USavaCharacterMovementComponent::IsSliding() const
@@ -318,9 +526,24 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 	const bool bCanChangeState = CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy;
 	const bool bWasCrouching = IsCrouching();
 
+	//しゃがみボタンを「押した瞬間」か(押しっぱなしとは区別する)
+	bool bCrouchPressed = false;
 	if (bCanChangeState)
 	{
 		SlideBoostCooldownRemaining = FMath::Max(SlideBoostCooldownRemaining - DeltaSeconds, 0.0f);
+
+		bCrouchPressed = bWantsToCrouch && !bPrevWantsToCrouch;
+		bPrevWantsToCrouch = bWantsToCrouch;
+
+		//空中で新しく押した = 着地スライディング狙い。離すか着地するまで壁には張り付かない
+		if (!bWantsToCrouch)
+		{
+			bCrouchPressedInAir = false;
+		}
+		else if (bCrouchPressed && IsFalling())
+		{
+			bCrouchPressedInAir = true;
+		}
 	}
 
 	//しゃがみボタンを離したらスライディング終了(立ち上がりは下の Super が行う)
@@ -329,21 +552,30 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 		SetMovementMode(MOVE_Walking);
 	}
 
-	//壁走り: しゃがみで壁から降りる / 落下中に条件を満たす壁があれば開始
+	//壁走り: しゃがみを押した瞬間に壁から降りる / 落下中に条件を満たす壁があれば開始
+	//(スライディングから押しっぱなしのしゃがみは邪魔しない。壁走り中はしゃがみが自動で解除される)
 	if (bCanChangeState)
 	{
-		if (IsWallRunning() && bWantsToCrouch)
+		if (IsWallRunning() && bCrouchPressed)
 		{
 			ExitWallRun();
+			bCrouchPressedInAir = true;
 		}
 		else if (IsFalling())
 		{
-			TryStartWallRun();
-	}
+			//正面によじ登れる縁があれば優先する(壁走りは横の壁、よじ登りは正面の壁)
+			if (!TryStartMantle())
+			{
+				TryStartWallRun();
+			}
 		}
+	}
 
-	//しゃがみ / 立ち上がり
-	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
+	//しゃがみ / 立ち上がり(よじ登り中はカプセルの大きさを変えない。到着位置は開始時の大きさで確認しているため)
+	if (!IsMantling())
+	{
+		Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
+	}
 
 	//このフレームでしゃがんだ + 十分な速度 → スライディング開始
 	if (bCanChangeState && !bWasCrouching && IsCrouching() && MovementMode == MOVE_Walking
@@ -361,6 +593,7 @@ void USavaCharacterMovementComponent::SetPostLandedPhysics(const FHitResult& Hit
 	//着地したので、どの壁にもまた張り付ける。ウォールジャンプの回数も戻す
 	LastWallRunNormal = FVector::ZeroVector;
 	WallJumpCountSinceLanded = 0;
+	bCrouchPressedInAir = false;
 
 	//地上のブレーキがかかる前に判定する。しゃがみ(カプセル縮小)がまだなら次のフレームで行われる
 	if (bSlideOnLanding && bWantsToCrouch && MovementMode == MOVE_Walking
@@ -394,6 +627,9 @@ void USavaCharacterMovementComponent::PhysCustom(float DeltaTime, int32 Iteratio
 		break;
 	case CMOVE_WallRun:
 		PhysWallRun(DeltaTime, Iterations);
+		break;
+	case CMOVE_Mantle:
+		PhysMantle(DeltaTime, Iterations);
 		break;
 	default:
 		break;
@@ -506,6 +742,13 @@ void USavaCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterM
 		WallRunElapsed = SavaResponse.WallRunElapsed;
 		LastWallRunNormal = SavaResponse.LastWallRunNormal;
 		WallJumpCountSinceLanded = SavaResponse.WallJumpCountSinceLanded;
+		bPrevWantsToCrouch = SavaResponse.bPrevWantsToCrouch;
+		bCrouchPressedInAir = SavaResponse.bCrouchPressedInAir;
+		MantleStartLocation = SavaResponse.MantleStartLocation;
+		MantleTargetLocation = SavaResponse.MantleTargetLocation;
+		MantleExitDirection = SavaResponse.MantleExitDirection;
+		MantleElapsed = SavaResponse.MantleElapsed;
+		MantleDuration = SavaResponse.MantleDuration;
 	}
 	Super::ClientHandleMoveResponse(MoveResponse);
 }
@@ -521,6 +764,13 @@ void FSavaCharacterMoveResponseDataContainer::ServerFillResponseData(const UChar
 	WallRunElapsed = SavaMovement.WallRunElapsed;
 	LastWallRunNormal = SavaMovement.LastWallRunNormal;
 	WallJumpCountSinceLanded = SavaMovement.WallJumpCountSinceLanded;
+	bPrevWantsToCrouch = SavaMovement.bPrevWantsToCrouch;
+	bCrouchPressedInAir = SavaMovement.bCrouchPressedInAir;
+	MantleStartLocation = SavaMovement.MantleStartLocation;
+	MantleTargetLocation = SavaMovement.MantleTargetLocation;
+	MantleExitDirection = SavaMovement.MantleExitDirection;
+	MantleElapsed = SavaMovement.MantleElapsed;
+	MantleDuration = SavaMovement.MantleDuration;
 }
 
 bool FSavaCharacterMoveResponseDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
@@ -538,6 +788,13 @@ bool FSavaCharacterMoveResponseDataContainer::Serialize(UCharacterMovementCompon
 		Ar << WallRunElapsed;
 		Ar << LastWallRunNormal;
 		Ar << WallJumpCountSinceLanded;
+		Ar << bPrevWantsToCrouch;
+		Ar << bCrouchPressedInAir;
+		Ar << MantleStartLocation;
+		Ar << MantleTargetLocation;
+		Ar << MantleExitDirection;
+		Ar << MantleElapsed;
+		Ar << MantleDuration;
 	}
 	return !Ar.IsError();
 }

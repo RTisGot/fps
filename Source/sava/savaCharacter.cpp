@@ -193,7 +193,46 @@ void AsavaCharacter::Tick(float DeltaSeconds)
 		ReplicatedWallRunNormal = SavaMovement->IsWallRunning() ? SavaMovement->GetWallRunNormal() : FVector::ZeroVector;
 	}
 
+	UpdateWallRunCameraYawLimit(DeltaSeconds);
 	UpdateWallRunCameraTilt(DeltaSeconds);
+}
+
+void AsavaCharacter::UpdateWallRunCameraYawLimit(float DeltaSeconds)
+{
+	APlayerController* PlayerController = Cast<APlayerController>(Controller);
+	const USavaCharacterMovementComponent* SavaMovement = GetSavaCharacterMovementComponent();
+	const FVector RunDir = SavaMovement->GetWallRunDirection();
+	if (!PlayerController || !IsLocallyControlled() || RunDir.IsNearlyZero())
+	{
+		bWallRunCameraYawSettled = false;
+		return;
+	}
+
+	//壁と反対側へ向く回転の向き(+1 なら右回り)
+	const FVector RunRight = FVector::CrossProduct(FVector::UpVector, RunDir);
+	const float AwaySign = FVector::DotProduct(SavaMovement->GetWallRunNormal(), RunRight) >= 0.0f ? 1.0f : -1.0f;
+
+	//進行方向から見た視線の角度(+ が壁と反対側)
+	FRotator ControlRotation = PlayerController->GetControlRotation();
+	const float RunYaw = RunDir.Rotation().Yaw;
+	const float YawOffset = FRotator::NormalizeAxis(ControlRotation.Yaw - RunYaw) * AwaySign;
+	const float ClampedOffset = FMath::Clamp(YawOffset, -WallRunCameraYawLimitTowardWall, WallRunCameraYawLimitAway);
+	if (YawOffset == ClampedOffset)
+	{
+		bWallRunCameraYawSettled = true;
+		return;
+	}
+
+	//範囲に入った後はしっかり止める。入る前(範囲外を向いて張り付いた直後)は滑らかに寄せる
+	float NewOffset = ClampedOffset;
+	if (!bWallRunCameraYawSettled)
+	{
+		NewOffset = FMath::FInterpTo(YawOffset, ClampedOffset, DeltaSeconds, WallRunCameraYawLimitSpeed);
+		bWallRunCameraYawSettled = FMath::IsNearlyEqual(NewOffset, ClampedOffset, 0.5f);
+	}
+
+	ControlRotation.Yaw = RunYaw + NewOffset * AwaySign;
+	PlayerController->SetControlRotation(ControlRotation);
 }
 
 void AsavaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

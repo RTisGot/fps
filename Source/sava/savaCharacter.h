@@ -89,6 +89,21 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0"))
 	float WallRunCameraTiltSpeed = 8.0f;
 
+	//壁走り中に見回せる範囲(進行方向から、壁と反対側へ何度まで)
+	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0", ClampMax = "180", ForceUnits = "Deg"))
+	float WallRunCameraYawLimitAway = 110.0f;
+
+	//壁走り中に見回せる範囲(進行方向から、壁側へ何度まで)
+	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0", ClampMax = "180", ForceUnits = "Deg"))
+	float WallRunCameraYawLimitTowardWall = 30.0f;
+
+	//範囲の外を向いて張り付いたとき、範囲内へ寄せる速さ
+	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0"))
+	float WallRunCameraYawLimitSpeed = 10.0f;
+
+	//カメラの向きが範囲内に入ったか(入った後はしっかり固定する)
+	bool bWallRunCameraYawSettled = false;
+
 	//壁走り中の壁の向き。他のプレイヤー(SimulatedProxy)へ同期する(アニメーション・演出用)
 	UPROPERTY(Replicated)
 	FVector_NetQuantizeNormal ReplicatedWallRunNormal;
@@ -145,6 +160,9 @@ protected:
 
 	//壁走り中のカメラの傾き(自分の画面だけの演出)
 	void UpdateWallRunCameraTilt(float DeltaSeconds);
+
+	//壁走り中に見回せる範囲を制限する(自分の画面だけ。サーバーには制限後の向きが送られる)
+	void UpdateWallRunCameraYawLimit(float DeltaSeconds);
 
 	//能力のボタン
 	void Input_AbilityInputTagPressed(FGameplayTag InputTag);
