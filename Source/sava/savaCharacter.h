@@ -80,6 +80,18 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 
 	FVector CameraBaseLocation = FVector::ZeroVector; //カメラ本来の相対位置
 	FVector CrouchCameraOffset = FVector::ZeroVector; //しゃがみ切り替え直後のずれ(0 へ補間する)
+
+	//壁走り中にカメラを壁と反対側へ傾ける角度(マイナスにすると壁側へ傾く)
+	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "-45", ClampMax = "45", ForceUnits = "Deg"))
+	float WallRunCameraTiltAngle = 12.0f;
+
+	//カメラの傾きが目標の角度へ追いつく速さ
+	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0"))
+	float WallRunCameraTiltSpeed = 8.0f;
+
+	//壁走り中の壁の向き。他のプレイヤー(SimulatedProxy)へ同期する(アニメーション・演出用)
+	UPROPERTY(Replicated)
+	FVector_NetQuantizeNormal ReplicatedWallRunNormal;
 	///
 	UPROPERTY(EditDefaultsOnly, Category = UI, meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<UUserWidget> SettingsWidgetClass;
@@ -96,6 +108,15 @@ public:
 	AsavaCharacter(const FObjectInitializer& ObjectInitializer);
 
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	//壁走り中の壁の向き(壁から外向き)。壁走りしていなければゼロ。自分・サーバー・他のプレイヤーのどれでも有効
+	UFUNCTION(BlueprintPure, Category = "Movement|WallRun")
+	FVector GetWallRunNormal() const;
+
+	//壁走り中の壁の位置: 右なら 1、左なら -1、壁走りしていなければ 0(アニメーション用)
+	UFUNCTION(BlueprintPure, Category = "Movement|WallRun")
+	float GetWallRunSide() const;
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	USavaAbilitySystemComponent* GetSavaAbilitySystemComponent() const { return AbilitySystemComponent; }
@@ -121,6 +142,9 @@ protected:
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual bool CanJumpInternal_Implementation() const override;
+
+	//壁走り中のカメラの傾き(自分の画面だけの演出)
+	void UpdateWallRunCameraTilt(float DeltaSeconds);
 
 	//能力のボタン
 	void Input_AbilityInputTagPressed(FGameplayTag InputTag);

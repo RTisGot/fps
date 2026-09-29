@@ -21,6 +21,7 @@
 #include "InputCoreTypes.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Misc/PackageName.h"
+#include "Net/UnrealNetwork.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -184,6 +185,67 @@ void AsavaCharacter::Tick(float DeltaSeconds)
 		CrouchCameraOffset = FMath::VInterpTo(CrouchCameraOffset, FVector::ZeroVector, DeltaSeconds, CrouchCameraInterpSpeed);
 		FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation + CrouchCameraOffset);
 	}
+
+	//壁の向きを他のプレイヤーへ同期する(サーバーだけが書き込む。値が変わったときだけ送られる)
+	if (HasAuthority())
+	{
+		const USavaCharacterMovementComponent* SavaMovement = GetSavaCharacterMovementComponent();
+		ReplicatedWallRunNormal = SavaMovement->IsWallRunning() ? SavaMovement->GetWallRunNormal() : FVector::ZeroVector;
+	}
+
+	UpdateWallRunCameraTilt(DeltaSeconds);
+}
+
+void AsavaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	//自分とサーバーは移動コンポーネントが持っているので、他のプレイヤーにだけ送る
+	DOREPLIFETIME_CONDITION(AsavaCharacter, ReplicatedWallRunNormal, COND_SimulatedOnly);
+}
+
+FVector AsavaCharacter::GetWallRunNormal() const
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		return ReplicatedWallRunNormal;
+	}
+
+	const USavaCharacterMovementComponent* SavaMovement = GetSavaCharacterMovementComponent();
+	return SavaMovement->IsWallRunning() ? SavaMovement->GetWallRunNormal() : FVector::ZeroVector;
+}
+
+float AsavaCharacter::GetWallRunSide() const
+{
+	//壁の向きは壁から外向きなので、右の壁なら右方向と逆向きになる
+	const FVector WallNormal = GetWallRunNormal();
+	if (WallNormal.IsNearlyZero())
+	{
+		return 0.0f;
+	}
+	return FVector::DotProduct(WallNormal, GetActorRightVector()) < 0.0f ? 1.0f : -1.0f;
+}
+
+void AsavaCharacter::UpdateWallRunCameraTilt(float DeltaSeconds)
+{
+	//視点の回転に傾き(ロール)を足す。カメラに付いた腕も一緒に傾き、狙う方向には影響しない
+	APlayerController* PlayerController = Cast<APlayerController>(Controller);
+	if (!PlayerController || !IsLocallyControlled())
+	{
+		return;
+	}
+
+	//右の壁なら左へ、左の壁なら右へ傾ける
+	const float TargetRoll = -GetWallRunSide() * WallRunCameraTiltAngle;
+	FRotator ControlRotation = PlayerController->GetControlRotation();
+	const float CurrentRoll = FRotator::NormalizeAxis(ControlRotation.Roll);
+	if (CurrentRoll == TargetRoll)
+	{
+		return;
+	}
+
+	ControlRotation.Roll = FMath::FInterpTo(CurrentRoll, TargetRoll, DeltaSeconds, WallRunCameraTiltSpeed);
+	PlayerController->SetControlRotation(ControlRotation);
 }
 
 void AsavaCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
