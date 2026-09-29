@@ -39,3 +39,14 @@ USavaGE_Cooldown::USavaGE_Cooldown()
 	DurationPolicy = EGameplayEffectDurationType::HasDuration;
 	DurationMagnitude = FGameplayEffectModifierMagnitude(SetByCaller);
 }
+
+USavaGE_GadgetChargeCost::USavaGE_GadgetChargeCost()
+{
+	DurationPolicy = EGameplayEffectDurationType::Instant;
+
+	FGameplayModifierInfo Modifier;
+	Modifier.Attribute = USavaAttributeSet::GetGadgetChargesAttribute();
+	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(-1.0f));
+	Modifiers.Add(Modifier);
+}

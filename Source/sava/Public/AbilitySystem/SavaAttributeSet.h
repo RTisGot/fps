@@ -29,6 +29,8 @@ public:
 	SAVA_ATTRIBUTE_ACCESSORS(USavaAttributeSet, Health);
 	SAVA_ATTRIBUTE_ACCESSORS(USavaAttributeSet, MaxHealth);
 	SAVA_ATTRIBUTE_ACCESSORS(USavaAttributeSet, MoveSpeedMultiplier);
+	SAVA_ATTRIBUTE_ACCESSORS(USavaAttributeSet, GadgetCharges);
+	SAVA_ATTRIBUTE_ACCESSORS(USavaAttributeSet, MaxGadgetCharges);
 	SAVA_ATTRIBUTE_ACCESSORS(USavaAttributeSet, Damage);
 	SAVA_ATTRIBUTE_ACCESSORS(USavaAttributeSet, Healing);
 
@@ -36,6 +38,7 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
+	virtual void PreAttributeBaseChange(const FGameplayAttribute& Attribute, float& NewValue) const override;
 	virtual void PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data) override;
 
 protected:
@@ -45,6 +48,10 @@ protected:
 	void OnRep_MaxHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION()
 	void OnRep_MoveSpeedMultiplier(const FGameplayAttributeData& OldValue);
+	UFUNCTION()
+	void OnRep_GadgetCharges(const FGameplayAttributeData& OldValue);
+	UFUNCTION()
+	void OnRep_MaxGadgetCharges(const FGameplayAttributeData& OldValue);
 
 private:
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_Health, Category = "Sava|Health", meta = (AllowPrivateAccess = "true"))
@@ -56,6 +63,14 @@ private:
 	//移動速度の倍率(1.0 = 通常)。CharacterMovement が歩き・ダッシュ速度に掛ける
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MoveSpeedMultiplier, Category = "Sava|Movement", meta = (AllowPrivateAccess = "true"))
 	FGameplayAttributeData MoveSpeedMultiplier;
+
+	//ガジェットの残り個数。ガジェットの能力(Max Charges が 1 以上)を使うと 1 減る。本人にだけ同期する
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_GadgetCharges, Category = "Sava|Gadget", meta = (AllowPrivateAccess = "true"))
+	FGameplayAttributeData GadgetCharges;
+
+	//ガジェットの最大個数(UI 表示用)。ガジェットの能力が付与されたとき(リスポーン時など)に、その能力の Max Charges になる
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_MaxGadgetCharges, Category = "Sava|Gadget", meta = (AllowPrivateAccess = "true"))
+	FGameplayAttributeData MaxGadgetCharges;
 
 	//受けるダメージ量の受け渡し用(サーバーで Health に反映して 0 に戻す。複製しない)
 	UPROPERTY(BlueprintReadOnly, Category = "Sava|Meta", meta = (AllowPrivateAccess = "true"))

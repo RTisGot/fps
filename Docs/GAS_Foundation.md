@@ -3,8 +3,11 @@
 スキル・ガジェット・武器の「ボタンを押したら何かが起きる」処理は、すべて UE の **Gameplay Ability System(GAS)** の上で作ります。
 通信・クールダウン・ダメージ計算などの難しい部分は C++ の土台として用意してあるので、各担当は **Blueprint とデータアセットだけで** 能力を作れます。
 
-> このガイドは「どう作るか」の説明です。どんなスキル・ガジェットを作るか、いくつ持てるかは、まだ決まっていません。
+> このガイドは「どう作るか」の説明です。どんなスキル・ガジェットを作るかは、まだ決まっていません。
 > 例として出てくる能力は、すべて説明用の架空のものです。
+>
+> 決まっていること: **スキルはクールダウン、ガジェットは個数制(リスポーンで補充)。ガジェットは 1 人 1 つ**(5-6 を参照)
+> 武器の作り方は [Weapon_Guide.md](Weapon_Guide.md) を見てください。
 
 ---
 
@@ -37,7 +40,7 @@
 ```
 PlayerState(プレイヤーごとの情報。キャラが死んで作り直されても残る)
  ├─ AbilitySystemComponent(ASC) … 能力・効果・タグをまとめて管理する本体
- ├─ AttributeSet …………………… Health / MaxHealth / MoveSpeedMultiplier(数値)
+ ├─ AttributeSet …………………… Health / MaxHealth / MoveSpeedMultiplier / GadgetCharges / MaxGadgetCharges(数値)
  └─ TeamId ……………………………… 0 か 1(参加時に人数の少ないチームへ自動で入る)
 
 Character(プレイヤーの体)
@@ -138,6 +141,7 @@ PlayerState はゲームの間ずっと残るので、**リスポーンしても
 | **Activation Policy** | いつ発動するか(下の表) |
 | **Cooldown Duration** | クールダウンの秒数。0 ならクールダウンなし |
 | **Cooldown Tags** | `Cooldown.<種類>.<能力名>`。**能力ごとに別のタグにする**(同じタグだと、片方を使うともう片方もクールダウンになる) |
+| **Max Charges** | ガジェットの個数。0 なら個数制なし(スキル・武器は 0 のまま)。5-6 を参照 |
 | **Asset Tags**(古い資料では Ability Tags) | 能力の種類。`Ability.Type.Skill` / `Ability.Type.Gadget` / `Ability.Type.Weapon` のどれか |
 | **Block Abilities with Tag** | この能力の使用中に、使えなくする能力の種類(例: 使用中は `Ability.Type.Weapon` を撃てない) |
 | **Activation Blocked Tags** | このタグを持っている間は発動できない。`State.Dead` は最初から入っている |
@@ -154,7 +158,7 @@ PlayerState はゲームの間ずっと残るので、**リスポーンしても
 
 ```
 Event ActivateAbility
-  → Commit Ability     … クールダウン開始。false が返ったら End Ability して終わる
+  → Commit Ability     … クールダウン開始・個数を 1 減らす。false が返ったら End Ability して終わる
   → やりたいこと        … Effect を自分に付ける、物を出す など
   → End Ability
 ```
@@ -194,6 +198,26 @@ Event ActivateAbility
 `MoveSpeedMultiplier` は移動コンポーネントが歩き・ダッシュの速度に掛けているので、C++ を触らずに速度が変わります。
 減速させたい場合は `Add` に `-0.3` のようなマイナスの値を入れます(0 より下にはなりません)。
 
+### 5-6. スキルはクールダウン、ガジェットは個数
+
+| 種類 | 使える回数の決まり方 | Class Defaults の設定 |
+|---|---|---|
+| スキル | 使うと一定時間使えなくなる(クールダウン) | **Cooldown Duration** と **Cooldown Tags** を入れる。Max Charges は 0 のまま |
+| ガジェット | 決まった個数だけ使える。**リスポーンすると満タンに戻る** | **Max Charges** に個数を入れる(例: 2)。クールダウンは入れなくてよい |
+
+ガジェットの個数の仕組み:
+- 残り個数は `SavaAttributeSet.GadgetCharges`、最大個数は `SavaAttributeSet.MaxGadgetCharges` に入っています
+- **`Commit Ability` を呼んだときに 1 減ります**。残りが 0 のときは、ボタンを押しても発動しません
+- 自分の画面ではすぐ減り、サーバーの値で確定します(予測)
+- 長押しの能力(6 章)なら **投げた・置いたときだけ** 減ります。キャンセルしたら減りません
+- 能力がキャラクターに付与されたとき(= リスポーン時)に、Max Charges の値で満タンになります
+- 残り個数は **本人にだけ** 同期されます(相手には見えない)
+
+**注意**
+- **個数制の能力(Max Charges が 1 以上)は、1 人 1 つだけ** にしてください。残り個数の数値は 1 つしかないので、2 つあると個数を共有してしまいます
+- 個数を UI に出すときは、`SavaAttributeSet.GadgetCharges` の値を読みます(値が変わったときに更新するなら、`Wait for Attribute Changed` ノードが使えます)
+- 個数を途中で増やしたい場合(拾うと 1 個増える など)は、`GadgetCharges` に `Add 1` する Effect を作って付けます。最大個数を超えることはありません
+
 ---
 
 ## 6. 長押しで狙う能力(予測線・プレビュー付き)
@@ -212,7 +236,7 @@ Event ActivateAbility
 ```
 
 - **`Event ActivateAbility` は使わないでください。** 上の 4 つのイベントだけを実装します
-- クールダウンは **確定したときに** 始まります。キャンセルしたら消費しません
+- クールダウン・個数は **確定したときに** 消費します。キャンセルしたら消費しません
 - キャンセルになるのは次のとき
   - **Cancel Input Tag** に設定したボタンを押した(例: `InputTag.Weapon.Aim` にすると右クリックでやめられる)
   - **Cancel On Tags Added** のタグが付いた(最初は `State.Dead`)
@@ -323,6 +347,6 @@ Event ActivateAbility
 | 死亡処理(HP 0 → `State.Dead` を付ける → リスポーン) | HP 0 の通知(`OnOutOfHealth`)だけある |
 | キャラごとの初期ステータス(最大 HP など) | 今は全員 HP 100。能力セットの Granted Gameplay Effects で上書きできる |
 | 能力用の入力アクション・`DA_InputConfig`・`DA_AbilitySet_Default` | 4 章の手順で作る |
-| HP やクールダウンの UI | 未着手 |
+| HP・クールダウン・ガジェットの個数の UI | 未着手 |
 | 武器(射撃・リロード・ADS)の能力化 | 今はテンプレートの処理のまま。段階的に移行する |
 | スキル・ガジェットの種類と、1 人が持てる数 | **未定**。決まったら能力セットの分け方を相談する |

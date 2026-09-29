@@ -99,6 +99,38 @@ bool FSavaCooldownEffectTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaGadgetChargesTest, "Sava.AbilitySystem.GadgetCharges",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaGadgetChargesTest::RunTest(const FString&)
+{
+	FSavaTestWorld TestWorld;
+	ASavaPlayerState* Player = TestWorld.SpawnPlayer(0);
+	USavaAbilitySystemComponent* ASC = Player->GetSavaAbilitySystemComponent();
+	const USavaAttributeSet* Attributes = Player->GetAttributeSet();
+	const UGameplayEffect* Cost = GetDefault<USavaGE_GadgetChargeCost>();
+
+	//USavaGameplayAbility::OnGiveAbility と同じ順番で満タンにする(最大 2 個)
+	ASC->SetNumericAttributeBase(USavaAttributeSet::GetMaxGadgetChargesAttribute(), 2.0f);
+	ASC->SetNumericAttributeBase(USavaAttributeSet::GetGadgetChargesAttribute(), 2.0f);
+	TestEqual(TEXT("Charges are full"), Attributes->GetGadgetCharges(), 2.0f);
+
+	//1 個ずつ減り、0 になったらコストの確認で止まる
+	TestTrue(TEXT("Can use with charges left"), ASC->CanApplyAttributeModifiers(Cost, 1.0f, ASC->MakeEffectContext()));
+	ASC->ApplyGameplayEffectToSelf(Cost, 1.0f, ASC->MakeEffectContext());
+	TestEqual(TEXT("One charge used"), Attributes->GetGadgetCharges(), 1.0f);
+	ASC->ApplyGameplayEffectToSelf(Cost, 1.0f, ASC->MakeEffectContext());
+	TestEqual(TEXT("All charges used"), Attributes->GetGadgetCharges(), 0.0f);
+	TestFalse(TEXT("Cannot use with no charges"), ASC->CanApplyAttributeModifiers(Cost, 1.0f, ASC->MakeEffectContext()));
+
+	//補充しても最大値を超えない(元の値も含めて)
+	ASC->SetNumericAttributeBase(USavaAttributeSet::GetGadgetChargesAttribute(), 5.0f);
+	TestEqual(TEXT("Charges are clamped to max"), Attributes->GetGadgetCharges(), 2.0f);
+	TestEqual(TEXT("Base value is clamped to max"), ASC->GetNumericAttributeBase(USavaAttributeSet::GetGadgetChargesAttribute()), 2.0f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaTeamTest, "Sava.AbilitySystem.Teams",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 

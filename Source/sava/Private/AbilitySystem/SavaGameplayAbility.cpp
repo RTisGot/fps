@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "AbilitySystem/SavaGameplayAbility.h"
+#include "AbilitySystem/SavaAttributeSet.h"
 #include "AbilitySystem/SavaGameplayEffects.h"
 #include "AbilitySystemComponent.h"
 #include "SavaCharacterMovementComponent.h"
@@ -59,6 +60,17 @@ void USavaGameplayAbility::ApplyCooldown(const FGameplayAbilitySpecHandle Handle
 	}
 }
 
+UGameplayEffect* USavaGameplayAbility::GetCostGameplayEffect() const
+{
+	//個数制の能力は共通のコスト GE(GadgetCharges を 1 減らす)を使う
+	if (MaxCharges > 0)
+	{
+		return GetMutableDefault<USavaGE_GadgetChargeCost>();
+	}
+	//個数制でなければ、Cost Gameplay Effect Class に設定したもの(なければコストなし)
+	return Super::GetCostGameplayEffect();
+}
+
 void USavaGameplayAbility::InputReleased(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo)
 {
 	Super::InputReleased(Handle, ActorInfo, ActivationInfo);
@@ -72,6 +84,17 @@ void USavaGameplayAbility::InputReleased(const FGameplayAbilitySpecHandle Handle
 void USavaGameplayAbility::OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec)
 {
 	Super::OnGiveAbility(ActorInfo, Spec);
+
+	//個数制の能力はサーバーで付与された時点で満タンにする(リスポーン時は能力が付与し直されるので、ここで補充される)
+	if (MaxCharges > 0 && ActorInfo && ActorInfo->IsNetAuthority())
+	{
+		if (UAbilitySystemComponent* AbilitySystem = ActorInfo->AbilitySystemComponent.Get())
+		{
+			//最大値を先に設定する(残り個数は最大値を超えないように制限されるため)
+			AbilitySystem->SetNumericAttributeBase(USavaAttributeSet::GetMaxGadgetChargesAttribute(), MaxCharges);
+			AbilitySystem->SetNumericAttributeBase(USavaAttributeSet::GetGadgetChargesAttribute(), MaxCharges);
+		}
+	}
 
 	//パッシブはサーバーで付与された時点で発動する(クライアントへは自動で伝わる)
 	if (ActivationPolicy == ESavaAbilityActivationPolicy::OnSpawn && ActorInfo && ActorInfo->IsNetAuthority() && !Spec.IsActive())

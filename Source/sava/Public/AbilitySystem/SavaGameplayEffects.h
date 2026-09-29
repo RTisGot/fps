@@ -37,3 +37,14 @@ class SAVA_API USavaGE_Cooldown : public UGameplayEffect
 public:
 	USavaGE_Cooldown();
 };
+
+//ガジェットのコスト(即時)。GadgetCharges を 1 減らす。USavaGameplayAbility の Max Charges が 1 以上のときに使われる
+//残りが 0 なら発動できない(GAS のコストの確認で止まる)
+UCLASS()
+class SAVA_API USavaGE_GadgetChargeCost : public UGameplayEffect
+{
+	GENERATED_BODY()
+
+public:
+	USavaGE_GadgetChargeCost();
+};
