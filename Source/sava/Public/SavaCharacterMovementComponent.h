@@ -23,6 +23,7 @@ struct FSavaCharacterMoveResponseDataContainer : FCharacterMoveResponseDataConta
 	FVector WallRunNormal = FVector::ZeroVector;
 	float WallRunElapsed = 0.0f;
 	FVector LastWallRunNormal = FVector::ZeroVector;
+	int32 WallJumpCountSinceLanded = 0;
 
 	virtual void ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment) override;
 	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap) override;
@@ -148,17 +149,25 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ForceUnits = "cm/s^2"))
 	float WallRunAcceleration = 1000.0f;
 
-	//壁走り中の重力の強さ(1=通常, 0=落ちない)
+	//壁走り中、下降しているときの重力の強さ(1=通常, 0=落ちない)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0"))
 	float WallRunGravityScale = 0.25f;
+
+	//壁走り中、上昇しているときの重力の強さ(1=通常のジャンプと同じ弧。下げると壁を登れるようになる)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0"))
+	float WallRunRisingGravityScale = 1.0f;
 
 	//壁走りを続けられる最大時間
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ForceUnits = "s"))
 	float WallRunMaxDuration = 1.75f;
 
-	//開始時の上向き速度の上限(上昇中に張り付いても飛び上がりすぎないように)
+	//張り付いた瞬間に、それまでの上下の速度をどれだけ残すか(1=そのまま / 0=上下の動きを止めて壁に吸い付く)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ClampMax = "1"))
+	float WallRunEntryVerticalScale = 1.0f;
+
+	//開始時の上向き速度の上限(上昇中に張り付いても飛び上がりすぎないように)。ジャンプの勢いを活かすなら JumpZVelocity 以上にする
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ForceUnits = "cm/s"))
-	float WallRunMaxEntryUpSpeed = 200.0f;
+	float WallRunMaxEntryUpSpeed = 420.0f;
 
 	//これより速く落下中は壁に張り付けない
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ForceUnits = "cm/s"))
@@ -180,9 +189,22 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float WallJumpOffSpeed = 600.0f;
 
-	//ウォールジャンプの上向き速度
+	//壁走り中、壁から離れないように壁へ押し付ける速さ(大きいほど壁に吸い付く)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float WallRunStickSpeed = 200.0f;
+
+	//壁から離れる入力の判定。入力が壁の外向きにこの値以上向いていたら壁から離れる
+	//(0=少しでも外に入れたら離れる / 0.7=ほぼ真横に入れないと離れない / 1=離れない)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ClampMax = "1"))
+	float WallRunDetachInputDot = 0.7f;
+
+	//ウォールジャンプの上向き速度(着地後の1回目)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float WallJumpUpSpeed = 500.0f;
+
+	//着地する前の2回目以降のウォールジャンプの上向き速度(0=真横に飛ぶ)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float WallJumpRepeatUpSpeed = 0.0f;
 
 	UFUNCTION(BlueprintPure, Category = "Sava|WallRun")
 	bool IsWallRunning() const;
@@ -232,6 +254,9 @@ private:
 
 	//最後に走った壁の向き。着地するまで同じ壁には張り付けない(ゼロなら制限なし)
 	FVector LastWallRunNormal = FVector::ZeroVector;
+
+	//着地してからのウォールジャンプの回数
+	int32 WallJumpCountSinceLanded = 0;
 
 	FSavaCharacterMoveResponseDataContainer SavaMoveResponseDataContainer;
 };

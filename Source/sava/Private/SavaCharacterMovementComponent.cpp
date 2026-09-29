@@ -8,12 +8,6 @@
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 
-namespace
-{
-	//壁走り中、壁から離れないように壁へ押し付ける速さ
-	constexpr float WallRunStickSpeed = 200.0f;
-}
-
 USavaCharacterMovementComponent::USavaCharacterMovementComponent()
 {
 	//しゃがみを有効化(初期値は false で Crouch() が何もしない)
@@ -141,7 +135,7 @@ bool USavaCharacterMovementComponent::HasWallRunInput(const FVector& RunDirectio
 	const FVector InputDir = FVector(Acceleration.X, Acceleration.Y, 0.0f).GetSafeNormal();
 	return !InputDir.IsNearlyZero()
 		&& FVector::DotProduct(InputDir, RunDirection) > 0.1f
-		&& FVector::DotProduct(InputDir, Normal) < 0.7f;
+		&& FVector::DotProduct(InputDir, Normal) < WallRunDetachInputDot;
 }
 
 bool USavaCharacterMovementComponent::TryStartWallRun()
@@ -190,10 +184,11 @@ bool USavaCharacterMovementComponent::TryStartWallRun()
 			continue;
 		}
 
-		//水平の勢いは壁沿いの向きに保ち、上下の速度は抑える
+		//水平の勢いは壁沿いの向きに保つ。上下の勢いも残す(上昇しすぎだけ抑える)
 		WallRunNormal = Normal;
 		WallRunElapsed = 0.0f;
-		Velocity = RunDir * Horizontal.Size() + FVector(0.0f, 0.0f, FMath::Clamp(Velocity.Z, 0.0f, WallRunMaxEntryUpSpeed));
+		const float EntryVerticalSpeed = FMath::Min(Velocity.Z * WallRunEntryVerticalScale, WallRunMaxEntryUpSpeed);
+		Velocity = RunDir * Horizontal.Size() + FVector(0.0f, 0.0f, EntryVerticalSpeed);
 		SetMovementMode(MOVE_Custom, CMOVE_WallRun);
 		return true;
 	}
@@ -217,7 +212,10 @@ bool USavaCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTi
 		}
 
 		Velocity = FVector(Velocity.X, Velocity.Y, 0.0f) + WallRunNormal * WallJumpOffSpeed;
-		Velocity.Z = WallJumpUpSpeed;
+
+		//着地前の2回目以降は上に上がらない(壁の間を登り続けられないように)
+		Velocity.Z = WallJumpCountSinceLanded == 0 ? WallJumpUpSpeed : WallJumpRepeatUpSpeed;
+		++WallJumpCountSinceLanded;
 		ExitWallRun();
 		return true;
 	}
@@ -259,8 +257,9 @@ void USavaCharacterMovementComponent::PhysWallRun(float DeltaTime, int32 Iterati
 		? FMath::Min(Speed + WallRunAcceleration * DeltaTime, TargetSpeed)
 		: ApplyOverspeedDecay(Speed, TargetSpeed, DeltaTime);
 
-	//上下: 弱い重力でゆっくり下がる
-	const float VerticalSpeed = Velocity.Z + GetGravityZ() * WallRunGravityScale * DeltaTime;
+	//上下: 上昇中は上昇用の重力(通常と同じなら張り付いても登り続けない)、下降中は弱い重力でゆっくり下がる
+	const float WallRunGravity = Velocity.Z > 0.0f ? WallRunRisingGravityScale : WallRunGravityScale;
+	const float VerticalSpeed = Velocity.Z + GetGravityZ() * WallRunGravity * DeltaTime;
 	Velocity = RunDir * Speed + FVector(0.0f, 0.0f, VerticalSpeed);
 
 	//移動(壁に少し押し付けて、離れないようにする)
@@ -359,8 +358,9 @@ void USavaCharacterMovementComponent::SetPostLandedPhysics(const FHitResult& Hit
 	//ここで歩き状態になる(床の取得・縦方向の速度の除去も済む)
 	Super::SetPostLandedPhysics(Hit);
 
-	//着地したので、どの壁にもまた張り付ける
+	//着地したので、どの壁にもまた張り付ける。ウォールジャンプの回数も戻す
 	LastWallRunNormal = FVector::ZeroVector;
+	WallJumpCountSinceLanded = 0;
 
 	//地上のブレーキがかかる前に判定する。しゃがみ(カプセル縮小)がまだなら次のフレームで行われる
 	if (bSlideOnLanding && bWantsToCrouch && MovementMode == MOVE_Walking
@@ -505,6 +505,7 @@ void USavaCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterM
 		WallRunNormal = SavaResponse.WallRunNormal;
 		WallRunElapsed = SavaResponse.WallRunElapsed;
 		LastWallRunNormal = SavaResponse.LastWallRunNormal;
+		WallJumpCountSinceLanded = SavaResponse.WallJumpCountSinceLanded;
 	}
 	Super::ClientHandleMoveResponse(MoveResponse);
 }
@@ -519,6 +520,7 @@ void FSavaCharacterMoveResponseDataContainer::ServerFillResponseData(const UChar
 	WallRunNormal = SavaMovement.WallRunNormal;
 	WallRunElapsed = SavaMovement.WallRunElapsed;
 	LastWallRunNormal = SavaMovement.LastWallRunNormal;
+	WallJumpCountSinceLanded = SavaMovement.WallJumpCountSinceLanded;
 }
 
 bool FSavaCharacterMoveResponseDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
@@ -535,6 +537,7 @@ bool FSavaCharacterMoveResponseDataContainer::Serialize(UCharacterMovementCompon
 		Ar << WallRunNormal;
 		Ar << WallRunElapsed;
 		Ar << LastWallRunNormal;
+		Ar << WallJumpCountSinceLanded;
 	}
 	return !Ar.IsError();
 }
