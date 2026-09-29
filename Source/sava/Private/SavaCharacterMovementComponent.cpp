@@ -138,6 +138,19 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 	}
 }
 
+void USavaCharacterMovementComponent::SetPostLandedPhysics(const FHitResult& Hit)
+{
+	//ここで歩き状態になる(床の取得・縦方向の速度の除去も済む)
+	Super::SetPostLandedPhysics(Hit);
+
+	//地上のブレーキがかかる前に判定する。しゃがみ(カプセル縮小)がまだなら次のフレームで行われる
+	if (bSlideOnLanding && bWantsToCrouch && MovementMode == MOVE_Walking
+		&& Velocity.SizeSquared2D() >= FMath::Square(SlideMinStartSpeed))
+	{
+		EnterSlide();
+	}
+}
+
 void USavaCharacterMovementComponent::EnterSlide()
 {
 	//ブーストはクールダウンが終わっているときだけ(連続スライディングで無限に加速しないように)

@@ -111,6 +111,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0", ForceUnits = "s"))
 	float SlideBoostCooldown = 2.0f;
 
+	//しゃがみボタンを押したまま十分な速度で着地したら、そのままスライディングに移る
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide")
+	bool bSlideOnLanding = true;
+
 	UFUNCTION(BlueprintPure, Category = "Sava|Slide")
 	bool IsSliding() const;
 
@@ -137,6 +141,7 @@ protected:
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual void PhysCustom(float DeltaTime, int32 Iterations) override;
 	virtual void PhysFalling(float DeltaTime, int32 Iterations) override;
+	virtual void SetPostLandedPhysics(const FHitResult& Hit) override;
 
 private:
 	void EnterSlide();
