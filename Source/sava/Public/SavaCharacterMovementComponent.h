@@ -82,9 +82,9 @@ public:
 
 	USavaCharacterMovementComponent();
 
-	//スライディング開始に必要な水平速度(歩きより速く、ダッシュより遅い値にする)
+	//スライディング開始に必要な水平速度(ダッシュが１)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0", ForceUnits = "cm/s"))
-	float SlideMinStartSpeed = 500.0f;
+	float SlideMinStartSpeedRate = 0.9f;
 
 	//これより遅くなったらスライディング終了
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0", ForceUnits = "cm/s"))

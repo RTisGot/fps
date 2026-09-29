@@ -347,7 +347,7 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 
 	//このフレームでしゃがんだ + 十分な速度 → スライディング開始
 	if (bCanChangeState && !bWasCrouching && IsCrouching() && MovementMode == MOVE_Walking
-		&& Velocity.SizeSquared2D() >= FMath::Square(SlideMinStartSpeed))
+		&& Velocity.SizeSquared2D() >= FMath::Square((MaxWalkSpeed * SprintSpeedMultiplier) * SlideMinStartSpeedRate))
 	{
 		EnterSlide();
 	}
@@ -364,7 +364,7 @@ void USavaCharacterMovementComponent::SetPostLandedPhysics(const FHitResult& Hit
 
 	//地上のブレーキがかかる前に判定する。しゃがみ(カプセル縮小)がまだなら次のフレームで行われる
 	if (bSlideOnLanding && bWantsToCrouch && MovementMode == MOVE_Walking
-		&& Velocity.SizeSquared2D() >= FMath::Square(SlideMinStartSpeed))
+		&& Velocity.SizeSquared2D() >= FMath::Square((MaxWalkSpeed * SprintSpeedMultiplier) * SlideMinStartSpeedRate))
 	{
 		EnterSlide();
 	}
