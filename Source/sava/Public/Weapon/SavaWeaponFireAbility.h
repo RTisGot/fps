@@ -55,6 +55,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float HeadshotHeight = 30.0f;
 
+	//物理で動く物(テンプレートの青い箱など)に 1 発当たったときに加える速さ。重さに関係なく同じだけ動く。0 なら押さない
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float PhysicsImpulseSpeed = 300.0f;
+
 	//--------------------------------サーバーの確認(クライアントから届いた結果をどこまで許すか)
 
 	//撃った位置と、サーバーから見たプレイヤーの視点とのずれ(通信の遅れで少しずれるため)
@@ -86,9 +90,12 @@ private:
 	//サーバーで 1 回分の結果を処理する。bFromRemoteClient ならクライアントの結果を確認してから使う
 	void ProcessShotOnServer(const TArray<FHitResult>& Hits, bool bFromRemoteClient);
 
-	//クライアントから届いた当たりが、サーバーから見てありえるか
-	bool IsHitPlausible(const FHitResult& Hit) const;
+	//クライアントから届いた当たりが、サーバーから見てありえるか。ありえなければ理由を返す(ありえるなら nullptr)
+	const TCHAR* GetHitRejectReason(const FHitResult& Hit) const;
 	bool IsHeadHitPlausible(const FHitResult& Hit) const;
+
+	//物理で動く物を押す(サーバーだけ。動きは Replicate Movement で全員へ伝わる)
+	void PushPhysicsObject(const FHitResult& Hit) const;
 
 	void OnServerTargetDataReceived(const FGameplayAbilityTargetDataHandle& DataHandle, FGameplayTag ApplicationTag);
 

@@ -10,17 +10,46 @@
 #include "Animation/AnimInstance.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "DrawDebugHelpers.h"
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/Controller.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 #include "SavaGameplayTags.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogSavaWeapon, Log, All);
+
 namespace
 {
 	//頭に当たった弾の目印(FHitResult の BoneName に入れてサーバーへ送る)
 	const FName HeadBoneName(TEXT("head"));
+
+	//当たり判定の確認用の表示(コンソールで sava.Weapon.Debug 1)
+	TAutoConsoleVariable<bool> CVarWeaponDebug(
+		TEXT("sava.Weapon.Debug"),
+		false,
+		TEXT("武器の当たり判定を表示する。線 = 自分の画面のレイ(黄: 胴体 / 赤: 頭 / 白: 外れ)、球 = サーバーの結果(緑: ダメージ / 紫: 頭 / 水色: 物を押した / 灰: ダメージなし / 赤: 却下と理由)"));
+
+	constexpr float DebugDrawTime = 3.0f;
+
+	bool IsWeaponDebugEnabled()
+	{
+		return CVarWeaponDebug.GetValueOnGameThread();
+	}
+
+	//サーバーの判定結果を、当たった位置に表示してログにも出す
+	void DrawServerResult(const UWorld* World, const FHitResult& Hit, const FColor& Color, const FString& Text)
+	{
+		if (!IsWeaponDebugEnabled())
+		{
+			return;
+		}
+		DrawDebugSphere(World, Hit.ImpactPoint, 10.0f, 8, Color, false, DebugDrawTime);
+		DrawDebugString(World, Hit.ImpactPoint + FVector(0.0f, 0.0f, 20.0f), Text, nullptr, Color, DebugDrawTime);
+		UE_LOG(LogSavaWeapon, Log, TEXT("[Server] %s -> %s"), *GetNameSafe(Hit.GetActor()), *Text);
+	}
 }
 
 USavaWeaponFireAbility::USavaWeaponFireAbility()
@@ -127,6 +156,15 @@ void USavaWeaponFireAbility::FireShot()
 	TArray<FHitResult> Hits;
 	TraceShot(Stats, Equipment->GetCurrentSpreadAngle(), Hits);
 
+	if (IsWeaponDebugEnabled())
+	{
+		for (const FHitResult& Hit : Hits)
+		{
+			const FColor Color = !Hit.bBlockingHit ? FColor::White : (Hit.BoneName == HeadBoneName ? FColor::Red : FColor::Yellow);
+			DrawDebugLine(GetWorld(), Hit.TraceStart, Hit.ImpactPoint, Color, false, DebugDrawTime, 0, 0.5f);
+		}
+	}
+
 	//演出(自分の画面だけ)
 	if (const USavaWeaponData* Weapon = Equipment->GetWeaponData(FiringSlot))
 	{
@@ -215,6 +253,10 @@ void USavaWeaponFireAbility::ProcessShotOnServer(const TArray<FHitResult>& Hits,
 	//(ホストは自分の画面で弾を使ったので、ここでは数えない)
 	if (bFromRemoteClient && !Equipment->TryConsumeServerShot(FiringSlot, ServerFireIntervalTolerance))
 	{
+		for (const FHitResult& Hit : Hits)
+		{
+			DrawServerResult(GetWorld(), Hit, FColor::Red, TEXT("Rejected: out of ammo / firing too fast"));
+		}
 		return;
 	}
 
@@ -227,14 +269,26 @@ void USavaWeaponFireAbility::ProcessShotOnServer(const TArray<FHitResult>& Hits,
 	{
 		const FHitResult& Hit = Hits[Index];
 		AActor* HitActor = Hit.GetActor();
-		if (!Hit.bBlockingHit || !HitActor || !USavaAbilitySystemLibrary::AreEnemies(Avatar, HitActor))
+		if (!Hit.bBlockingHit || !HitActor)
 		{
 			continue;
 		}
 
 		//クライアントから届いた結果は信用せず、ありえる当たりかを確認する
-		if (bFromRemoteClient && !IsHitPlausible(Hit))
+		if (bFromRemoteClient)
 		{
+			if (const TCHAR* RejectReason = GetHitRejectReason(Hit))
+			{
+				DrawServerResult(GetWorld(), Hit, FColor::Red, FString::Printf(TEXT("Rejected: %s"), RejectReason));
+				continue;
+			}
+		}
+
+		PushPhysicsObject(Hit);
+
+		if (!USavaAbilitySystemLibrary::AreEnemies(Avatar, HitActor))
+		{
+			DrawServerResult(GetWorld(), Hit, FColor::Silver, TEXT("No damage (not an enemy)"));
 			continue;
 		}
 
@@ -242,12 +296,34 @@ void USavaWeaponFireAbility::ProcessShotOnServer(const TArray<FHitResult>& Hits,
 		const float Damage = Stats.CalculateDamage(FVector::Dist(Hit.TraceStart, Hit.ImpactPoint), bHeadshot);
 		if (USavaAbilitySystemLibrary::ApplyDamage(Avatar, HitActor, Damage, Avatar))
 		{
+			DrawServerResult(GetWorld(), Hit, bHeadshot ? FColor::Magenta : FColor::Green,
+				FString::Printf(TEXT("%s %.1f"), bHeadshot ? TEXT("HEAD") : TEXT("Body"), Damage));
 			OnHitConfirmed(Hit, Damage, bHeadshot);
+		}
+		else
+		{
+			//物理の箱など、HP を持たない物
+			const UPrimitiveComponent* HitComponent = Hit.GetComponent();
+			const bool bPushed = PhysicsImpulseSpeed > 0.0f && HitComponent && HitComponent->IsSimulatingPhysics();
+			DrawServerResult(GetWorld(), Hit, bPushed ? FColor::Cyan : FColor::Silver, bPushed ? TEXT("Pushed") : TEXT("No damage (no health)"));
 		}
 	}
 }
 
-bool USavaWeaponFireAbility::IsHitPlausible(const FHitResult& Hit) const
+void USavaWeaponFireAbility::PushPhysicsObject(const FHitResult& Hit) const
+{
+	UPrimitiveComponent* HitComponent = Hit.GetComponent();
+	if (PhysicsImpulseSpeed <= 0.0f || !HitComponent || !HitComponent->IsSimulatingPhysics())
+	{
+		return;
+	}
+
+	//重さに関係なく、同じ速さだけ弾の向きへ押す(当たった位置を押すので回転もする)
+	const FVector Direction = (Hit.ImpactPoint - Hit.TraceStart).GetSafeNormal();
+	HitComponent->AddImpulseAtLocation(Direction * PhysicsImpulseSpeed * HitComponent->GetMass(), Hit.ImpactPoint, Hit.BoneName);
+}
+
+const TCHAR* USavaWeaponFireAbility::GetHitRejectReason(const FHitResult& Hit) const
 {
 	const AActor* Avatar = GetAvatarActorFromActorInfo();
 	const AActor* HitActor = Hit.GetActor();
@@ -255,25 +331,25 @@ bool USavaWeaponFireAbility::IsHitPlausible(const FHitResult& Hit) const
 	FRotator ViewRotation;
 	if (!Avatar || !HitActor || !GetViewPoint(ViewLocation, ViewRotation))
 	{
-		return false;
+		return TEXT("no shooter / target");
 	}
 
 	//1. 撃った位置が、サーバーから見たプレイヤーの視点の近くか
 	if (FVector::Dist(Hit.TraceStart, ViewLocation) > ServerViewTolerance)
 	{
-		return false;
+		return TEXT("shot origin too far from player's view");
 	}
 
 	//2. レイが届く距離か
 	if (FVector::Dist(Hit.TraceStart, Hit.ImpactPoint) > MaxTraceDistance)
 	{
-		return false;
+		return TEXT("out of range");
 	}
 
 	//3. 当たった相手が、当たった位置の近くにいるか
 	if (FVector::Dist(HitActor->GetActorLocation(), Hit.ImpactPoint) > ServerHitTolerance)
 	{
-		return false;
+		return TEXT("target is not near the hit point");
 	}
 
 	//4. 撃った位置から当たった位置までの間に壁がないか(壁抜きの防止)
@@ -283,10 +359,10 @@ bool USavaWeaponFireAbility::IsHitPlausible(const FHitResult& Hit) const
 	FHitResult BlockingHit;
 	if (Avatar->GetWorld()->LineTraceSingleByChannel(BlockingHit, Hit.TraceStart, Hit.Location, ECC_Visibility, QueryParams))
 	{
-		return false;
+		return TEXT("blocked by a wall");
 	}
 
-	return true;
+	return nullptr;
 }
 
 bool USavaWeaponFireAbility::IsHeadHitPlausible(const FHitResult& Hit) const
