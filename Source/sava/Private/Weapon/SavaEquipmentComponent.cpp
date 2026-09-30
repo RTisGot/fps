@@ -248,25 +248,19 @@ float USavaEquipmentComponent::GetCurrentSpreadAngle() const
 		return 0.0f;
 	}
 
-	const FSavaWeaponStats& Stats = State->Stats;
-	float Spread = FMath::Lerp(Stats.HipSpread, Stats.ADSSpread, ADSAlpha);
-
+	float MoveAlpha = 0.0f;
+	bool bInAir = false;
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
-	const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
-	if (Movement)
+	if (const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr)
 	{
 		//歩く速さで Movement Spread を全部足す
 		if (Movement->MaxWalkSpeed > 0.0f)
 		{
-			const float MoveAlpha = FMath::Clamp(static_cast<float>(Movement->Velocity.Size2D()) / Movement->MaxWalkSpeed, 0.0f, 1.0f);
-			Spread += Stats.MovementSpread * MoveAlpha;
+			MoveAlpha = FMath::Clamp(static_cast<float>(Movement->Velocity.Size2D()) / Movement->MaxWalkSpeed, 0.0f, 1.0f);
 		}
-		if (Movement->IsFalling())
-		{
-			Spread += Stats.JumpSpread;
-		}
+		bInAir = Movement->IsFalling();
 	}
-	return Spread;
+	return State->Stats.CalculateSpread(ADSAlpha, MoveAlpha, bInAir);
 }
 
 //--------------------------------Swap

@@ -34,6 +34,16 @@ float FSavaWeaponStats::CalculateDamage(float Distance, bool bHeadshot) const
 	return HeadDamage * (BodyDamage / BaseDamage);
 }
 
+float FSavaWeaponStats::CalculateSpread(float ADSAlpha, float MoveAlpha, bool bInAir) const
+{
+	const float BaseSpread = FMath::Lerp(HipSpread, ADSSpread, ADSAlpha);
+	const float MovementPart = MovementSpread * MoveAlpha + (bInAir ? JumpSpread : 0.0f);
+
+	//ADS に入るほど、移動中・空中の拡散を ADS Movement Spread Scale の割合へ減らす
+	const float MovementScale = FMath::Lerp(1.0f, ADSMovementSpreadScale, ADSAlpha);
+	return BaseSpread + MovementPart * MovementScale;
+}
+
 FSavaWeaponStats USavaWeaponLibrary::ApplyWeaponModifiers(const FSavaWeaponStats& BaseStats, const TArray<FSavaWeaponModifier>& Modifiers)
 {
 	FSavaWeaponStats Stats = BaseStats;
@@ -49,6 +59,7 @@ FSavaWeaponStats USavaWeaponLibrary::ApplyWeaponModifiers(const FSavaWeaponStats
 		Stats.ADSSpread *= Modifier.ADSSpreadMultiplier;
 		Stats.MovementSpread *= Modifier.MovementSpreadMultiplier;
 		Stats.JumpSpread *= Modifier.JumpSpreadMultiplier;
+		Stats.ADSMovementSpreadScale *= Modifier.ADSMovementSpreadScaleMultiplier;
 		Stats.VerticalRecoil *= Modifier.VerticalRecoilMultiplier;
 		Stats.HorizontalRecoil *= Modifier.HorizontalRecoilMultiplier;
 		Stats.RecoilRecovery *= Modifier.RecoilRecoveryMultiplier;
@@ -65,5 +76,6 @@ FSavaWeaponStats USavaWeaponLibrary::ApplyWeaponModifiers(const FSavaWeaponStats
 	Stats.MaxReserveAmmo = FMath::Max(Stats.MaxReserveAmmo, 0);
 	Stats.RateOfFire = FMath::Max(Stats.RateOfFire, 1.0f);
 	Stats.ADSZoom = FMath::Clamp(Stats.ADSZoom, 0.05f, 1.0f);
+	Stats.ADSMovementSpreadScale = FMath::Clamp(Stats.ADSMovementSpreadScale, 0.0f, 1.0f);
 	return Stats;
 }
