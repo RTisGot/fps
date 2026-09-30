@@ -6,6 +6,7 @@
 #include "AbilitySystem/SavaAbilitySystemComponent.h"
 #include "AbilitySystem/SavaInputConfig.h"
 #include "Player/SavaPlayerState.h"
+#include "Weapon/SavaEquipmentComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -47,6 +48,8 @@ AsavaCharacter::AsavaCharacter(const FObjectInitializer& ObjectInitializer)
 	Mesh1P->bCastDynamicShadow = false;
 	Mesh1P->CastShadow = false;
 	Mesh1P->SetRelativeLocation(FVector(-30.f, 0.f, -150.f));
+
+	EquipmentComponent = CreateDefaultSubobject<USavaEquipmentComponent>(TEXT("Equipment"));
 
 	// Layout, style and animation are authored in the Widget Blueprint.
 	if (FPackageName::DoesPackageExist(TEXT("/Game/WBP/WBP_SettingsMenu")))

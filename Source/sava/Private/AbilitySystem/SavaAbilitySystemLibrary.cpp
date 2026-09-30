@@ -1,7 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
-#include "AbilitySystem/SavaGameplayEffects.h"
+#include "AbilitySystem/SavaAbilitySettings.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "GameFramework/Pawn.h"
@@ -67,7 +67,7 @@ bool USavaAbilitySystemLibrary::ApplyDamage(AActor* DamageInstigator, AActor* Ta
 		return false;
 	}
 
-	return ApplySetByCallerEffect(DamageInstigator, Target, USavaGE_Damage::StaticClass(), SavaGameplayTags::SetByCaller_Damage, Damage, DamageCauser);
+	return ApplySetByCallerEffect(DamageInstigator, Target, USavaAbilitySettings::GetDamageEffectClass(), SavaGameplayTags::SetByCaller_Damage, Damage, DamageCauser);
 }
 
 bool USavaAbilitySystemLibrary::ApplyHealing(AActor* HealInstigator, AActor* Target, float Amount)
@@ -76,7 +76,7 @@ bool USavaAbilitySystemLibrary::ApplyHealing(AActor* HealInstigator, AActor* Tar
 	{
 		return false;
 	}
-	return ApplySetByCallerEffect(HealInstigator, Target, USavaGE_Healing::StaticClass(), SavaGameplayTags::SetByCaller_Healing, Amount, HealInstigator);
+	return ApplySetByCallerEffect(HealInstigator, Target, USavaAbilitySettings::GetHealingEffectClass(), SavaGameplayTags::SetByCaller_Healing, Amount, HealInstigator);
 }
 
 FActiveGameplayEffectHandle USavaAbilitySystemLibrary::ApplyEffectToTarget(AActor* EffectInstigator, AActor* Target, TSubclassOf<UGameplayEffect> EffectClass, float Level)

@@ -16,5 +16,8 @@ public class sava : ModuleRules
 
 		// Gameplay Ability System(スキル・ガジェット・武器の土台)
 		PublicDependencyModuleNames.AddRange(new string[] { "GameplayAbilities", "GameplayTags", "GameplayTasks" });
+
+		// Project Settings に独自の設定ページを出す(Sava Abilities)
+		PublicDependencyModuleNames.Add("DeveloperSettings");
 	}
 }

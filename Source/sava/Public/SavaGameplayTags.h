@@ -14,14 +14,21 @@ namespace SavaGameplayTags
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Fire);
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Aim);
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Reload);
+	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(InputTag_Weapon_Swap);
 
 	//能力の種類(「ガジェット使用中は武器を撃てない」などの指定に使う)
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Type_Skill);
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Type_Gadget);
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Type_Weapon);
 
+	//個別の武器の能力(「リロードすると射撃を止める」などの指定に使う)
+	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Weapon_Fire);
+	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Weapon_Reload);
+
 	//状態
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Dead);
+	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Weapon_Aiming);
+	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Weapon_Reloading);
 
 	//GameplayEffect に数値を渡すためのキー
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(SetByCaller_Damage);

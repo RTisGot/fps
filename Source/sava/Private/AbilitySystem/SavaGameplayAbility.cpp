@@ -2,7 +2,7 @@
 
 #include "AbilitySystem/SavaGameplayAbility.h"
 #include "AbilitySystem/SavaAttributeSet.h"
-#include "AbilitySystem/SavaGameplayEffects.h"
+#include "AbilitySystem/SavaAbilitySettings.h"
 #include "AbilitySystemComponent.h"
 #include "SavaCharacterMovementComponent.h"
 #include "SavaGameplayTags.h"
@@ -51,7 +51,7 @@ void USavaGameplayAbility::ApplyCooldown(const FGameplayAbilitySpecHandle Handle
 	}
 
 	//共通のクールダウン GE に、秒数とこの能力専用のタグを載せて自分に付ける
-	FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(Handle, ActorInfo, ActivationInfo, USavaGE_Cooldown::StaticClass(), GetAbilityLevel(Handle, ActorInfo));
+	FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(Handle, ActorInfo, ActivationInfo, USavaAbilitySettings::GetCooldownEffectClass(), GetAbilityLevel(Handle, ActorInfo));
 	if (SpecHandle.IsValid())
 	{
 		SpecHandle.Data->DynamicGrantedTags.AppendTags(CooldownTags);
@@ -65,7 +65,7 @@ UGameplayEffect* USavaGameplayAbility::GetCostGameplayEffect() const
 	//個数制の能力は共通のコスト GE(GadgetCharges を 1 減らす)を使う
 	if (MaxCharges > 0)
 	{
-		return GetMutableDefault<USavaGE_GadgetChargeCost>();
+		return USavaAbilitySettings::GetGadgetChargeCostEffectClass()->GetDefaultObject<UGameplayEffect>();
 	}
 	//個数制でなければ、Cost Gameplay Effect Class に設定したもの(なければコストなし)
 	return Super::GetCostGameplayEffect();
