@@ -81,9 +81,10 @@ void AsavaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	// Set up action bindings
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+		// Jumping(押している間は壁走り、離すとウォールジャンプ)
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &AsavaCharacter::StartJump);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &AsavaCharacter::StopJump);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Canceled, this, &AsavaCharacter::StopJump);
 
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AsavaCharacter::Move);
@@ -162,6 +163,16 @@ void AsavaCharacter::StartSprint() {
 
 void AsavaCharacter::StopSprint() {
 	GetSavaCharacterMovementComponent()->StopSprint();
+}
+
+void AsavaCharacter::StartJump() {
+	Jump();
+	GetSavaCharacterMovementComponent()->SetJumpHeld(true);
+}
+
+void AsavaCharacter::StopJump() {
+	StopJumping();
+	GetSavaCharacterMovementComponent()->SetJumpHeld(false);
 }
 
 void AsavaCharacter::StartCrouch() {
@@ -469,6 +480,7 @@ void AsavaCharacter::CloseSettingsMenu()
 
 	StopSprint();
 	StopCrouch();
+	StopJump();
 	if (SettingsWidget)
 	{
 		SettingsWidget->RemoveFromParent();//現在表示されている親から外す。

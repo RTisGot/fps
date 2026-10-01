@@ -96,6 +96,10 @@ struct SAVA_API FSavaWeaponStats
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ForceUnits = "deg"))
 	float JumpSpread = 4.0f;
 
+	//ADS 中は、移動中・空中の拡散をこの割合に減らす(0.5 なら半分、1 なら減らさない。ADS に入るほど近づく)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ClampMax = "1"))
+	float ADSMovementSpreadScale = 0.5f;
+
 	//--------------------------------Recoil(1 発ごとに視点がランダムに動く)
 
 	//上への跳ね上がり(0 〜 この値)
@@ -147,6 +151,10 @@ struct SAVA_API FSavaWeaponStats
 
 	//距離と部位からダメージを計算する
 	float CalculateDamage(float Distance, bool bHeadshot) const;
+
+	//拡散の角度を計算する
+	//ADSAlpha: ADS の進み具合(0 〜 1) / MoveAlpha: 歩く速さに対する今の速さ(0 〜 1) / bInAir: 空中にいるか
+	float CalculateSpread(float ADSAlpha, float MoveAlpha, bool bInAir) const;
 };
 
 //武器のカスタム(アタッチメントなど)で数値を変える量(BP の ST_WeaponModifier を移したもの。Reload Time Multiplier は追加)
@@ -185,6 +193,9 @@ struct SAVA_API FSavaWeaponModifier
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0"))
 	float JumpSpreadMultiplier = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0"))
+	float ADSMovementSpreadScaleMultiplier = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0"))
 	float VerticalRecoilMultiplier = 1.0f;

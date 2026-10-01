@@ -25,6 +25,25 @@ bool FSavaWeaponDamageFalloffTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponSpreadTest, "Sava.Weapon.Spread",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaWeaponSpreadTest::RunTest(const FString&)
+{
+	FSavaWeaponStats Stats;
+	Stats.HipSpread = 2.0f;
+	Stats.ADSSpread = 0.4f;
+	Stats.MovementSpread = 1.5f;
+	Stats.JumpSpread = 4.0f;
+	Stats.ADSMovementSpreadScale = 0.5f;
+
+	TestEqual(TEXT("Hip, standing still"), Stats.CalculateSpread(0.0f, 0.0f, false), 2.0f);
+	TestEqual(TEXT("Hip, moving and in the air: full movement spread"), Stats.CalculateSpread(0.0f, 1.0f, true), 2.0f + 1.5f + 4.0f);
+	TestEqual(TEXT("ADS, moving and in the air: movement spread halved"), Stats.CalculateSpread(1.0f, 1.0f, true), 0.4f + (1.5f + 4.0f) * 0.5f);
+	TestEqual(TEXT("Halfway into ADS: scale is halfway too"), Stats.CalculateSpread(0.5f, 1.0f, false), 1.2f + 1.5f * 0.75f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponModifierTest, "Sava.Weapon.Modifiers",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 

@@ -155,6 +155,9 @@ protected:
 	void StartSprint();
 	void StopSprint();
 
+	void StartJump();
+	void StopJump();
+
 	void StartCrouch();
 	void StopCrouch();
 
