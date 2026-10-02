@@ -236,6 +236,7 @@ Event ActivateAbility
 ```
 
 - **`Event ActivateAbility` は使わないでください。** 上の 4 つのイベントだけを実装します
+- C++ で継承する場合は、各イベントの `<名前>_Implementation` を override します(`ActivateAbility` は override しない)
 - クールダウン・個数は **確定したときに** 消費します。キャンセルしたら消費しません
 - キャンセルになるのは次のとき
   - **Cancel Input Tag** に設定したボタンを押した(例: `InputTag.Weapon.Aim` にすると右クリックでやめられる)

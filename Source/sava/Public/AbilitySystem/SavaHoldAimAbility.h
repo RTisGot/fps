@@ -31,6 +31,7 @@ enum class ESavaAimMode : uint8
 //クールダウンは確定したときに始まる(キャンセルしたら消費しない)
 //
 //※ Blueprint では Event ActivateAbility を使わないこと(上のイベントだけを実装する)
+//※ C++ で継承する場合は、各イベントの <名前>_Implementation を override する(ActivateAbility は override しない)
 UCLASS(Abstract)
 class SAVA_API USavaHoldAimAbility : public USavaGameplayAbility
 {
@@ -48,22 +49,22 @@ public:
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 
 protected:
-	//--------------------------------Blueprint で実装するイベント
+	//--------------------------------Blueprint / C++ で実装するイベント(C++ では <名前>_Implementation を override する)
 
 	//狙い始めた(自分の画面だけ)
-	UFUNCTION(BlueprintImplementableEvent, Category = "Sava|Aim")
+	UFUNCTION(BlueprintNativeEvent, Category = "Sava|Aim")
 	void OnAimStarted();
 
 	//毎フレーム(自分の画面だけ)。PathPoints は ProjectileArc のときの予測線の点
-	UFUNCTION(BlueprintImplementableEvent, Category = "Sava|Aim")
+	UFUNCTION(BlueprintNativeEvent, Category = "Sava|Aim")
 	void OnAimUpdated(const FTransform& AimTransform, bool bIsValid, const TArray<FVector>& PathPoints);
 
 	//狙い終わった(自分の画面だけ)。bConfirmed = 確定したか / false ならキャンセル
-	UFUNCTION(BlueprintImplementableEvent, Category = "Sava|Aim")
+	UFUNCTION(BlueprintNativeEvent, Category = "Sava|Aim")
 	void OnAimEnded(bool bConfirmed);
 
 	//確定した(サーバーだけ)。Spawn Actor はここで行う(Instigator = Get Avatar Actor From Actor Info)
-	UFUNCTION(BlueprintImplementableEvent, Category = "Sava|Aim")
+	UFUNCTION(BlueprintNativeEvent, Category = "Sava|Aim")
 	void OnConfirmed(const FTransform& TargetTransform);
 
 	//独自の条件(例: 味方の近くには置けない)。自分の画面とサーバーの両方で呼ばれる

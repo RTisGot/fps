@@ -282,3 +282,21 @@ bool USavaHoldAimAbility::IsTargetAllowed_Implementation(const FTransform& Targe
 {
 	return true;
 }
+
+//--------------------------------イベントの既定の処理(何もしない。Blueprint か C++ の子クラスで実装する)
+
+void USavaHoldAimAbility::OnAimStarted_Implementation()
+{
+}
+
+void USavaHoldAimAbility::OnAimUpdated_Implementation(const FTransform& AimTransform, bool bIsValid, const TArray<FVector>& PathPoints)
+{
+}
+
+void USavaHoldAimAbility::OnAimEnded_Implementation(bool bConfirmed)
+{
+}
+
+void USavaHoldAimAbility::OnConfirmed_Implementation(const FTransform& TargetTransform)
+{
+}
