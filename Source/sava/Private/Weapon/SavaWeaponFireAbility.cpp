@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Weapon/SavaWeaponFireAbility.h"
+#include "Weapon/SavaCombatTestDummyCharacter.h"
 #include "Weapon/SavaEquipmentComponent.h"
 #include "Weapon/SavaWeaponData.h"
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
@@ -296,6 +297,10 @@ void USavaWeaponFireAbility::ProcessShotOnServer(const TArray<FHitResult>& Hits,
 		const float Damage = Stats.CalculateDamage(FVector::Dist(Hit.TraceStart, Hit.ImpactPoint), bHeadshot);
 		if (USavaAbilitySystemLibrary::ApplyDamage(Avatar, HitActor, Damage, Avatar))
 		{
+			if (ASavaCombatTestDummyCharacter* TestDummy = Cast<ASavaCombatTestDummyCharacter>(HitActor))
+			{
+				TestDummy->NotifyWeaponImpact(Hit, Damage, bHeadshot);
+			}
 			DrawServerResult(GetWorld(), Hit, bHeadshot ? FColor::Magenta : FColor::Green,
 				FString::Printf(TEXT("%s %.1f"), bHeadshot ? TEXT("HEAD") : TEXT("Body"), Damage));
 			OnHitConfirmed(Hit, Damage, bHeadshot);
