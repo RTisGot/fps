@@ -705,9 +705,11 @@ void USavaCharacterMovementComponent::PhysWallRun(float DeltaTime, int32 Iterati
 	}
 
 	//実際に動いた量から速度を更新(壁への押し付け分は次のフレームで取り除かれる)
+	//上向きは計算した値を超えないようにする(斜めの障害物に沿って押し上げられた分で、上へ打ち上げられないように)
 	if (!bJustTeleported)
 	{
 		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
+		Velocity.Z = FMath::Min(Velocity.Z, FMath::Max(VerticalSpeed, 0.0f));
 	}
 }
 
@@ -849,6 +851,7 @@ bool USavaCharacterMovementComponent::TryStartMantle()
 	MantleExitDirection = TowardWall;
 	Velocity = FVector::ZeroVector;
 	SetMovementMode(MOVE_Custom, CMOVE_Mantle);
+	ShowTechniqueDebug(FString::Printf(TEXT("Mantle  (ledge %.0fcm)"), LedgeHeight), FColor::White);
 	return true;
 }
 
@@ -1110,9 +1113,16 @@ void USavaCharacterMovementComponent::PhysSlide(float DeltaTime, int32 Iteration
 	}
 	const FVector FloorNormal = Floor.HitResult.ImpactNormal;
 
-	//坂道: 重力の斜面方向の成分で加速(下り) / 減速(上り)
+	//進む向きで見た下り坂の角度(下りならプラス)。急なほど摩擦を弱める(0 〜 1)
+	const FVector MoveDir2D = Velocity.GetSafeNormal2D();
+	const float DownhillAngle = FloorNormal.Z > KINDA_SMALL_NUMBER
+		? FMath::RadiansToDegrees(FMath::Atan(FVector::DotProduct(FloorNormal, MoveDir2D) / FloorNormal.Z)) : 0.0f;
+	const float DownhillAlpha = SlideDownhillFullAngle > 0.0f ? FMath::Clamp(DownhillAngle / SlideDownhillFullAngle, 0.0f, 1.0f) : 0.0f;
+
+	//坂道: 重力の斜面方向の成分で加速(下り) / 減速(上り)。下り坂では重力を強める
 	const FVector Gravity(0.0f, 0.0f, GetGravityZ());
-	Velocity += FVector::VectorPlaneProject(Gravity, FloorNormal) * SlideGravityScale * DeltaTime;
+	const float SlopeGravityScale = DownhillAngle > 0.0f ? SlideDownhillGravityScale : SlideGravityScale;
+	Velocity += FVector::VectorPlaneProject(Gravity, FloorNormal) * SlopeGravityScale * DeltaTime;
 
 	//左右入力で進行方向を少し曲げる(速さは変えない)
 	const FVector SteerDir = FVector::VectorPlaneProject(Acceleration, Velocity.GetSafeNormal()).GetSafeNormal2D();
@@ -1122,9 +1132,10 @@ void USavaCharacterMovementComponent::PhysSlide(float DeltaTime, int32 Iteration
 		Velocity = (Velocity + SteerDir * SlideSteerAcceleration * DeltaTime).GetSafeNormal() * CurrentSpeed;
 	}
 
-	//減速: 速度比例の摩擦 + 一定の制動
+	//減速: 速度比例の摩擦 + 一定の制動(下り坂では急なほど弱める)
+	const float FrictionScale = FMath::Lerp(1.0f, SlideDownhillFrictionScale, DownhillAlpha);
 	const float Speed = Velocity.Size();
-	const float NewSpeed = FMath::Max(Speed - (SlideFriction * Speed + SlideBrakingDeceleration) * DeltaTime, 0.0f);
+	const float NewSpeed = FMath::Max(Speed - (SlideFriction * Speed + SlideBrakingDeceleration) * FrictionScale * DeltaTime, 0.0f);
 	Velocity = FVector::VectorPlaneProject(Velocity.GetSafeNormal() * NewSpeed, FloorNormal).GetClampedToMaxSize(SlideMaxSpeed);
 
 	//遅くなったら終了(ボタンを押し続けていればしゃがみ歩きになる)
@@ -1163,9 +1174,18 @@ void USavaCharacterMovementComponent::PhysSlide(float DeltaTime, int32 Iteration
 	}
 
 	//実際に動いた量から速度を更新(壁に当たって止まった分などを反映)
+	//上下の速度は、動いた量ではなく床の傾きから決める。段差を乗り越えた分や床への吸着の分を含めると、
+	//直後に落下やジャンプへ移ったときにその分だけ上へ打ち上げられてしまう
 	if (!bJustTeleported)
 	{
-		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
+		const FVector Moved = (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
+		Velocity = FVector(Moved.X, Moved.Y, 0.0f);
+		const FVector SlopeNormal = CurrentFloor.HitResult.ImpactNormal;
+		if (CurrentFloor.IsWalkableFloor() && SlopeNormal.Z > KINDA_SMALL_NUMBER)
+		{
+			//水平の速度のまま床の面に沿わせたときの上下の速度(上り坂ならプラス)
+			Velocity.Z = -(Velocity.X * SlopeNormal.X + Velocity.Y * SlopeNormal.Y) / SlopeNormal.Z;
+		}
 	}
 
 	//クレストジャンプ用: 上り坂の間は上向きの速度を覚え続け、坂が終わったら受付時間が減り始める
@@ -1286,6 +1306,9 @@ void USavaCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterM
 	//補正時はサーバーの値に合わせる(この後、保存済みの入力が再実行されて現在まで進む)
 	if (MoveResponse.IsCorrection())
 	{
+		//デバッグ表示: サーバーに位置を直された(自分の画面とサーバーで動きが食い違った)
+		ShowTechniqueDebug(TEXT("Server correction"), FColor::Red);
+
 		const FSavaCharacterMoveResponseDataContainer& SavaResponse = static_cast<const FSavaCharacterMoveResponseDataContainer&>(MoveResponse);
 		SlideBoostCooldownRemaining = SavaResponse.SlideBoostCooldownRemaining;
 		WallRunNormal = SavaResponse.WallRunNormal;

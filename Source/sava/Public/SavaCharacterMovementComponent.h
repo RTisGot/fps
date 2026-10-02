@@ -144,9 +144,21 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0", ForceUnits = "cm/s^2"))
 	float SlideBrakingDeceleration = 200.0f;
 
-	//坂道で重力の影響を受ける強さ(1=そのまま, 0=坂の影響なし)
+	//坂道で重力の影響を受ける強さ(1=そのまま, 0=坂の影響なし)。上り坂で使う
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0"))
 	float SlideGravityScale = 1.0f;
+
+	//下り坂で重力の影響を受ける強さ(大きいほど下り坂で加速する)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0"))
+	float SlideDownhillGravityScale = 1.5f;
+
+	//下り坂がこの角度に近づくほど摩擦が弱まり、この角度以上で SlideDownhillFrictionScale 倍になる
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0", ClampMax = "89", ForceUnits = "Deg"))
+	float SlideDownhillFullAngle = 10.0f;
+
+	//急な下り坂での摩擦(SlideFriction と SlideBrakingDeceleration)の倍率(0 = 摩擦なしで加速し続ける)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0", ClampMax = "1"))
+	float SlideDownhillFrictionScale = 0.0f;
 
 	//左右入力で進行方向を曲げる強さ
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0", ForceUnits = "cm/s^2"))
