@@ -401,6 +401,7 @@ void AsavaCharacter::OnRep_PlayerState()
 
 void AsavaCharacter::Input_AbilityInputTagPressed(FGameplayTag InputTag)
 {
+	UE_LOG(LogTemp, Warning, TEXT("Ability Input Tag Pressed: %s"), *InputTag.ToString());
 	if (AbilitySystemComponent)
 	{
 		AbilitySystemComponent->AbilityInputTagPressed(InputTag);
