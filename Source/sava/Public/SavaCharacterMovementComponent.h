@@ -109,6 +109,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Sava|WallRun")
 	void SetJumpHeld(bool bHeld) { bJumpHeld = bHeld; }
 
+	// Already saved and replicated through FLAG_Custom_1 (also used by grapple lift).
+	bool IsJumpHeld() const { return bJumpHeld; }
+
 	//水平の速度の絶対上限(どの移動・テクニックでもこれを超えない。スキルの倍率も掛からない)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|SpeedCap", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float AbsoluteMaxHorizontalSpeed = 2000.0f;

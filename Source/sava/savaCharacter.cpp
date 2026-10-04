@@ -135,6 +135,13 @@ void AsavaCharacter::Move(const FInputActionValue& Value)
 
 	if (Controller != nullptr)
 	{
+		if (GetCharacterMovement()->GetRootMotionSource(FName(TEXT("GrapplePull"))).IsValid())
+		{
+			const FRotator ViewYaw(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
+			AddMovementInput(FRotationMatrix(ViewYaw).GetUnitAxis(EAxis::X), MovementVector.Y);
+			AddMovementInput(FRotationMatrix(ViewYaw).GetUnitAxis(EAxis::Y), MovementVector.X);
+			return;
+		}
 		// add movement 
 		AddMovementInput(GetActorForwardVector(), MovementVector.Y);
 		AddMovementInput(GetActorRightVector(), MovementVector.X);
