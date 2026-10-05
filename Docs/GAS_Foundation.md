@@ -183,6 +183,16 @@ Event ActivateAbility
 
 > 同じ InputTag を持つ能力が複数あると、ボタン 1 つで全部が発動します。1 つのボタンに 1 つの能力にしてください。
 
+**スキル・ガジェットは `DA_AbilitySet_Default` に入れず、次の方法で持たせます**(武器を `USavaEquipmentComponent` で持たせるのと同じ形です)
+
+1. コンテンツブラウザ → Miscellaneous → Data Asset → **SavaSkillData**(ガジェットなら **SavaGadgetData**)。名前は `DA_Skill_<能力名>` / `DA_Gadget_<能力名>`
+2. **Ability**(作った `GA_`)、**Input Tag**、**Display Name**、**Icon** を入れる。個数・クールダウンは能力側の Max Charges / Cooldown Duration で決める
+3. キャラクター Blueprint の **AbilityLoadout** コンポーネントを選び、**Default Skill** / **Default Gadget** に入れる(ロードアウト画面ができるまでの仮の設定)
+4. 実行中に変えるときは、サーバーで `Set Skill` / `Set Gadget` を呼ぶ(古い能力は外れ、新しい能力が付く。ガジェットは個数が満タンになる)
+5. UI は `Get Skill` / `Get Gadget` と、`On Skill Changed` / `On Gadget Changed` で読む
+
+> 同じ能力を `DA_AbilitySet_Default` と `DA_Skill_` の両方に入れると二重に付与され、ボタン 1 回で 2 回発動します。移すときは `DA_AbilitySet_Default` から外してください。
+
 ### 5-5. 例: 「押すと一定時間速くなる」能力
 
 1. **Effect を作る**: 右クリック → Blueprint Class → **GameplayEffect**、名前は `GE_Skill_<能力名>`
@@ -350,4 +360,5 @@ Event ActivateAbility
 | 能力用の入力アクション・`DA_InputConfig`・`DA_AbilitySet_Default` | 4 章の手順で作る |
 | HP・クールダウン・ガジェットの個数の UI | 未着手 |
 | 武器(射撃・リロード・ADS)の能力化 | 今はテンプレートの処理のまま。段階的に移行する |
-| スキル・ガジェットの種類と、1 人が持てる数 | **未定**。決まったら能力セットの分け方を相談する |
+| スキル・ガジェットの種類 | **未定**。持てる数はスキル 1 つ・ガジェット 1 つ(`USavaAbilityLoadoutComponent`) |
+| スキル・ガジェットを選ぶロードアウト画面 | 未着手。画面からサーバーの `Set Skill` / `Set Gadget` を呼べば付け替えられる |
