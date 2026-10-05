@@ -3,6 +3,7 @@
 #include "savaCharacter.h"
 #include "savaProjectile.h"
 #include "SavaCharacterMovementComponent.h"
+#include "AbilitySystem/SavaAbilityLoadoutComponent.h"
 #include "AbilitySystem/SavaAbilitySystemComponent.h"
 #include "AbilitySystem/SavaInputConfig.h"
 #include "Player/SavaPlayerState.h"
@@ -50,6 +51,7 @@ AsavaCharacter::AsavaCharacter(const FObjectInitializer& ObjectInitializer)
 	Mesh1P->SetRelativeLocation(FVector(-30.f, 0.f, -150.f));
 
 	EquipmentComponent = CreateDefaultSubobject<USavaEquipmentComponent>(TEXT("Equipment"));
+	AbilityLoadoutComponent = CreateDefaultSubobject<USavaAbilityLoadoutComponent>(TEXT("AbilityLoadout"));
 
 	// Layout, style and animation are authored in the Widget Blueprint.
 	if (FPackageName::DoesPackageExist(TEXT("/Game/WBP/WBP_SettingsMenu")))
@@ -380,6 +382,8 @@ void AsavaCharacter::InitAbilitySystem()
 				AbilitySet->GiveToAbilitySystem(AbilitySystemComponent, &GrantedAbilityHandles);
 			}
 		}
+		//選んだスキル・ガジェットも付ける
+		AbilityLoadoutComponent->GrantAbilities(AbilitySystemComponent);
 	}
 }
 
@@ -396,6 +400,7 @@ void AsavaCharacter::UnPossessed()
 	{
 		AbilitySystemComponent->CancelAllAbilities();
 		GrantedAbilityHandles.TakeFromAbilitySystem(AbilitySystemComponent);
+		AbilityLoadoutComponent->RevokeAbilities();
 	}
 	Super::UnPossessed();
 }
