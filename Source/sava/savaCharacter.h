@@ -24,6 +24,7 @@ class USavaCharacterMovementComponent;
 class USavaAbilitySystemComponent;
 class USavaInputConfig;
 class USavaEquipmentComponent;
+class USavaAbilityLoadoutComponent;
 UCLASS(config=Game)
 class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -47,6 +48,10 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	//持っている武器(メイン・サブ)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Sava|Weapon", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<USavaEquipmentComponent> EquipmentComponent;
+
+	//持っているスキル(1 つ)とガジェット(1 つ)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Sava|Loadout", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<USavaAbilityLoadoutComponent> AbilityLoadoutComponent;
 
 	/** Pawn mesh: 1st person view (arms; seen only by self) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=Mesh, meta = (AllowPrivateAccess = "true"))
@@ -186,6 +191,23 @@ protected:
 
 	void ToggleSettingsMenu();
 
+	//HP が 0 になった(サーバーだけで呼ばれる。AttributeSet の OnOutOfHealth から)
+	void HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount);
+
+	//死亡処理(サーバーだけ)
+	void HandleDeath();
+
+	//bIsDead が届いたとき(クライアント)/ サーバーは HandleDeath から直接呼ぶ。死体の見た目と動きを止める
+	UFUNCTION()
+	void OnRep_IsDead();
+
+	//死んでいるか。全員に複製して、死体の見た目を揃える
+	UPROPERTY(ReplicatedUsing = OnRep_IsDead)
+	bool bIsDead = false;
+
+	//死んでから死体を消すまでの秒数(GameMode の RespawnDelay より長くすること)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Death", meta = (ClampMin = "0", ForceUnits = "s"))
+	float DeadBodyLifeSpan = 10.0f;
 
 protected:
 	// APawn interface
@@ -201,5 +223,6 @@ public:
 	UCameraComponent* GetFirstPersonCameraComponent() const { return FirstPersonCameraComponent; }
 	USavaCharacterMovementComponent* GetSavaCharacterMovementComponent() const;
 	USavaEquipmentComponent* GetEquipmentComponent() const { return EquipmentComponent; }
+	USavaAbilityLoadoutComponent* GetAbilityLoadoutComponent() const { return AbilityLoadoutComponent; }
 };
 

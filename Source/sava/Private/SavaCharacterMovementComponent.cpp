@@ -23,6 +23,9 @@ USavaCharacterMovementComponent::USavaCharacterMovementComponent()
 
 	//補正時に独自の状態も送る
 	SetMoveResponseDataContainer(SavaMoveResponseDataContainer);
+
+	//他のプレイヤーの表示の遅れを減らす(標準は 0.1 秒。高速移動だと遅れが目立つ。短くしすぎるとカクつくので 60Hz の更新間隔に合わせた値)
+	NetworkSimulatedSmoothLocationTime = 0.06f;
 }
 
 bool USavaCharacterMovementComponent::IsSprinting() const
@@ -1426,6 +1429,89 @@ void USavaCharacterMovementComponent::FSavedMove_Sava::Clear()
 	Super::Clear();
 	bSavedWantsToSprint = false;
 	bSavedJumpHeld = false;
+	StartCustomState = FSavaCustomMoveState();
+}
+
+void USavaCharacterMovementComponent::FSavedMove_Sava::SetInitialPosition(ACharacter* Character)
+{
+	Super::SetInitialPosition(Character);
+	if (const USavaCharacterMovementComponent* SavaMovement = Cast<USavaCharacterMovementComponent>(Character->GetCharacterMovement()))
+	{
+		StartCustomState = SavaMovement->CaptureCustomMoveState();
+	}
+}
+
+void USavaCharacterMovementComponent::FSavedMove_Sava::CombineWith(const FSavedMove_Character* OldMove, ACharacter* InCharacter, APlayerController* PC, const FVector& OldStartLocation)
+{
+	Super::CombineWith(OldMove, InCharacter, PC, OldStartLocation);
+
+	//位置・速度と一緒に独自の状態も古い移動の開始時点へ戻す(戻さないと、結合した移動の再実行でタイマーが二重に進み、サーバーとずれて補正される)
+	//この後、呼び出し側が SetInitialPosition を呼び直すので、結合後の移動の開始状態もこの値になる
+	USavaCharacterMovementComponent* SavaMovement = Cast<USavaCharacterMovementComponent>(InCharacter->GetCharacterMovement());
+	if (SavaMovement)
+	{
+		SavaMovement->RestoreCustomMoveState(static_cast<const FSavedMove_Sava*>(OldMove)->StartCustomState);
+	}
+}
+
+USavaCharacterMovementComponent::FSavaCustomMoveState USavaCharacterMovementComponent::CaptureCustomMoveState() const
+{
+	FSavaCustomMoveState State;
+	State.SlideBoostCooldownRemaining = SlideBoostCooldownRemaining;
+	State.WallRunNormal = WallRunNormal;
+	State.WallRunElapsed = WallRunElapsed;
+	State.LastWallRunNormal = LastWallRunNormal;
+	State.WallTapElapsed = WallTapElapsed;
+	State.bWallRunOnSameWall = bWallRunOnSameWall;
+	State.WallJumpDecay = WallJumpDecay;
+	State.WallRunSameWallCooldownRemaining = WallRunSameWallCooldownRemaining;
+	State.WallRunStartDelayRemaining = WallRunStartDelayRemaining;
+	State.WallJumpLateReleaseRemaining = WallJumpLateReleaseRemaining;
+	State.bWallRunLockedUntilLanded = bWallRunLockedUntilLanded;
+	State.JustLandingInputRemaining = JustLandingInputRemaining;
+	State.JustLandingCooldownRemaining = JustLandingCooldownRemaining;
+	State.bPrevWantsToCrouch = bPrevWantsToCrouch;
+	State.WallPerchElapsed = WallPerchElapsed;
+	State.LurchTimeRemaining = LurchTimeRemaining;
+	State.LurchAngleRemaining = LurchAngleRemaining;
+	State.LurchInputDir = LurchInputDir;
+	State.CrestUpSpeed = CrestUpSpeed;
+	State.CrestTimeRemaining = CrestTimeRemaining;
+	State.MantleStartLocation = MantleStartLocation;
+	State.MantleTargetLocation = MantleTargetLocation;
+	State.MantleExitDirection = MantleExitDirection;
+	State.MantleElapsed = MantleElapsed;
+	State.MantleDuration = MantleDuration;
+	return State;
+}
+
+void USavaCharacterMovementComponent::RestoreCustomMoveState(const FSavaCustomMoveState& State)
+{
+	SlideBoostCooldownRemaining = State.SlideBoostCooldownRemaining;
+	WallRunNormal = State.WallRunNormal;
+	WallRunElapsed = State.WallRunElapsed;
+	LastWallRunNormal = State.LastWallRunNormal;
+	WallTapElapsed = State.WallTapElapsed;
+	bWallRunOnSameWall = State.bWallRunOnSameWall;
+	WallJumpDecay = State.WallJumpDecay;
+	WallRunSameWallCooldownRemaining = State.WallRunSameWallCooldownRemaining;
+	WallRunStartDelayRemaining = State.WallRunStartDelayRemaining;
+	WallJumpLateReleaseRemaining = State.WallJumpLateReleaseRemaining;
+	bWallRunLockedUntilLanded = State.bWallRunLockedUntilLanded;
+	JustLandingInputRemaining = State.JustLandingInputRemaining;
+	JustLandingCooldownRemaining = State.JustLandingCooldownRemaining;
+	bPrevWantsToCrouch = State.bPrevWantsToCrouch;
+	WallPerchElapsed = State.WallPerchElapsed;
+	LurchTimeRemaining = State.LurchTimeRemaining;
+	LurchAngleRemaining = State.LurchAngleRemaining;
+	LurchInputDir = State.LurchInputDir;
+	CrestUpSpeed = State.CrestUpSpeed;
+	CrestTimeRemaining = State.CrestTimeRemaining;
+	MantleStartLocation = State.MantleStartLocation;
+	MantleTargetLocation = State.MantleTargetLocation;
+	MantleExitDirection = State.MantleExitDirection;
+	MantleElapsed = State.MantleElapsed;
+	MantleDuration = State.MantleDuration;
 }
 
 uint8 USavaCharacterMovementComponent::FSavedMove_Sava::GetCompressedFlags() const

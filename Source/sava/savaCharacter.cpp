@@ -3,6 +3,7 @@
 #include "savaCharacter.h"
 #include "savaProjectile.h"
 #include "SavaCharacterMovementComponent.h"
+#include "AbilitySystem/SavaAbilityLoadoutComponent.h"
 #include "AbilitySystem/SavaAbilitySystemComponent.h"
 #include "AbilitySystem/SavaInputConfig.h"
 #include "Player/SavaPlayerState.h"
@@ -23,6 +24,9 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Misc/PackageName.h"
 #include "Net/UnrealNetwork.h"
+#include "savaGameMode.h"
+#include "SavaGameplayTags.h"
+#include "AbilitySystem/SavaAttributeSet.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -50,6 +54,7 @@ AsavaCharacter::AsavaCharacter(const FObjectInitializer& ObjectInitializer)
 	Mesh1P->SetRelativeLocation(FVector(-30.f, 0.f, -150.f));
 
 	EquipmentComponent = CreateDefaultSubobject<USavaEquipmentComponent>(TEXT("Equipment"));
+	AbilityLoadoutComponent = CreateDefaultSubobject<USavaAbilityLoadoutComponent>(TEXT("AbilityLoadout"));
 
 	// Layout, style and animation are authored in the Widget Blueprint.
 	if (FPackageName::DoesPackageExist(TEXT("/Game/WBP/WBP_SettingsMenu")))
@@ -262,6 +267,7 @@ void AsavaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 
 	//自分とサーバーは移動コンポーネントが持っているので、他のプレイヤーにだけ送る
 	DOREPLIFETIME_CONDITION(AsavaCharacter, ReplicatedWallRunNormal, COND_SimulatedOnly);
+	DOREPLIFETIME(AsavaCharacter, bIsDead);
 }
 
 FVector AsavaCharacter::GetWallRunNormal() const
@@ -380,6 +386,15 @@ void AsavaCharacter::InitAbilitySystem()
 				AbilitySet->GiveToAbilitySystem(AbilitySystemComponent, &GrantedAbilityHandles);
 			}
 		}
+		//選んだスキル・ガジェットも付ける
+		AbilityLoadoutComponent->GrantAbilities(AbilitySystemComponent);
+
+		//HP 0 の通知を受け取る。PlayerState の AttributeSet は体が変わっても残るので、二重登録しない
+		if (const USavaAttributeSet* Attributes = SavaPlayerState->GetAttributeSet())
+		{
+			Attributes->OnOutOfHealth.RemoveAll(this);
+			Attributes->OnOutOfHealth.AddUObject(this, &AsavaCharacter::HandleOutOfHealth);
+		}
 	}
 }
 
@@ -396,7 +411,17 @@ void AsavaCharacter::UnPossessed()
 	{
 		AbilitySystemComponent->CancelAllAbilities();
 		GrantedAbilityHandles.TakeFromAbilitySystem(AbilitySystemComponent);
+		AbilityLoadoutComponent->RevokeAbilities();
 	}
+
+	if (const ASavaPlayerState* SavaPlayerState = GetPlayerState<ASavaPlayerState>())
+	{
+		if (const USavaAttributeSet* Attributes = SavaPlayerState->GetAttributeSet())
+		{
+			Attributes->OnOutOfHealth.RemoveAll(this);
+		}
+	}
+
 	Super::UnPossessed();
 }
 
@@ -480,6 +505,68 @@ void AsavaCharacter::ToggleSettingsMenu()
 		PlayerController->SetInputMode(InputMode);//PlayerControllerに反映
 		PlayerController->SetPause(true);
 	}
+}
+
+void AsavaCharacter::HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount)
+{
+	//誰に倒されたか(DamageInstigator)は、後でキル数の加算に使う
+	HandleDeath();
+}
+
+void AsavaCharacter::HandleDeath()
+{
+	if (!HasAuthority() || bIsDead)
+	{
+		return;
+	}
+
+	bIsDead = true;
+	OnRep_IsDead(); //サーバー自身には OnRep が自動では呼ばれない
+
+	if (AbilitySystemComponent)
+	{
+		AbilitySystemComponent->AddLooseGameplayTag(SavaGameplayTags::State_Dead); //先にタグ。能力が再発動しないように
+		AbilitySystemComponent->CancelAllAbilities();
+	}
+
+	AController* DeadController = GetController(); //Unpossess すると null になるので先に取っておく
+	if (AsavaGameMode* GameMode = GetWorld() ? GetWorld()->GetAuthGameMode<AsavaGameMode>() : nullptr)
+	{
+		GameMode->NotifyPlayerDied(DeadController); //手順 1: N 秒後に新しい体を出す
+	}
+
+	if (DeadController)
+	{
+		DeadController->UnPossess();
+		if (APlayerController* PlayerController = Cast<APlayerController>(DeadController))
+		{
+			PlayerController->SetViewTarget(this); //死んだ場所の視点のまま見せる
+		}
+	}
+
+	SetLifeSpan(DeadBodyLifeSpan); //死体は自動で消える(クライアントにも消滅が伝わる)
+}
+
+void AsavaCharacter::OnRep_IsDead()
+{
+	if (!bIsDead)
+	{
+		return;
+	}
+
+	//先に移動を止める(コリジョンだけ消すと、床をすり抜けて落ちる)
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->StopMovementImmediately();
+		MovementComponent->DisableMovement();
+	}
+
+	//撃たれても当たらないようにする
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	//3P メッシュが無いので、見た目は隠すだけ(後で死亡アニメやラグドールに差し替える)
+	Mesh1P->SetVisibility(false, true);
+	GetMesh()->SetVisibility(false, true);
 }
 
 void AsavaCharacter::CloseSettingsMenu()
