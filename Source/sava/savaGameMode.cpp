@@ -49,3 +49,41 @@ void AsavaGameMode::PostLogin(APlayerController* NewPlayer)
 	}
 	NewPlayerState->SetTeamId(static_cast<uint8>(SmallestTeam));
 }
+
+void AsavaGameMode::NotifyPlayerDied(AController* DeadController)
+{
+	if (!DeadController)
+	{
+		return;
+	}
+
+	//Controller を弱参照で渡し、待っている間に切断されても安全にする
+	FTimerHandle Handle;
+	const FTimerDelegate Delegate = FTimerDelegate::CreateUObject(
+		this, &AsavaGameMode::RespawnPlayer, TWeakObjectPtr<AController>(DeadController));
+	GetWorldTimerManager().SetTimer(Handle, Delegate, RespawnDelay, false);
+}
+
+void AsavaGameMode::RespawnPlayer(TWeakObjectPtr<AController> Controller)
+{
+	AController* PlayerController = Controller.Get();
+	if (!PlayerController)
+	{
+		return; //待っている間に切断した
+	}
+
+	//手順 2 で死亡時に Unpossess するが、念のため体が残っていれば捨てる
+	if (APawn* OldPawn = PlayerController->GetPawn())
+	{
+		PlayerController->UnPossess();
+		OldPawn->Destroy();
+	}
+
+	//新しい体に能力を付ける前に、HP とタグを戻す(ASC は PlayerState にあり、体が変わっても残るため)
+	if (ASavaPlayerState* SavaPlayerState = PlayerController->GetPlayerState<ASavaPlayerState>())
+	{
+		SavaPlayerState->Respawn();
+	}
+
+	RestartPlayer(PlayerController);
+}

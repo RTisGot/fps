@@ -191,6 +191,23 @@ protected:
 
 	void ToggleSettingsMenu();
 
+	//HP が 0 になった(サーバーだけで呼ばれる。AttributeSet の OnOutOfHealth から)
+	void HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount);
+
+	//死亡処理(サーバーだけ)
+	void HandleDeath();
+
+	//bIsDead が届いたとき(クライアント)/ サーバーは HandleDeath から直接呼ぶ。死体の見た目と動きを止める
+	UFUNCTION()
+	void OnRep_IsDead();
+
+	//死んでいるか。全員に複製して、死体の見た目を揃える
+	UPROPERTY(ReplicatedUsing = OnRep_IsDead)
+	bool bIsDead = false;
+
+	//死んでから死体を消すまでの秒数(GameMode の RespawnDelay より長くすること)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Death", meta = (ClampMin = "0", ForceUnits = "s"))
+	float DeadBodyLifeSpan = 10.0f;
 
 protected:
 	// APawn interface
