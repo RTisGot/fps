@@ -64,6 +64,37 @@ class SAVA_API USavaCharacterMovementComponent : public UCharacterMovementCompon
 
 	friend struct FSavaCharacterMoveResponseDataContainer;
 
+	//独自の移動状態(タイマー・壁走り・よじ登りなど)の一括コピー。
+	//移動の結合(CombineWith)で位置と速度を巻き戻すときに、これも一緒に巻き戻さないとクライアントだけタイマーが二重に進む
+	struct FSavaCustomMoveState
+	{
+		float SlideBoostCooldownRemaining = 0.0f;
+		FVector WallRunNormal = FVector::ZeroVector;
+		float WallRunElapsed = 0.0f;
+		FVector LastWallRunNormal = FVector::ZeroVector;
+		float WallTapElapsed = 0.0f;
+		bool bWallRunOnSameWall = false;
+		float WallJumpDecay = 0.0f;
+		float WallRunSameWallCooldownRemaining = 0.0f;
+		float WallRunStartDelayRemaining = 0.0f;
+		float WallJumpLateReleaseRemaining = 0.0f;
+		bool bWallRunLockedUntilLanded = false;
+		float JustLandingInputRemaining = 0.0f;
+		float JustLandingCooldownRemaining = 0.0f;
+		bool bPrevWantsToCrouch = false;
+		float WallPerchElapsed = 0.0f;
+		float LurchTimeRemaining = 0.0f;
+		float LurchAngleRemaining = 0.0f;
+		FVector LurchInputDir = FVector::ZeroVector;
+		float CrestUpSpeed = 0.0f;
+		float CrestTimeRemaining = 0.0f;
+		FVector MantleStartLocation = FVector::ZeroVector;
+		FVector MantleTargetLocation = FVector::ZeroVector;
+		FVector MantleExitDirection = FVector::ZeroVector;
+		float MantleElapsed = 0.0f;
+		float MantleDuration = 0.0f;
+	};
+
 	class FSavedMove_Sava : public FSavedMove_Character
 	{
 	public:
@@ -72,7 +103,12 @@ class SAVA_API USavaCharacterMovementComponent : public UCharacterMovementCompon
 		uint8 bSavedWantsToSprint : 1;
 		uint8 bSavedJumpHeld : 1;
 
+		//この移動を始める時点の独自状態(結合で巻き戻すときに使う)
+		FSavaCustomMoveState StartCustomState;
+
 		virtual void Clear() override;
+		virtual void SetInitialPosition(ACharacter* Character) override;
+		virtual void CombineWith(const FSavedMove_Character* OldMove, ACharacter* InCharacter, APlayerController* PC, const FVector& OldStartLocation) override;
 		virtual uint8 GetCompressedFlags() const override;
 		virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const override;
 		virtual void SetMoveFor(ACharacter* Character, float InDeltaTime, FVector const& NewAccel, class FNetworkPredictionData_Client_Character& ClientData) override;
@@ -541,6 +577,9 @@ private:
 	void EndLurch();
 
 	void ShowTechniqueDebug(const FString& Text, const FColor& Color) const;
+
+	FSavaCustomMoveState CaptureCustomMoveState() const;
+	void RestoreCustomMoveState(const FSavaCustomMoveState& State);
 
 	bool IsEdgeJumpAvailable(float LookAheadTime) const;
 	bool IsCrestJumpAvailable(FString* OutFailReason = nullptr) const;
