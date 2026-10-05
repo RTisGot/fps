@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AbilitySystem/SavaGameplayAbility.h"
+#include "AbilitySystem/SavaHoldAimAbility.h"
 #include "SavaGrappleAbility.generated.h"
 
 class ASavaGrappleRope;
@@ -9,23 +9,43 @@ struct FGameplayAbilityTargetDataHandle;
 
 /** Hold the existing grapple input to pull toward a static surface. */
 UCLASS()
-class SAVA_API USavaGrappleAbility : public USavaGameplayAbility
+class SAVA_API USavaGrappleAbility : public USavaHoldAimAbility
 {
 	GENERATED_BODY()
 
 public:
 	USavaGrappleAbility();
-
+	
 protected:
-	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+	
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
-	virtual void InputReleased(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo) override;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Grapple", meta = (ClampMin = "100", Units = "cm"))
-	float MaxRange = 3000.0f;
+	
+
+	virtual void OnAimUpdated_Implementation(
+	const FTransform& AimTransform,
+		bool bIsValid,
+		const TArray<FVector>& PathPoints) override;
+
+	virtual void OnAimStarted_Implementation() override;
+
+	virtual void OnAimEnded_Implementation(bool bConfirmed) override;
+	virtual bool ComputeAim(
+		FTransform& OutTransform,
+		TArray<FVector>& OutPathPoints
+	) const override;
+
+	//グラップル内部で使うよう
+	bool ComputeGrappleAim(
+		FTransform& OutTransform,
+		TArray<FVector>& OutPathPoints
+	)const;
+
+	virtual void OnConfirmed_Implementation(
+		const FTransform& TargetTransform)override;
+
+	
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Grapple", meta = (ClampMin = "100", Units = "cm/s"))
 	float PullSpeed = 2000.0f;

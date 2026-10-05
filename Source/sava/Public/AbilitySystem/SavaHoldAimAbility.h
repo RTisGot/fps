@@ -112,9 +112,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Aim", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float ServerDistanceTolerance = 200.0f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,Category = "Sava|Aim")
+	bool bEndAbilityAfterConfirm = true;
+
 	//今の視点から狙いを計算する(OutPathPoints は ProjectileArc のときだけ)
 	UFUNCTION(BlueprintCallable, Category = "Sava|Aim")
-	bool ComputeAim(FTransform& OutTransform, TArray<FVector>& OutPathPoints) const;
+	virtual bool ComputeAim(FTransform& OutTransform, TArray<FVector>& OutPathPoints) const;
 
 private:
 	UFUNCTION()
