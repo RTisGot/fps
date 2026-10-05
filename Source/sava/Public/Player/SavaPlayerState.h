@@ -32,6 +32,8 @@ public:
 	//サーバーでのみ呼ぶ(GameMode がチーム分けに使う)
 	void SetTeamId(uint8 NewTeamId);
 
+	void Respawn();
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:

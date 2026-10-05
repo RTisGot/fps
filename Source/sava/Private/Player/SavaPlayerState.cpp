@@ -2,7 +2,9 @@
 
 #include "Player/SavaPlayerState.h"
 #include "AbilitySystem/SavaAbilitySystemComponent.h"
+#include "AbilitySystem/SavaAbilitySystemLibrary.h"
 #include "AbilitySystem/SavaAttributeSet.h"
+#include "SavaGameplayTags.h"
 #include "Net/UnrealNetwork.h"
 
 ASavaPlayerState::ASavaPlayerState()
@@ -29,6 +31,23 @@ void ASavaPlayerState::SetTeamId(uint8 NewTeamId)
 	{
 		TeamId = NewTeamId;
 	}
+}
+
+void ASavaPlayerState::Respawn()
+{
+	if (!HasAuthority() || !AbilitySystemComponent)
+	{
+		return;
+	}
+
+	//先にタグを外す(付いたままだとパッシブ能力が発動できない)
+	if (AbilitySystemComponent->HasMatchingGameplayTag(SavaGameplayTags::State_Dead))
+	{
+		AbilitySystemComponent->RemoveLooseGameplayTag(SavaGameplayTags::State_Dead);
+	}
+
+	//HP は回復の GE で戻す。直接書き換えると、HP 0 を通知済みのフラグが戻らず、次の死亡が通知されなくなる
+	USavaAbilitySystemLibrary::ApplyHealing(this, this, AttributeSet->GetMaxHealth());
 }
 
 void ASavaPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
