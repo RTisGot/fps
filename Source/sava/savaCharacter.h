@@ -24,6 +24,7 @@ class USavaCharacterMovementComponent;
 class USavaAbilitySystemComponent;
 class USavaInputConfig;
 class USavaEquipmentComponent;
+class USavaAbilityLoadoutComponent;
 UCLASS(config=Game)
 class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -47,6 +48,10 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	//持っている武器(メイン・サブ)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Sava|Weapon", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<USavaEquipmentComponent> EquipmentComponent;
+
+	//持っているスキル(1 つ)とガジェット(1 つ)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Sava|Loadout", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<USavaAbilityLoadoutComponent> AbilityLoadoutComponent;
 
 	/** Pawn mesh: 1st person view (arms; seen only by self) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=Mesh, meta = (AllowPrivateAccess = "true"))
@@ -201,5 +206,6 @@ public:
 	UCameraComponent* GetFirstPersonCameraComponent() const { return FirstPersonCameraComponent; }
 	USavaCharacterMovementComponent* GetSavaCharacterMovementComponent() const;
 	USavaEquipmentComponent* GetEquipmentComponent() const { return EquipmentComponent; }
+	USavaAbilityLoadoutComponent* GetAbilityLoadoutComponent() const { return AbilityLoadoutComponent; }
 };
 
