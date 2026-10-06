@@ -126,13 +126,6 @@ void USavaCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previo
 	case CMOVE_Mantle:
 		OnMantleEnded.Broadcast();
 		break;
-	case CMOVE_WallPerch:
-		OnWallPerchEnded.Broadcast();
-		if (bWallJumped)
-		{
-			OnWallJumped.Broadcast();
-		}
-		break;
 	default:
 		break;
 	}
@@ -147,9 +140,6 @@ void USavaCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previo
 		break;
 	case CMOVE_Mantle:
 		OnMantleStarted.Broadcast();
-		break;
-	case CMOVE_WallPerch:
-		OnWallPerchStarted.Broadcast();
 		break;
 	default:
 		break;
@@ -327,8 +317,8 @@ bool USavaCharacterMovementComponent::IsSameWallAsLast(const FVector& Normal) co
 
 bool USavaCharacterMovementComponent::TryStartWallRun()
 {
-	//ジャンプボタンを押している間だけ始められる。壁に張り付いた後は着地するまで、地上ジャンプの直後は少しの間始められない
-	if (!bJumpHeld || bWallRunLockedUntilLanded || WallRunStartDelayRemaining > 0.0f)
+	//ジャンプボタンを押している間だけ始められる。地上ジャンプの直後は少しの間始められない
+	if (!bJumpHeld || WallRunStartDelayRemaining > 0.0f)
 	{
 		return false;
 	}
@@ -409,12 +399,7 @@ bool USavaCharacterMovementComponent::TryStartWallRun()
 
 void USavaCharacterMovementComponent::ExitWallRun()
 {
-	//壁走り・壁への張り付きの共通の終わり方
-	//張り付き(パーチ)からは、どう離れても着地するまで壁走りできない(1枚の壁に居座れないように)
-	if (IsWallPerching())
-	{
-		bWallRunLockedUntilLanded = true;
-	}
+	//壁走りの共通の終わり方
 	LastWallRunNormal = WallRunNormal;
 	WallRunSameWallCooldownRemaining = WallRunSameWallCooldown;
 	SetMovementMode(MOVE_Falling);
@@ -430,9 +415,8 @@ float USavaCharacterMovementComponent::GetNextWallJumpUpSpeed() const
 void USavaCharacterMovementComponent::DoWallJump()
 {
 	//ジャンプボタンを離したときに呼ぶ: 壁沿いの勢いを保ったまま、壁から離れる方向と上に飛ぶ
-	//(張り付き中は速度が 0 なので、壁から離れる方向にだけ飛ぶ)
 
-	//ウォールタップ: 張り付いてすぐ跳ぶほど(= すぐ離すほど)、壁沿いの速度が上乗せされる(張り付き中は無し)
+	//ウォールタップ: 張り付いてすぐ跳ぶほど(= すぐ離すほど)、壁沿いの速度が上乗せされる
 	//普通のウォールジャンプは壁沿いの速度を少し失う。ウォールタップが早いほど失う量が減る
 	//同じ壁に張り付き直したときは上乗せなし(1枚の壁で繰り返して無限に加速しないように)。減速しない効果は残す
 	float TapAlpha = 0.0f;
@@ -453,17 +437,13 @@ void USavaCharacterMovementComponent::DoWallJump()
 	WallJumpDecay += bWallRunOnSameWall ? WallJumpSameWallDecayScale : 1.0f;
 
 	//壁走りが途切れた直後(猶予中)のウォールジャンプか
-	const bool bLateRelease = !IsWallRunning() && !IsWallPerching();
+	const bool bLateRelease = !IsWallRunning();
 
 	const FString WallInfo = FString::Printf(TEXT("up %+.0f%s"), UpSpeed, bWallRunOnSameWall ? TEXT(", same wall") : TEXT(""));
 	if (bLateRelease)
 	{
 		ShowTechniqueDebug(FString::Printf(TEXT("Wall Jump (late release)  -%.0f  (%s)"),
 			Velocity.Size2D() - AlongWall.Size(), *WallInfo), FColor::Silver);
-	}
-	else if (IsWallPerching())
-	{
-		ShowTechniqueDebug(FString::Printf(TEXT("Wall Perch -> Wall Jump  (%s)"), *WallInfo), FColor::White);
 	}
 	else if (TapAlpha > 0.0f)
 	{
@@ -498,10 +478,15 @@ void USavaCharacterMovementComponent::DoWallJump()
 
 bool USavaCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 {
-	//壁走り中・張り付き中はジャンプボタンを押しても何もしない(ウォールジャンプはボタンを離したときに DoWallJump で行う)
-	if (IsWallRunning() || IsWallPerching())
+	//壁走り中はジャンプボタンを押しても何もしない(ウォールジャンプはボタンを離したときに DoWallJump で行う)
+	if (IsWallRunning())
 	{
 		return false;
+	}
+
+	if (IsFalling())
+	{
+		return DoAirJump(bReplayingMoves, DeltaTime);
 	}
 
 	//地上のジャンプ: 跳ぶ前の状態でクレスト / エッジを判定する(両方満たすならクレストだけ)
@@ -516,12 +501,6 @@ bool USavaCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTi
 	if (!Super::DoJump(bReplayingMoves, DeltaTime))
 	{
 		return false;
-	}
-
-	//ジャンプボタン長押しで毎フレーム呼ばれる設定でも、効果は地面を離れた1回だけ
-	if (!bWasOnGround)
-	{
-		return true;
 	}
 
 	//跳んだ直後は、ボタンを押したままでも少しの間は壁走りを始めない
@@ -559,6 +538,75 @@ bool USavaCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTi
 	}
 	StartLurch();
 	return true;
+}
+
+//--------------------------------DoubleJump
+
+bool USavaCharacterMovementComponent::DoAirJump(bool bReplayingMoves, float DeltaTime)
+{
+	//ボタン長押しで続けて呼ばれている間(JumpMaxHoldTime を使う設定)は標準の処理のまま。二段ジャンプは押し直したときだけ
+	if (CharacterOwner->bWasJumping)
+	{
+		return Super::DoJump(bReplayingMoves, DeltaTime);
+	}
+
+	//エンジンは跳べないときもこの関数を呼ぶので、回数が残っているかはここで確かめる
+	if (!CharacterOwner->CanJump())
+	{
+		return false;
+	}
+
+	//壁走り・よじ登りを始められるなら、そちらを優先して二段ジャンプは使わない(壁走りに入ると回数も戻る)
+	if (TryStartMantle() || TryStartWallRun())
+	{
+		return false;
+	}
+
+	DoDoubleJump();
+	return true;
+}
+
+void USavaCharacterMovementComponent::DoDoubleJump()
+{
+	//上昇が速いほど、上ではなく横へ飛ぶ(DoubleJumpSidewaysRiseSpeed 以上で上には足さない。今の上昇の勢いは残す)
+	//ジャンプ直後ほど上昇が速いので、ジャンプしてから早く押すほど水平のブーストが大きくなる
+	const float RiseAlpha = DoubleJumpSidewaysRiseSpeed > 0.0f
+		? FMath::Clamp(Velocity.Z / DoubleJumpSidewaysRiseSpeed, 0.0f, 1.0f) : 0.0f;
+	const float UpSpeed = FMath::Max(Velocity.Z, DoubleJumpZVelocity * (1.0f - RiseAlpha));
+	const float SidewaysSpeed = DoubleJumpSidewaysSpeed * RiseAlpha;
+
+	//入力があれば、その向きへ進行方向を変える(大きく変えるほど速度を失う)
+	const FVector Horizontal(Velocity.X, Velocity.Y, 0.0f);
+	float Speed = Horizontal.Size();
+	FVector MoveDir = Speed > KINDA_SMALL_NUMBER ? Horizontal / Speed : FVector::ZeroVector;
+	const FVector InputDir = FVector(Acceleration.X, Acceleration.Y, 0.0f).GetSafeNormal();
+	float TurnAngle = 0.0f;
+	if (!InputDir.IsNearlyZero())
+	{
+		if (!MoveDir.IsZero())
+		{
+			TurnAngle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(MoveDir, InputDir), -1.0f, 1.0f)));
+			Speed *= 1.0f - DoubleJumpRedirectSpeedLoss * TurnAngle / 180.0f;
+		}
+		MoveDir = InputDir;
+	}
+
+	//入力も水平の動きもなければ、真上に跳ぶだけ(横へのブーストは出ない)
+	const float NewSpeed = MoveDir.IsZero() ? 0.0f : Speed + SidewaysSpeed;
+	ShowTechniqueDebug(FString::Printf(TEXT("Double Jump  up %+.0f  side +%.0f (rise %.0f)  turn %.0f deg"),
+		UpSpeed - Velocity.Z, SidewaysSpeed, Velocity.Z, TurnAngle),
+		SidewaysSpeed > 0.0f ? FColor::Green : FColor::Silver);
+
+	Velocity = MoveDir * NewSpeed + FVector(0.0f, 0.0f, UpSpeed);
+
+	//向きはここで変えたので、前のジャンプのラーチは終わらせる
+	EndLurch();
+
+	//補正後のやり直し中は二重になるので知らせない
+	if (!CharacterOwner->bClientUpdating)
+	{
+		OnDoubleJumped.Broadcast();
+	}
 }
 
 //--------------------------------EdgeJump / CrestJump
@@ -716,65 +764,6 @@ void USavaCharacterMovementComponent::PhysWallRun(float DeltaTime, int32 Iterati
 	}
 }
 
-//--------------------------------WallPerch
-
-bool USavaCharacterMovementComponent::IsWallPerching() const
-{
-	return MovementMode == MOVE_Custom && CustomMovementMode == CMOVE_WallPerch;
-}
-
-float USavaCharacterMovementComponent::GetWallPerchTimeRemaining() const
-{
-	return IsWallPerching() ? FMath::Max(WallPerchMaxDuration - WallPerchElapsed, 0.0f) : 0.0f;
-}
-
-void USavaCharacterMovementComponent::EnterWallPerch()
-{
-	//壁走りの壁(WallRunNormal)にそのまま張り付く。勢いは捨てる
-	WallPerchElapsed = 0.0f;
-	Velocity = FVector::ZeroVector;
-	SetMovementMode(MOVE_Custom, CMOVE_WallPerch);
-	ShowTechniqueDebug(TEXT("Wall Perch"), FColor::Green);
-}
-
-bool USavaCharacterMovementComponent::IsWallRunLandingImminent(float TimeAhead) const
-{
-	//壁走りのまま TimeAhead 秒の間に落ちる距離(今の落下速度 + 壁走り中の重力)の範囲に、床があるか
-	const float FallSpeed = FMath::Max(-Velocity.Z, 0.0f);
-	const float Gravity = FMath::Abs(GetGravityZ()) * WallRunGravityScale;
-	const float DropDistance = FallSpeed * TimeAhead + 0.5f * Gravity * TimeAhead * TimeAhead;
-
-	//足元から下へ線を飛ばす(床との小さな隙間の分だけ余裕を持たせる)
-	constexpr float Margin = 5.0f;
-	const float HalfHeight = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	const FVector Feet = UpdatedComponent->GetComponentLocation() - FVector(0.0f, 0.0f, HalfHeight);
-	FHitResult FloorHit;
-	return TraceMovementLine(Feet, Feet - FVector(0.0f, 0.0f, DropDistance + Margin), FloorHit) && IsWalkable(FloorHit);
-}
-
-void USavaCharacterMovementComponent::PhysWallPerch(float DeltaTime, int32 Iterations)
-{
-	if (DeltaTime < MIN_TICK_TIME)
-	{
-		return;
-	}
-	WallPerchElapsed += DeltaTime;
-
-	//壁がなくなった / 時間切れなら落ちる(しゃがみを離したときは UpdateCharacterStateBeforeMovement で落ちる)
-	FHitResult WallHit;
-	if (!FindWallRunWall(-WallRunNormal, WallHit) || WallPerchElapsed >= WallPerchMaxDuration)
-	{
-		ShowTechniqueDebug(WallPerchElapsed >= WallPerchMaxDuration ? TEXT("Wall Perch end: time up") : TEXT("Wall Perch end: wall lost"), FColor::Silver);
-		ExitWallRun();
-		StartNewPhysics(DeltaTime, Iterations);
-		return;
-	}
-	WallRunNormal = WallHit.ImpactNormal.GetSafeNormal2D();
-
-	//完全に止まる(重力もかけない)
-	Velocity = FVector::ZeroVector;
-}
-
 //--------------------------------Mantle
 
 bool USavaCharacterMovementComponent::IsMantling() const
@@ -906,9 +895,9 @@ bool USavaCharacterMovementComponent::IsMovingOnGround() const
 
 bool USavaCharacterMovementComponent::CanAttemptJump() const
 {
-	//通常はしゃがみボタン押下中はジャンプ不可だが、スライディング中は許可する
-	//(壁走り中・張り付き中はジャンプボタンを押しても跳ばない。ウォールジャンプはボタンを離したときに行う)
-	if (IsSliding())
+	//通常はしゃがみボタン押下中はジャンプ不可だが、スライディング中と空中(二段ジャンプ)は許可する
+	//(壁走り中はジャンプボタンを押しても跳ばない。ウォールジャンプはボタンを離したときに行う)
+	if (IsSliding() || IsFalling())
 	{
 		return IsJumpAllowed();
 	}
@@ -937,7 +926,8 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 		bPrevWantsToCrouch = bWantsToCrouch;
 
 		//空中でしゃがみを押した瞬間から、ジャストランディングの受付が始まる(押しっぱなしで着地しても成功にはならない)
-		if (bCrouchPressed && IsFalling())
+		//壁走り中に押しても受け付ける(壁走りのまま着地したとき用)
+		if (bCrouchPressed && (IsFalling() || IsWallRunning()))
 		{
 			JustLandingInputRemaining = FMath::Max(JustLandingWindow, KINDA_SMALL_NUMBER);
 		}
@@ -949,33 +939,14 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 		SetMovementMode(MOVE_Walking);
 	}
 
-	//壁走り: ジャンプを離したらウォールジャンプ / しゃがみを押した瞬間に壁に張り付く / 張り付き中にしゃがみを離したら落ちる
-	//落下中はジャンプを押している間、条件を満たす壁があれば開始
-	//(押しっぱなしのしゃがみでは張り付かない。壁走り中・張り付き中はしゃがみ姿勢が自動で解除される)
+	//壁走り: ジャンプを離したらウォールジャンプ。落下中はジャンプを押している間、条件を満たす壁があれば開始
+	//(壁走り中はしゃがみ姿勢が自動で解除される)
 	if (bCanChangeState)
 	{
-		//壁走り中・張り付き中、または壁走りが途切れた直後(猶予中)にジャンプを離したらウォールジャンプ
-		if (!bJumpHeld && (IsWallRunning() || IsWallPerching() || (IsFalling() && WallJumpLateReleaseRemaining > 0.0f)))
+		//壁走り中、または壁走りが途切れた直後(猶予中)にジャンプを離したらウォールジャンプ
+		if (!bJumpHeld && (IsWallRunning() || (IsFalling() && WallJumpLateReleaseRemaining > 0.0f)))
 		{
 			DoWallJump();
-		}
-		else if (IsWallRunning() && bCrouchPressed)
-		{
-			//すぐ着地するならジャストランディングを優先する(張り付かずに壁走りのまま着地し、ジャストランディングになる)
-			if (IsWallRunLandingImminent(JustLandingWindow))
-			{
-				JustLandingInputRemaining = FMath::Max(JustLandingWindow, KINDA_SMALL_NUMBER);
-				ShowTechniqueDebug(TEXT("Wall Perch skipped: landing soon (just landing window)"), FColor::White);
-			}
-			else
-			{
-				EnterWallPerch();
-			}
-		}
-		else if (IsWallPerching() && !bWantsToCrouch)
-		{
-			ShowTechniqueDebug(TEXT("Wall Perch end: released"), FColor::Silver);
-			ExitWallRun();
 		}
 		else if (IsFalling())
 		{
@@ -1009,7 +980,6 @@ void USavaCharacterMovementComponent::SetPostLandedPhysics(const FHitResult& Hit
 	//着地したので、どの壁でも新しく壁走りできる。ウォールジャンプの角度も元に戻す
 	LastWallRunNormal = FVector::ZeroVector;
 	WallJumpDecay = 0.0f;
-	bWallRunLockedUntilLanded = false;
 	WallJumpLateReleaseRemaining = 0.0f;
 
 	//空中でしゃがみを押してすぐの着地か(ジャストランディング)
@@ -1098,9 +1068,6 @@ void USavaCharacterMovementComponent::PhysCustom(float DeltaTime, int32 Iteratio
 			break;
 		case CMOVE_Mantle:
 			PhysMantle(Step, Iterations);
-			break;
-		case CMOVE_WallPerch:
-			PhysWallPerch(Step, Iterations);
 			break;
 		default:
 			break;
@@ -1265,14 +1232,14 @@ void USavaCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick 
 			FMath::Max(WallRunMaxDuration - WallRunElapsed, 0.0f),
 			bWallRunOnSameWall ? TEXT(" (same wall)") : TEXT(""));
 	}
-	//壁走り・張り付き中と、着地前にウォールジャンプした後は、次のウォールジャンプの上向き速度を出す
-	if (IsWallRunning() || IsWallPerching() || WallJumpDecay > 0.0f)
+	//壁走り中と、着地前にウォールジャンプした後は、次のウォールジャンプの上向き速度を出す
+	if (IsWallRunning() || WallJumpDecay > 0.0f)
 	{
 		Line += FString::Printf(TEXT("  |  Next WJ up %+.0f"), GetNextWallJumpUpSpeed());
 	}
-	if (bWallRunLockedUntilLanded)
+	if (IsFalling() && CharacterOwner->CanJump())
 	{
-		Line += TEXT("  |  WALL RUN LOCKED (perched)");
+		Line += TEXT("  |  DOUBLE JUMP READY");
 	}
 	if (bJumpHeld)
 	{
@@ -1292,10 +1259,6 @@ void USavaCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick 
 	}
 	//ブーストの残りクールダウン(0 なら使える)
 	Line += FString::Printf(TEXT("  |  Boost CD: slide %.1fs / just landing %.1fs"), SlideBoostCooldownRemaining, JustLandingCooldownRemaining);
-	if (IsWallPerching())
-	{
-		Line += FString::Printf(TEXT("  |  Perch left %.1fs"), GetWallPerchTimeRemaining());
-	}
 	if (IsSliding())
 	{
 		//足元の坂の角度(上りがプラス)。クレストジャンプは CrestJumpMinSlopeAngle 以上の上りが必要
@@ -1344,11 +1307,9 @@ void USavaCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterM
 		WallRunSameWallCooldownRemaining = SavaResponse.WallRunSameWallCooldownRemaining;
 		WallRunStartDelayRemaining = SavaResponse.WallRunStartDelayRemaining;
 		WallJumpLateReleaseRemaining = SavaResponse.WallJumpLateReleaseRemaining;
-		bWallRunLockedUntilLanded = SavaResponse.bWallRunLockedUntilLanded;
 		JustLandingInputRemaining = SavaResponse.JustLandingInputRemaining;
 		JustLandingCooldownRemaining = SavaResponse.JustLandingCooldownRemaining;
 		bPrevWantsToCrouch = SavaResponse.bPrevWantsToCrouch;
-		WallPerchElapsed = SavaResponse.WallPerchElapsed;
 		LurchTimeRemaining = SavaResponse.LurchTimeRemaining;
 		LurchAngleRemaining = SavaResponse.LurchAngleRemaining;
 		LurchInputDir = SavaResponse.LurchInputDir;
@@ -1379,11 +1340,9 @@ void FSavaCharacterMoveResponseDataContainer::ServerFillResponseData(const UChar
 	WallRunSameWallCooldownRemaining = SavaMovement.WallRunSameWallCooldownRemaining;
 	WallRunStartDelayRemaining = SavaMovement.WallRunStartDelayRemaining;
 	WallJumpLateReleaseRemaining = SavaMovement.WallJumpLateReleaseRemaining;
-	bWallRunLockedUntilLanded = SavaMovement.bWallRunLockedUntilLanded;
 	JustLandingInputRemaining = SavaMovement.JustLandingInputRemaining;
 	JustLandingCooldownRemaining = SavaMovement.JustLandingCooldownRemaining;
 	bPrevWantsToCrouch = SavaMovement.bPrevWantsToCrouch;
-	WallPerchElapsed = SavaMovement.WallPerchElapsed;
 	LurchTimeRemaining = SavaMovement.LurchTimeRemaining;
 	LurchAngleRemaining = SavaMovement.LurchAngleRemaining;
 	LurchInputDir = SavaMovement.LurchInputDir;
@@ -1416,11 +1375,9 @@ bool FSavaCharacterMoveResponseDataContainer::Serialize(UCharacterMovementCompon
 		Ar << WallRunSameWallCooldownRemaining;
 		Ar << WallRunStartDelayRemaining;
 		Ar << WallJumpLateReleaseRemaining;
-		Ar << bWallRunLockedUntilLanded;
 		Ar << JustLandingInputRemaining;
 		Ar << JustLandingCooldownRemaining;
 		Ar << bPrevWantsToCrouch;
-		Ar << WallPerchElapsed;
 		Ar << LurchTimeRemaining;
 		Ar << LurchAngleRemaining;
 		Ar << LurchInputDir;
@@ -1488,11 +1445,9 @@ USavaCharacterMovementComponent::FSavaCustomMoveState USavaCharacterMovementComp
 	State.WallRunSameWallCooldownRemaining = WallRunSameWallCooldownRemaining;
 	State.WallRunStartDelayRemaining = WallRunStartDelayRemaining;
 	State.WallJumpLateReleaseRemaining = WallJumpLateReleaseRemaining;
-	State.bWallRunLockedUntilLanded = bWallRunLockedUntilLanded;
 	State.JustLandingInputRemaining = JustLandingInputRemaining;
 	State.JustLandingCooldownRemaining = JustLandingCooldownRemaining;
 	State.bPrevWantsToCrouch = bPrevWantsToCrouch;
-	State.WallPerchElapsed = WallPerchElapsed;
 	State.LurchTimeRemaining = LurchTimeRemaining;
 	State.LurchAngleRemaining = LurchAngleRemaining;
 	State.LurchInputDir = LurchInputDir;
@@ -1518,11 +1473,9 @@ void USavaCharacterMovementComponent::RestoreCustomMoveState(const FSavaCustomMo
 	WallRunSameWallCooldownRemaining = State.WallRunSameWallCooldownRemaining;
 	WallRunStartDelayRemaining = State.WallRunStartDelayRemaining;
 	WallJumpLateReleaseRemaining = State.WallJumpLateReleaseRemaining;
-	bWallRunLockedUntilLanded = State.bWallRunLockedUntilLanded;
 	JustLandingInputRemaining = State.JustLandingInputRemaining;
 	JustLandingCooldownRemaining = State.JustLandingCooldownRemaining;
 	bPrevWantsToCrouch = State.bPrevWantsToCrouch;
-	WallPerchElapsed = State.WallPerchElapsed;
 	LurchTimeRemaining = State.LurchTimeRemaining;
 	LurchAngleRemaining = State.LurchAngleRemaining;
 	LurchInputDir = State.LurchInputDir;
