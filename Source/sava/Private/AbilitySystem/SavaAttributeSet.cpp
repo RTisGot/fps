@@ -74,14 +74,6 @@ void USavaAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 		if (LocalDamage > 0.0f)
 		{
 			SetHealth(FMath::Clamp(GetHealth() - LocalDamage, 0.0f, GetMaxHealth()));
-
-			UE_LOG(
-				LogTemp,
-				Warning,
-				TEXT("===== DAMAGE APPLIED ===== Health=%.1f Damage=%.1f"),
-				GetHealth(),
-				LocalDamage
-			);
 		}
 	}
 	else if (Data.EvaluatedData.Attribute == GetHealingAttribute())

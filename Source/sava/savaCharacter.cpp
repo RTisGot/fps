@@ -38,10 +38,7 @@ AsavaCharacter::AsavaCharacter(const FObjectInitializer& ObjectInitializer)
 {
 	
 	GetCapsuleComponent()->InitCapsuleSize(55.f, 96.0f);
-
-	//地上のジャンプ + 空中で1回(二段ジャンプ)。動きは移動コンポーネントの Sava|DoubleJump で調整する
-	JumpMaxCount = 2;
-
+		
 	//カメラコンポネントを作成
 	FirstPersonCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));//一人称視点のコンポネントを作成
 	FirstPersonCameraComponent->SetupAttachment(GetCapsuleComponent());//カメラをキャラにつける
@@ -342,9 +339,8 @@ void AsavaCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightA
 
 bool AsavaCharacter::CanJumpInternal_Implementation() const
 {
-	//通常はしゃがみ中ジャンプ不可だが、スライディング中(スライディングジャンプ)と空中(二段ジャンプ)は許可する
-	const USavaCharacterMovementComponent* SavaMovement = GetSavaCharacterMovementComponent();
-	if (SavaMovement->IsSliding() || SavaMovement->IsFalling())
+	//通常はしゃがみ中ジャンプ不可だが、スライディング中は許可する(スライディングジャンプ)
+	if (GetSavaCharacterMovementComponent()->IsSliding())
 	{
 		return JumpIsAllowedInternal();
 	}
@@ -513,15 +509,6 @@ void AsavaCharacter::ToggleSettingsMenu()
 
 void AsavaCharacter::HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount)
 {
-
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("HandleOutOfHealth: Victim=%s, Instigator=%s, Damage=%.1f"),
-		*GetName(),
-		*GetNameSafe(DamageInstigator),
-		DamageAmount
-	);
 
 	if (DamageInstigator && DamageInstigator != this)
 	{
