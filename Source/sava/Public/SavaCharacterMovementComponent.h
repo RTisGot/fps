@@ -133,6 +133,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "Deg"))
 		float SprintMaxAngle = 50.0f;
 
+	
+
 	UFUNCTION(BlueprintCallable,Category = "Sava|Sprint")
 	void StartSprint() { bWantsToSprint = true; }
 	UFUNCTION(BlueprintCallable, Category = "Sava|Sprint")
