@@ -527,6 +527,7 @@ void AsavaCharacter::HandleDeath()
 	{
 		AbilitySystemComponent->AddLooseGameplayTag(SavaGameplayTags::State_Dead); //先にタグ。能力が再発動しないように
 		AbilitySystemComponent->CancelAllAbilities();
+		AbilitySystemComponent->RemoveActiveEffects(FGameplayEffectQuery()); //期間付き・永続の GE をすべて外す(バフ・クールダウンなど)
 	}
 
 	AController* DeadController = GetController(); //Unpossess すると null になるので先に取っておく

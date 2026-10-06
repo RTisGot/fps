@@ -17,37 +17,35 @@ AsavaGameMode::AsavaGameMode()
 	PlayerStateClass = ASavaPlayerState::StaticClass();
 }
 
+void AsavaGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
+{
+	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
+	if (!ErrorMessage.IsEmpty())
+	{
+		return; //標準の審査で拒否済み
+	}
+
+	//ErrorMessage に文字を入れると、その接続は拒否され、相手に理由として表示される
+	if (GetNumPlayers() >= NumTeams * MaxPlayersPerTeam)
+	{
+		ErrorMessage = TEXT("Match is full.");
+	}
+}
+
 void AsavaGameMode::PostLogin(APlayerController* NewPlayer)
 {
-	Super::PostLogin(NewPlayer);
+	//チームは体をスポーンする前に決める(PlayerState は Login の時点で作られている)
+	AssignTeam(NewPlayer);
+	Super::PostLogin(NewPlayer); //この中でスポーンまで行われる
+}
 
+void AsavaGameMode::AssignTeam(APlayerController* NewPlayer)
+{
 	ASavaPlayerState* NewPlayerState = NewPlayer ? NewPlayer->GetPlayerState<ASavaPlayerState>() : nullptr;
 	if (!NewPlayerState || !GameState)
 	{
 		return;
 	}
-
-	//人数の少ないチームに入れる
-	TArray<int32> TeamCounts;
-	TeamCounts.SetNumZeroed(NumTeams);
-	for (const APlayerState* PlayerState : GameState->PlayerArray)
-	{
-		const ASavaPlayerState* SavaPlayerState = Cast<ASavaPlayerState>(PlayerState);
-		if (SavaPlayerState && SavaPlayerState != NewPlayerState && TeamCounts.IsValidIndex(SavaPlayerState->GetTeamId()))
-		{
-			TeamCounts[SavaPlayerState->GetTeamId()]++;
-		}
-	}
-
-	int32 SmallestTeam = 0;
-	for (int32 TeamIndex = 1; TeamIndex < TeamCounts.Num(); ++TeamIndex)
-	{
-		if (TeamCounts[TeamIndex] < TeamCounts[SmallestTeam])
-		{
-			SmallestTeam = TeamIndex;
-		}
-	}
-	NewPlayerState->SetTeamId(static_cast<uint8>(SmallestTeam));
 }
 
 void AsavaGameMode::NotifyPlayerDied(AController* DeadController)
