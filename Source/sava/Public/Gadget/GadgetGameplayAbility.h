@@ -5,6 +5,7 @@
 #include "GadgetGameplayAbility.generated.h"
 
 class AGadgetBase;
+class AsavaCharacter;
 
 UCLASS()
 class SAVA_API UGadgetGameplayAbility : public USavaGameplayAbility
