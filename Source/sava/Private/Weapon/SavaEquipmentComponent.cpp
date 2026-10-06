@@ -478,6 +478,101 @@ void USavaEquipmentComponent::AbsorbPlayerPitchInput(float CurrentPitch)
 		RecoilPitchToRecover = FMath::Max(0.0f, RecoilPitchToRecover + PlayerDelta);
 	}
 }
+//--------------------------------Weapon Visual
+
+bool USavaEquipmentComponent::GetCurrentMuzzleLocation(FVector& OutLocation) const
+{
+	if (!WeaponMeshComponent)
+	{
+		return false;
+	}
+
+	static const FName MuzzleBoneName(TEXT("Muzzle"));
+
+	const int32 MuzzleBoneIndex = WeaponMeshComponent->GetBoneIndex(MuzzleBoneName);
+	if (MuzzleBoneIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	OutLocation = WeaponMeshComponent->GetSocketLocation(MuzzleBoneName);
+	return true;
+}
+
+void USavaEquipmentComponent::NotifyWeaponFireVisual(
+	const FVector& MuzzleLocation,
+	const TArray<FVector>& TraceEnds)
+{
+	//視覚演出は自分の画面では即座に再生する。
+	OnWeaponMuzzleFlash(MuzzleLocation);
+	OnWeaponTracer(MuzzleLocation, TraceEnds);
+
+	//サーバーへ演出情報を送る。
+	if (!GetOwner()->HasAuthority())
+	{
+		TArray<FVector_NetQuantize> QuantizedTraceEnds;
+		QuantizedTraceEnds.Reserve(TraceEnds.Num());
+
+		for (const FVector& TraceEnd : TraceEnds)
+		{
+			QuantizedTraceEnds.Add(TraceEnd);
+		}
+
+		ServerNotifyWeaponFireVisual(
+			FVector_NetQuantize(MuzzleLocation),
+			QuantizedTraceEnds);
+	}
+	else
+	{
+		//Listen Server の場合はサーバー自身がAuthorityなので、
+		//Server RPCを経由せず、そのまま全員へ通知する。
+		TArray<FVector_NetQuantize> QuantizedTraceEnds;
+		QuantizedTraceEnds.Reserve(TraceEnds.Num());
+
+		for (const FVector& TraceEnd : TraceEnds)
+		{
+			QuantizedTraceEnds.Add(TraceEnd);
+		}
+
+		MulticastWeaponFireVisual(
+			FVector_NetQuantize(MuzzleLocation),
+			QuantizedTraceEnds);
+	}
+}
+
+void USavaEquipmentComponent::ServerNotifyWeaponFireVisual_Implementation(
+	FVector_NetQuantize MuzzleLocation,
+	const TArray<FVector_NetQuantize>& TraceEnds)
+{
+	//視覚演出用なのでゲーム状態は変更しない。
+	//MulticastはUnreliableで送る。
+	MulticastWeaponFireVisual(MuzzleLocation, TraceEnds);
+}
+
+void USavaEquipmentComponent::MulticastWeaponFireVisual_Implementation(
+	FVector_NetQuantize MuzzleLocation,
+	const TArray<FVector_NetQuantize>& TraceEnds)
+{
+	APawn* Pawn = Cast<APawn>(GetOwner());
+
+	//発砲者はNotifyWeaponFireVisual()で既に即時再生している。
+	//ここで再生すると二重表示になるためスキップする。
+	if (Pawn && Pawn->IsLocallyControlled())
+	{
+		return;
+	}
+
+	TArray<FVector> ConvertedTraceEnds;
+	ConvertedTraceEnds.Reserve(TraceEnds.Num());
+
+	for (const FVector_NetQuantize& TraceEnd : TraceEnds)
+	{
+		ConvertedTraceEnds.Add(FVector(TraceEnd));
+	}
+
+	OnWeaponMuzzleFlash(FVector(MuzzleLocation));
+	OnWeaponTracer(FVector(MuzzleLocation), ConvertedTraceEnds);
+}
 
 //--------------------------------Helpers
 

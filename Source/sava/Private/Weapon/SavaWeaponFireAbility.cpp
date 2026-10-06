@@ -157,28 +157,36 @@ void USavaWeaponFireAbility::FireShot()
 	TArray<FHitResult> Hits;
 	TraceShot(Stats, Equipment->GetCurrentSpreadAngle(), Hits);
 
-	if (IsWeaponDebugEnabled())
+	//デバッグ用の弾道表示
+	for (const FHitResult& Hit : Hits)
 	{
-		for (const FHitResult& Hit : Hits)
-		{
-			const FColor Color = !Hit.bBlockingHit ? FColor::White : (Hit.BoneName == HeadBoneName ? FColor::Red : FColor::Yellow);
-			DrawDebugLine(GetWorld(), Hit.TraceStart, Hit.ImpactPoint, Color, false, DebugDrawTime, 0, 0.5f);
-		}
+		DrawDebugLine(
+			GetWorld(),
+			Hit.TraceStart,
+			Hit.ImpactPoint,
+			FColor::Red,
+			false,
+			1.0f,
+			0,
+			1.0f);
 	}
 
-	//演出(自分の画面だけ)
-	if (const USavaWeaponData* Weapon = Equipment->GetWeaponData(FiringSlot))
+	//武器の視覚演出を全プレイヤーへ通知する
+	FVector MuzzleLocation;
+	if (Equipment->GetCurrentMuzzleLocation(MuzzleLocation))
 	{
-		if (Weapon->FireSound)
+		TArray<FVector> TraceEnds;
+		TraceEnds.Reserve(Hits.Num());
+
+		for (const FHitResult& Hit : Hits)
 		{
-			UGameplayStatics::PlaySound2D(this, Weapon->FireSound);
+			TraceEnds.Add(Hit.ImpactPoint);
 		}
-		const USkeletalMeshComponent* ArmsMesh = Equipment->GetFirstPersonMesh();
-		if (UAnimInstance* AnimInstance = ArmsMesh ? ArmsMesh->GetAnimInstance() : nullptr; AnimInstance && Weapon->FireMontage)
-		{
-			AnimInstance->Montage_Play(Weapon->FireMontage);
-		}
+
+		Equipment->NotifyWeaponFireVisual(MuzzleLocation, TraceEnds);
 	}
+
+	//既存のローカル演出
 	OnFired(Hits);
 
 	//反動はレイを飛ばした後に付ける(次の 1 発から影響する)

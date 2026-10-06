@@ -126,6 +126,14 @@ public:
 	//自分の画面: 腕のメッシュ(アニメーションの再生用)
 	USkeletalMeshComponent* GetFirstPersonMesh() const;
 
+	//--------------------------------武器演出
+
+	// 現在装備している武器の銃口位置を取得する。
+	bool GetCurrentMuzzleLocation(FVector& OutLocation) const;
+
+	// 武器の発砲演出をサーバーへ通知する。
+	void NotifyWeaponFireVisual(const FVector& MuzzleLocation, const TArray<FVector>& TraceEnds);
+
 protected:
 	//装備を用意するまでの仮の武器(ロードアウト画面ができるまで、キャラクターの Blueprint で設定する)
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Weapon")
@@ -133,6 +141,14 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Weapon")
 	TObjectPtr<USavaWeaponData> DefaultSecondaryWeapon;
+
+	//自分の画面でマズルフラッシュを再生する
+	UFUNCTION(BlueprintImplementableEvent, Category = "Sava|Weapon|Visual")
+	void OnWeaponMuzzleFlash(const FVector& MuzzleLocation);
+
+	//自分の画面でトレーサーを再生する
+	UFUNCTION(BlueprintImplementableEvent, Category = "Sava|Weapon|Visual")
+	void OnWeaponTracer(const FVector& MuzzleLocation, const TArray<FVector>& TraceEnds);
 
 private:
 	//1 つの枠の、自分のマシン上での状態(同期しない)
@@ -192,6 +208,18 @@ private:
 	//1 人称の腕に持たせる武器のメッシュ
 	UPROPERTY(Transient)
 	TObjectPtr<USkeletalMeshComponent> WeaponMeshComponent;
+
+	//クライアントから受け取った発砲演出を全員へ通知する
+	UFUNCTION(Server, Unreliable)
+	void ServerNotifyWeaponFireVisual(
+		FVector_NetQuantize MuzzleLocation,
+		const TArray<FVector_NetQuantize>& TraceEnds);
+
+	//全クライアントへ発砲演出を通知する
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastWeaponFireVisual(
+		FVector_NetQuantize MuzzleLocation,
+		const TArray<FVector_NetQuantize>& TraceEnds);
 
 	//ADS
 	float ADSAlpha = 0.0f;
