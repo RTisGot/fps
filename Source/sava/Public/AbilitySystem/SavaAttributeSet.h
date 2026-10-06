@@ -34,6 +34,13 @@ public:
 	SAVA_ATTRIBUTE_ACCESSORS(USavaAttributeSet, Damage);
 	SAVA_ATTRIBUTE_ACCESSORS(USavaAttributeSet, Healing);
 
+
+	UFUNCTION(BlueprintPure, Category = "Sava|Movement")
+	float GetMovementSpeedMultiplierValue() const
+	{
+		return GetMoveSpeedMultiplier();
+	}
+
 	mutable FSavaOutOfHealthDelegate OnOutOfHealth;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

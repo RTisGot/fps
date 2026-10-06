@@ -14,7 +14,6 @@ enum ESavaCustomMovementMode : uint8
 	CMOVE_Slide		UMETA(DisplayName = "Slide"),
 	CMOVE_WallRun	UMETA(DisplayName = "Wall Run"),
 	CMOVE_Mantle	UMETA(DisplayName = "Mantle"),
-	CMOVE_WallPerch	UMETA(DisplayName = "Wall Perch"),
 	CMOVE_MAX		UMETA(Hidden),
 };
 
@@ -37,11 +36,9 @@ struct FSavaCharacterMoveResponseDataContainer : FCharacterMoveResponseDataConta
 	float WallRunSameWallCooldownRemaining = 0.0f;
 	float WallRunStartDelayRemaining = 0.0f;
 	float WallJumpLateReleaseRemaining = 0.0f;
-	bool bWallRunLockedUntilLanded = false;
 	float JustLandingInputRemaining = 0.0f;
 	float JustLandingCooldownRemaining = 0.0f;
 	bool bPrevWantsToCrouch = false;
-	float WallPerchElapsed = 0.0f;
 	float LurchTimeRemaining = 0.0f;
 	float LurchAngleRemaining = 0.0f;
 	FVector LurchInputDir = FVector::ZeroVector;
@@ -78,11 +75,9 @@ class SAVA_API USavaCharacterMovementComponent : public UCharacterMovementCompon
 		float WallRunSameWallCooldownRemaining = 0.0f;
 		float WallRunStartDelayRemaining = 0.0f;
 		float WallJumpLateReleaseRemaining = 0.0f;
-		bool bWallRunLockedUntilLanded = false;
 		float JustLandingInputRemaining = 0.0f;
 		float JustLandingCooldownRemaining = 0.0f;
 		bool bPrevWantsToCrouch = false;
-		float WallPerchElapsed = 0.0f;
 		float LurchTimeRemaining = 0.0f;
 		float LurchAngleRemaining = 0.0f;
 		FVector LurchInputDir = FVector::ZeroVector;
@@ -133,6 +128,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Sprint", meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "Deg"))
 		float SprintMaxAngle = 50.0f;
 
+	
+
 	UFUNCTION(BlueprintCallable,Category = "Sava|Sprint")
 	void StartSprint() { bWantsToSprint = true; }
 	UFUNCTION(BlueprintCallable, Category = "Sava|Sprint")
@@ -157,6 +154,11 @@ public:
 	float GetAbilityMoveSpeedMultiplier() const;
 
 	USavaCharacterMovementComponent();
+
+	//独自の移動(スライディング・壁走り・よじ登り)を計算するときの最大の刻み幅。
+	//これより長いフレームは分割して計算する(フレームレートが低くても同じ動きになる)。1/60 より短いフレームは変わらない
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Network", meta = (ClampMin = "0.001", ForceUnits = "s"))
+	float CustomPhysicsMaxStep = 1.0f / 60.0f;
 
 	//スライディング開始に必要な水平速度 = 歩きの速度 MaxWalkSpeed × この倍率(スキルの速度倍率も掛かる)
 	//1 より少し大きくして、歩いている(ちょうど歩きの最高速度)ときはしゃがみになるようにする
@@ -373,20 +375,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|EdgeJump", meta = (ClampMin = "0", ClampMax = "1"))
 	float JumpSpeedLoss = 0.12f;
 
-	//----- ウォールパーチ: 壁走り中にしゃがみを押すと、壁に張り付いて止まる -----
-	//(ジャンプを離すとウォールジャンプ、しゃがみを離すと落ちる)
-
-	//張り付いていられる最大時間(過ぎると落ちる)。張り付いた後は、着地するまで壁走り・張り付きができない
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallPerch", meta = (ClampMin = "0", ForceUnits = "s"))
-	float WallPerchMaxDuration = 2.0f;
-
-	UFUNCTION(BlueprintPure, Category = "Sava|WallPerch")
-	bool IsWallPerching() const;
-
-	//張り付いていられる残り時間(UI表示用)
-	UFUNCTION(BlueprintPure, Category = "Sava|WallPerch")
-	float GetWallPerchTimeRemaining() const;
-
 	//----- ラーチ: ジャンプ直後の短い時間だけ、新しく入れた方向へ大きく曲がれる -----
 
 	//ジャンプしてから曲がれる時間
@@ -409,6 +397,27 @@ public:
 	//(ジャンプ前から入れっぱなしの方向へは勝手に曲がらない)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Lurch", meta = (ClampMin = "0", ClampMax = "180", ForceUnits = "Deg"))
 	float LurchInputChangeAngle = 20.0f;
+
+	//----- 二段ジャンプ: 空中でもう一度だけジャンプできる(回数はキャラクターの JumpMaxCount。2 = 地上 + 空中1回) -----
+	//壁走り・よじ登りを始められるときはそちらを優先し、二段ジャンプは使わない。壁走りすると回数が戻る
+	//入力があればその向きへ進行方向を変える。上昇中に跳ぶほど上ではなく横へ飛ぶ
+	//(ジャンプ直後ほど上昇が速いので、ジャンプしてから早く押すほど水平のブーストが大きい)
+
+	//落下中(上昇していないとき)に跳んだときの上向き速度
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|DoubleJump", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float DoubleJumpZVelocity = 420.0f;
+
+	//上昇速度がこれ以上なら、上には全く足さずにすべて横へ飛ぶ(上昇が遅いほど上へ跳ぶ割合が増える)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|DoubleJump", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float DoubleJumpSidewaysRiseSpeed = 400.0f;
+
+	//上昇速度が DoubleJumpSidewaysRiseSpeed 以上で跳んだときに足す水平の速度(上昇が遅いほど減り、落下中は 0)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|DoubleJump", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float DoubleJumpSidewaysSpeed = 350.0f;
+
+	//入力の向きへ進行方向を変えるとき、真後ろ(180度)へ変えたら失う水平の速度の割合(変えた角度に比例)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|DoubleJump", meta = (ClampMin = "0", ClampMax = "1"))
+	float DoubleJumpRedirectSpeedLoss = 0.25f;
 
 	//----- エッジジャンプ: 足場から落ちる直前にジャンプすると、水平の速度が少し上乗せされる -----
 
@@ -489,10 +498,10 @@ public:
 	TEnumAsByte<ESavaCustomMovementMode> GetCustomMovementModeType() const;
 
 	//----- Blueprint 用のイベント -----
-	//自分・サーバー・他のプレイヤーのすべての画面で呼ばれる(ウォールジャンプだけは例外)。
+	//自分・サーバー・他のプレイヤーのすべての画面で呼ばれる(ウォールジャンプ・二段ジャンプだけは例外)。
 	//音・エフェクト・アニメーション専用。ダメージなどゲームの判定には使わないこと
 
-	//独自移動(スライディング・壁走り・よじ登り・壁への張り付き)が切り替わったとき
+	//独自移動(スライディング・壁走り・よじ登り)が切り替わったとき
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Events")
 	FSavaCustomMovementModeChangedSignature OnCustomMovementModeChanged;
 
@@ -509,16 +518,13 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Events")
 	FSavaMovementEventSignature OnWallRunEnded;
 
-	//ウォールジャンプしたとき(OnWallRunEnded / OnWallPerchEnded の直後。壁走りが途切れた直後の猶予中なら単独で)。自分とサーバーでだけ呼ばれる
+	//ウォールジャンプしたとき(OnWallRunEnded の直後。壁走りが途切れた直後の猶予中なら単独で)。自分とサーバーでだけ呼ばれる
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Events")
 	FSavaMovementEventSignature OnWallJumped;
 
-	//壁に張り付いたとき(目立つ音やエフェクトを出して、相手に気づけるようにする)
+	//二段ジャンプしたとき。自分とサーバーでだけ呼ばれる
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Events")
-	FSavaMovementEventSignature OnWallPerchStarted;
-
-	UPROPERTY(BlueprintAssignable, Category = "Sava|Events")
-	FSavaMovementEventSignature OnWallPerchEnded;
+	FSavaMovementEventSignature OnDoubleJumped;
 
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Events")
 	FSavaMovementEventSignature OnMantleStarted;
@@ -567,9 +573,8 @@ private:
 	void PhysWallRun(float DeltaTime, int32 Iterations);
 	void DoWallJump();
 
-	void EnterWallPerch();
-	bool IsWallRunLandingImminent(float TimeAhead) const;
-	void PhysWallPerch(float DeltaTime, int32 Iterations);
+	bool DoAirJump(bool bReplayingMoves, float DeltaTime);
+	void DoDoubleJump();
 
 	void StartLurch();
 	void ApplyLurch(float DeltaTime);
@@ -627,18 +632,12 @@ private:
 	//壁走りが途切れた後、ジャンプを離せばウォールジャンプになる残り時間
 	float WallJumpLateReleaseRemaining = 0.0f;
 
-	//壁に張り付いた(パーチした)後は、着地するまで壁走りできない
-	bool bWallRunLockedUntilLanded = false;
-
 	//ジャストランディング: 空中でしゃがみを押してからの受付の残り時間・ブーストのクールダウン残り時間
 	float JustLandingInputRemaining = 0.0f;
 	float JustLandingCooldownRemaining = 0.0f;
 
 	//前のフレームのしゃがみ入力(押した瞬間の判定用)
 	bool bPrevWantsToCrouch = false;
-
-	//壁に張り付いてからの時間
-	float WallPerchElapsed = 0.0f;
 
 	//ラーチ: 曲がれる残り時間・残りの角度・ジャンプした瞬間の入力の向き(ゼロなら入力なし)
 	float LurchTimeRemaining = 0.0f;
