@@ -33,6 +33,18 @@ void ASavaPlayerState::SetTeamId(uint8 NewTeamId)
 	}
 }
 
+void ASavaPlayerState::AddKill()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	++KillCount;
+
+	UE_LOG(LogTemp, Log, TEXT("KillCount increased: PlayerState = %s, KillCount = %d"), *GetName(), KillCount);
+}
+
 void ASavaPlayerState::Respawn()
 {
 	if (!HasAuthority() || !AbilitySystemComponent)
@@ -55,4 +67,5 @@ void ASavaPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ASavaPlayerState, TeamId);
+	DOREPLIFETIME(ASavaPlayerState, KillCount);
 }

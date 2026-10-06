@@ -62,8 +62,23 @@ namespace
 
 bool USavaAbilitySystemLibrary::ApplyDamage(AActor* DamageInstigator, AActor* Target, float Damage, AActor* DamageCauser)
 {
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("===== ApplyDamage CALLED ===== Instigator=%s Target=%s Damage=%.1f"),
+		*GetNameSafe(DamageInstigator),
+		*GetNameSafe(Target),
+		Damage
+	);
+
 	if (!Target || !Target->HasAuthority() || Damage <= 0.0f)
 	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("ApplyDamage REJECTED")
+		)
+
 		return false;
 	}
 

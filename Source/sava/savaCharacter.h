@@ -225,4 +225,3 @@ public:
 	USavaEquipmentComponent* GetEquipmentComponent() const { return EquipmentComponent; }
 	USavaAbilityLoadoutComponent* GetAbilityLoadoutComponent() const { return AbilityLoadoutComponent; }
 };
-

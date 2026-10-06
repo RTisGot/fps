@@ -509,6 +509,28 @@ void AsavaCharacter::ToggleSettingsMenu()
 
 void AsavaCharacter::HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount)
 {
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("HandleOutOfHealth: Victim=%s, Instigator=%s, Damage=%.1f"),
+		*GetName(),
+		*GetNameSafe(DamageInstigator),
+		DamageAmount
+	);
+
+	if (DamageInstigator && DamageInstigator != this)
+	{
+		if (APawn* AttackerPawn = Cast<APawn>(DamageInstigator))
+		{
+			if (ASavaPlayerState* AttackerPlayerState =
+				AttackerPawn->GetPlayerState<ASavaPlayerState>())
+			{
+				AttackerPlayerState->AddKill();
+			}
+		}
+	}
+
 	//誰に倒されたか(DamageInstigator)は、後でキル数の加算に使う
 	HandleDeath();
 }
