@@ -46,6 +46,28 @@ void AsavaGameMode::AssignTeam(APlayerController* NewPlayer)
 	{
 		return;
 	}
+
+	//人数の少ないチームに入れる
+	TArray<int32> TeamCounts;
+	TeamCounts.SetNumZeroed(NumTeams);
+	for (const APlayerState* PlayerState : GameState->PlayerArray)
+	{
+		const ASavaPlayerState* SavaPlayerState = Cast<ASavaPlayerState>(PlayerState);
+		if (SavaPlayerState && SavaPlayerState != NewPlayerState && TeamCounts.IsValidIndex(SavaPlayerState->GetTeamId()))
+		{
+			TeamCounts[SavaPlayerState->GetTeamId()]++;
+		}
+	}
+
+	int32 SmallestTeam = 0;
+	for (int32 TeamIndex = 1; TeamIndex < TeamCounts.Num(); ++TeamIndex)
+	{
+		if (TeamCounts[TeamIndex] < TeamCounts[SmallestTeam])
+		{
+			SmallestTeam = TeamIndex;
+		}
+	}
+	NewPlayerState->SetTeamId(static_cast<uint8>(SmallestTeam));
 }
 
 void AsavaGameMode::NotifyPlayerDied(AController* DeadController)
