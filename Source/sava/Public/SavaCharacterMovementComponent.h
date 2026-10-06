@@ -158,6 +158,11 @@ public:
 
 	USavaCharacterMovementComponent();
 
+	//独自の移動(スライディング・壁走り・よじ登り・張り付き)を計算するときの最大の刻み幅。
+	//これより長いフレームは分割して計算する(フレームレートが低くても同じ動きになる)。1/60 より短いフレームは変わらない
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Network", meta = (ClampMin = "0.001", ForceUnits = "s"))
+	float CustomPhysicsMaxStep = 1.0f / 60.0f;
+
 	//スライディング開始に必要な水平速度 = 歩きの速度 MaxWalkSpeed × この倍率(スキルの速度倍率も掛かる)
 	//1 より少し大きくして、歩いている(ちょうど歩きの最高速度)ときはしゃがみになるようにする
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Slide", meta = (ClampMin = "0"))

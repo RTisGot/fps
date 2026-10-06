@@ -1078,22 +1078,43 @@ void USavaCharacterMovementComponent::EnterSlide(bool bJustLanding)
 
 void USavaCharacterMovementComponent::PhysCustom(float DeltaTime, int32 Iterations)
 {
-	switch (CustomMovementMode)
+	//歩き・落下は標準の処理が細かく刻むが、独自の移動はそのままだと 1 フレーム分を一度に計算するため、
+	//フレームレートが低い側(PIE のクライアントなど)だけ結果が変わってしまう。一定の刻みに揃える
+	float RemainingTime = DeltaTime;
+	while (RemainingTime >= MIN_TICK_TIME)
 	{
-	case CMOVE_Slide:
-		PhysSlide(DeltaTime, Iterations);
-		break;
-	case CMOVE_WallRun:
-		PhysWallRun(DeltaTime, Iterations);
-		break;
-	case CMOVE_Mantle:
-		PhysMantle(DeltaTime, Iterations);
-		break;
-	case CMOVE_WallPerch:
-		PhysWallPerch(DeltaTime, Iterations);
-		break;
-	default:
-		break;
+		const float Step = FMath::Min(RemainingTime, CustomPhysicsMaxStep);
+		RemainingTime -= Step;
+
+		const EMovementMode ModeBefore = MovementMode;
+		const uint8 CustomModeBefore = CustomMovementMode;
+		switch (CustomMovementMode)
+		{
+		case CMOVE_Slide:
+			PhysSlide(Step, Iterations);
+			break;
+		case CMOVE_WallRun:
+			PhysWallRun(Step, Iterations);
+			break;
+		case CMOVE_Mantle:
+			PhysMantle(Step, Iterations);
+			break;
+		case CMOVE_WallPerch:
+			PhysWallPerch(Step, Iterations);
+			break;
+		default:
+			break;
+		}
+
+		//移動の種類が変わった(着地・落下・終了など)ら、残りの時間は新しい移動で続ける
+		if (!HasValidData() || MovementMode != ModeBefore || CustomMovementMode != CustomModeBefore)
+		{
+			if (HasValidData() && RemainingTime >= MIN_TICK_TIME)
+			{
+				StartNewPhysics(RemainingTime, Iterations);
+			}
+			return;
+		}
 	}
 	Super::PhysCustom(DeltaTime, Iterations);
 }
