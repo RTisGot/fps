@@ -6,12 +6,12 @@
 #include "GadgetData.generated.h"
 
 /**
- * ƒKƒWƒFƒbƒg‹¤’Ê‚Ìİ’è’lB
+ * ã‚¬ã‚¸ã‚§ãƒƒãƒˆå…±é€šã®è¨­å®šå€¤ã€‚
  *
- * ƒKƒWƒFƒbƒgŒÅ—L‚Ìˆ—‚Í‚½‚¸A
- * u‚»‚ÌƒKƒWƒFƒbƒg‚ª‚Ç‚Ì‚æ‚¤‚È”’l‚ğ‚Â‚©v‚¾‚¯‚ğ’è‹`‚·‚éB
+ * ã‚¬ã‚¸ã‚§ãƒƒãƒˆå›ºæœ‰ã®å‡¦ç†ã¯æŒãŸãšã€
+ * ã€Œãã®ã‚¬ã‚¸ã‚§ãƒƒãƒˆãŒã©ã®ã‚ˆã†ãªæ•°å€¤ã‚’æŒã¤ã‹ã€ã ã‘ã‚’å®šç¾©ã™ã‚‹ã€‚
  *
- * Š”EƒN[ƒ‹ƒ_ƒEƒ“‚Í GameplayAbility ‘¤‚ÅŠÇ—‚·‚éB
+ * æ‰€æŒæ•°ãƒ»ã‚¯ãƒ¼ãƒ«ãƒ€ã‚¦ãƒ³ã¯ GameplayAbility å´ã§ç®¡ç†ã™ã‚‹ã€‚
  */
 USTRUCT(BlueprintType)
 struct SAVA_API FGadgetData
@@ -19,35 +19,35 @@ struct SAVA_API FGadgetData
 	GENERATED_BODY()
 
 	//========================================
-	// Šî–{
+	// åŸºæœ¬
 	//========================================
 
-	// ƒKƒWƒFƒbƒg‚ğ¯•Ê‚·‚éID
+	// ã‚¬ã‚¸ã‚§ãƒƒãƒˆã‚’è­˜åˆ¥ã™ã‚‹ID
 	UPROPERTY(EditDefaultsOnly, Category = "Gadget")
 	FName GadgetId = NAME_None;
 
 	//========================================
-	// “Š±
+	// æŠ•æ“²
 	//========================================
 
-	// “Š±‘¬“x
+	// æŠ•æ“²é€Ÿåº¦
 	UPROPERTY(
 		EditDefaultsOnly,
 		Category = "Gadget|Throw",
 		meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float ThrowSpeed = 1500.0f;
 
-	// “Š±‚Ìd—Í”{—¦
+	// æŠ•æ“²æ™‚ã®é‡åŠ›å€ç‡
 	UPROPERTY(
 		EditDefaultsOnly,
 		Category = "Gadget|Throw",
 		meta = (ClampMin = "0"))
 	float Gravity = 1.0f;
 
-	// Å‘å“Š±‹——£
+	// æœ€å¤§æŠ•æ“²è·é›¢
 	//
-	// 0 ‚Ìê‡‚ÍŒ»“_‚Å‚Í‹——£§ŒÀ‚È‚µB
-	// ÀÛ‚Ì‹——£§ŒÀˆ—‚Í¡ŒãÀ‘•‚·‚éB
+	// 0 ã®å ´åˆã¯ç¾æ™‚ç‚¹ã§ã¯è·é›¢åˆ¶é™ãªã—ã€‚
+	// å®Ÿéš›ã®è·é›¢åˆ¶é™å‡¦ç†ã¯ä»Šå¾Œå®Ÿè£…ã™ã‚‹ã€‚
 	UPROPERTY(
 		EditDefaultsOnly,
 		Category = "Gadget|Throw",
@@ -55,40 +55,40 @@ struct SAVA_API FGadgetData
 	float MaxThrowDistance = 0.0f;
 
 	//========================================
-	// Œø‰Ê
+	// åŠ¹æœ
 	//========================================
 
-	// ‹N”š‚Ü‚Å‚ÌŠÔ
+	// èµ·çˆ†ã¾ã§ã®æ™‚é–“
 	//
-	// 0 ‚Ìê‡‚ÍAŒ»“_‚Å‚Í‘Ò‹@ŠÔ‚È‚µB
+	// 0 ã®å ´åˆã¯ã€ç¾æ™‚ç‚¹ã§ã¯å¾…æ©Ÿæ™‚é–“ãªã—ã€‚
 	UPROPERTY(
 		EditDefaultsOnly,
 		Category = "Gadget|Effect",
 		meta = (ClampMin = "0", ForceUnits = "s"))
 	float FuseTime = 0.0f;
 
-	// Œø‰Ê”ÍˆÍ
+	// åŠ¹æœç¯„å›²
 	UPROPERTY(
 		EditDefaultsOnly,
 		Category = "Gadget|Effect",
 		meta = (ClampMin = "0", ForceUnits = "cm"))
 	float EffectRadius = 0.0f;
 
-	// Œø‰ÊŠÔ
+	// åŠ¹æœæ™‚é–“
 	UPROPERTY(
 		EditDefaultsOnly,
 		Category = "Gadget|Effect",
 		meta = (ClampMin = "0", ForceUnits = "s"))
 	float EffectDuration = 0.0f;
 
-	// ƒ_ƒ[ƒW
+	// ãƒ€ãƒ¡ãƒ¼ã‚¸
 	UPROPERTY(
 		EditDefaultsOnly,
 		Category = "Gadget|Effect",
 		meta = (ClampMin = "0"))
 	float Damage = 0.0f;
 
-	// Œ¸‘¬—¦
+	// æ¸›é€Ÿç‡
 	UPROPERTY(
 		EditDefaultsOnly,
 		Category = "Gadget|Effect",

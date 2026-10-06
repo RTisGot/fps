@@ -30,11 +30,11 @@ void UGadgetGameplayAbility::ActivateAbility(
 	}
 
 	/*
-	 * ƒRƒXƒg‚ÆƒN[ƒ‹ƒ_ƒEƒ“‚ðŠm’è‚·‚éB
+	 * ã‚³ã‚¹ãƒˆã¨ã‚¯ãƒ¼ãƒ«ãƒ€ã‚¦ãƒ³ã‚’ç¢ºå®šã™ã‚‹ã€‚
 	 *
-	 * USavaGameplayAbility‘¤‚ÅA
-	 * MaxCharges > 0 ‚Ìê‡‚Í GadgetChargeCost ‚ªÝ’è‚³‚êA
-	 * CooldownDuration / CooldownTags ‚à‚±‚±‚Åˆ—‚³‚ê‚éB
+	 * USavaGameplayAbilityå´ã§ã€
+	 * MaxCharges > 0 ã®å ´åˆã¯ GadgetChargeCost ãŒè¨­å®šã•ã‚Œã€
+	 * CooldownDuration / CooldownTags ã‚‚ã“ã“ã§å‡¦ç†ã•ã‚Œã‚‹ã€‚
 	 */
 	if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
 	{
@@ -43,11 +43,11 @@ void UGadgetGameplayAbility::ActivateAbility(
 	}
 
 	/*
-	 * ƒKƒWƒFƒbƒgActor‚Ì¶¬‚ÍƒT[ƒo[‚¾‚¯‚ªs‚¤B
+	 * ã‚¬ã‚¸ã‚§ãƒƒãƒˆActorã®ç”Ÿæˆã¯ã‚µãƒ¼ãƒãƒ¼ã ã‘ãŒè¡Œã†ã€‚
 	 *
-	 * LocalPredicted‚ÌAbility‚È‚Ì‚ÅAƒNƒ‰ƒCƒAƒ“ƒg‘¤‚Å‚à
-	 * AbilityŽ©‘Ì‚Í—\‘ª‚³‚ê‚é‚ªAƒQ[ƒ€ƒvƒŒƒCActor‚Ì¶¬‚Í
-	 * ƒT[ƒo[‚ð³‚Æ‚·‚éB
+	 * LocalPredictedã®Abilityãªã®ã§ã€ã‚¯ãƒ©ã‚¤ã‚¢ãƒ³ãƒˆå´ã§ã‚‚
+	 * Abilityè‡ªä½“ã¯äºˆæ¸¬ã•ã‚Œã‚‹ãŒã€ã‚²ãƒ¼ãƒ ãƒ—ãƒ¬ã‚¤Actorã®ç”Ÿæˆã¯
+	 * ã‚µãƒ¼ãƒãƒ¼ã‚’æ­£ã¨ã™ã‚‹ã€‚
 	 */
 	if (HasAuthority(&ActivationInfo))
 	{
@@ -103,9 +103,9 @@ AGadgetBase* UGadgetGameplayAbility::SpawnGadget(
 	}
 
 	/*
-	 * Owner‚ÍSpawnŽž‚É‚àÝ’è‚µ‚Ä‚¢‚é‚ªA
-	 * GadgetBase‘¤‚ÌGameplay—pOwnerî•ñ‚ðŠmŽÀ‚É
-	 * Character‚Ö•R•t‚¯‚éB
+	 * Ownerã¯Spawnæ™‚ã«ã‚‚è¨­å®šã—ã¦ã„ã‚‹ãŒã€
+	 * GadgetBaseå´ã®Gameplayç”¨Owneræƒ…å ±ã‚’ç¢ºå®Ÿã«
+	 * Characterã¸ç´ä»˜ã‘ã‚‹ã€‚
 	 */
 	Gadget->SetOwner(Character);
 

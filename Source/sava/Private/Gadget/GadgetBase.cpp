@@ -53,14 +53,14 @@ AGadgetBase::AGadgetBase()
 		m_GadgetData.ThrowSpeed;
 
 	m_ProjectileMovementComponent->MaxSpeed =
-		m_GadgetData.ThrowSpeed;
+		0.0f;
 
 	m_ProjectileMovementComponent->ProjectileGravityScale =
 		m_GadgetData.Gravity;
 
 	m_ProjectileMovementComponent->bShouldBounce = false;
 
-	// Spawn’¼Œã‚Í‚Ü‚¾“Š±‚µ‚È‚¢B
+	// Spawnç›´å¾Œã¯ã¾ã æŠ•æ“²ã—ãªã„ã€‚
 	m_ProjectileMovementComponent->Deactivate();
 
 	m_ProjectileMovementComponent->OnProjectileStop.AddDynamic(
@@ -78,9 +78,9 @@ void AGadgetBase::BeginPlay()
 	//========================================
 
 	/**
-	 * Gadget‚ğSpawn‚·‚é‚Æ‚«‚ÉAbility‘¤‚ÅSetOwner()‚·‚éB
+	 * Gadgetã‚’Spawnã™ã‚‹ã¨ãã«Abilityå´ã§SetOwner()ã™ã‚‹ã€‚
 	 *
-	 * ‚±‚±‚Å‚Í‚»‚ÌOwner‚ğæ“¾‚µ‚Ä•Û‚·‚éB
+	 * ã“ã“ã§ã¯ãã®Ownerã‚’å–å¾—ã—ã¦ä¿æŒã™ã‚‹ã€‚
 	 */
 	if (HasAuthority())
 	{
@@ -97,11 +97,19 @@ void AGadgetBase::BeginPlay()
 			m_GadgetData.ThrowSpeed;
 
 		m_ProjectileMovementComponent->MaxSpeed =
-			m_GadgetData.ThrowSpeed;
+			0.0f;
 
 		m_ProjectileMovementComponent->ProjectileGravityScale =
 			m_GadgetData.Gravity;
 	}
+}
+
+
+float AGadgetBase::GetCollisionRadius() const
+{
+	return m_CollisionComponent
+		? m_CollisionComponent->GetScaledSphereRadius()
+		: 0.0f;
 }
 
 
@@ -138,6 +146,28 @@ void AGadgetBase::ThrowGadget(const FVector& Direction)
 		Direction.GetSafeNormal();
 
 	//========================================
+	// Ignore Owner
+	//========================================
+
+	/**
+	 * æŠ•ã’ãŸæœ¬äºº(ã¨æœ¬äººã«ä»˜ã„ã¦ã„ã‚‹æ­¦å™¨ãªã©)ã«ã¯å½“ãŸã‚‰ãªã„ã‚ˆã†ã«ã™ã‚‹ã€‚
+	 *
+	 * æ‰‹å…ƒã§ Spawn ã™ã‚‹ã®ã§ã€ä½•ã‚‚ã—ãªã„ã¨æœ¬äººã®ã‚«ãƒ—ã‚»ãƒ«ã«
+	 * å½“ãŸã£ãŸç¬é–“ã«æ­¢ã¾ã‚Šã€æ‰‹å…ƒã§çˆ†ç™ºã—ã¦ã—ã¾ã†ã€‚
+	 */
+	if (AActor* GadgetOwner = GetOwner())
+	{
+		m_CollisionComponent->IgnoreActorWhenMoving(GadgetOwner, true);
+
+		TArray<AActor*> AttachedActors;
+		GadgetOwner->GetAttachedActors(AttachedActors);
+		for (AActor* AttachedActor : AttachedActors)
+		{
+			m_CollisionComponent->IgnoreActorWhenMoving(AttachedActor, true);
+		}
+	}
+
+	//========================================
 	// Projectile Settings
 	//========================================
 
@@ -146,8 +176,11 @@ void AGadgetBase::ThrowGadget(const FVector& Direction)
 		m_ProjectileMovementComponent->InitialSpeed =
 			m_GadgetData.ThrowSpeed;
 
+		// 0 = é€Ÿã•ã®ä¸Šé™ãªã—ã€‚
+		// ä¸Šé™ãŒã‚ã‚‹ã¨è½ä¸‹ä¸­ã«é€Ÿã•ãŒé ­æ‰“ã¡ã«ãªã‚Šã€
+		// äºˆæ¸¬ç·š(UGadgetThrowAbility)ã¨å®Ÿéš›ã®è»Œé“ãŒãšã‚Œã‚‹ã€‚
 		m_ProjectileMovementComponent->MaxSpeed =
-			m_GadgetData.ThrowSpeed;
+			0.0f;
 
 		m_ProjectileMovementComponent->ProjectileGravityScale =
 			m_GadgetData.Gravity;
@@ -263,25 +296,25 @@ void AGadgetBase::Detonate()
 void AGadgetBase::OnGadgetLanded(
 	const FHitResult& Hit)
 {
-	// Base‚Å‚Í‰½‚à‚µ‚È‚¢B
+	// Baseã§ã¯ä½•ã‚‚ã—ãªã„ã€‚
 	//
-	// ”h¶ƒNƒ‰ƒX‚ÅÀ‘•‚·‚éB
+	// æ´¾ç”Ÿã‚¯ãƒ©ã‚¹ã§å®Ÿè£…ã™ã‚‹ã€‚
 }
 
 
 void AGadgetBase::ApplyGadgetEffect()
 {
-	// Base‚Å‚Í‰½‚à‚µ‚È‚¢B
+	// Baseã§ã¯ä½•ã‚‚ã—ãªã„ã€‚
 	//
-	// ”h¶ƒNƒ‰ƒX‚ÅÀ‘•‚·‚éB
+	// æ´¾ç”Ÿã‚¯ãƒ©ã‚¹ã§å®Ÿè£…ã™ã‚‹ã€‚
 }
 
 
 void AGadgetBase::OnGadgetDestroyed()
 {
-	// Base‚Å‚Í‰½‚à‚µ‚È‚¢B
+	// Baseã§ã¯ä½•ã‚‚ã—ãªã„ã€‚
 	//
-	// •K—v‚É‚È‚Á‚½‚ç”h¶ƒNƒ‰ƒX‚ÅÀ‘•‚·‚éB
+	// å¿…è¦ã«ãªã£ãŸã‚‰æ´¾ç”Ÿã‚¯ãƒ©ã‚¹ã§å®Ÿè£…ã™ã‚‹ã€‚
 }
 
 
