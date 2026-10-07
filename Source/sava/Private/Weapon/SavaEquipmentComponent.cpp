@@ -478,6 +478,7 @@ void USavaEquipmentComponent::AbsorbPlayerPitchInput(float CurrentPitch)
 		RecoilPitchToRecover = FMath::Max(0.0f, RecoilPitchToRecover + PlayerDelta);
 	}
 }
+
 //--------------------------------Weapon Visual
 
 bool USavaEquipmentComponent::GetCurrentMuzzleLocation(FVector& OutLocation) const
@@ -503,38 +504,29 @@ void USavaEquipmentComponent::NotifyWeaponFireVisual(
 	const FVector& MuzzleLocation,
 	const TArray<FVector>& TraceEnds)
 {
-	//視覚演出は自分の画面では即座に再生する。
-	OnWeaponMuzzleFlash(MuzzleLocation);
-	OnWeaponTracer(MuzzleLocation, TraceEnds);
+	//発砲者自身にはネットワークを待たず、即座に演出を表示する。
+	OnWeaponMuzzleFlashEvent.Broadcast(MuzzleLocation);
+	OnWeaponTracerEvent.Broadcast(MuzzleLocation, TraceEnds);
 
-	//サーバーへ演出情報を送る。
-	if (!GetOwner()->HasAuthority())
+	TArray<FVector_NetQuantize> QuantizedTraceEnds;
+	QuantizedTraceEnds.Reserve(TraceEnds.Num());
+
+	for (const FVector& TraceEnd : TraceEnds)
 	{
-		TArray<FVector_NetQuantize> QuantizedTraceEnds;
-		QuantizedTraceEnds.Reserve(TraceEnds.Num());
+		QuantizedTraceEnds.Add(TraceEnd);
+	}
 
-		for (const FVector& TraceEnd : TraceEnds)
-		{
-			QuantizedTraceEnds.Add(TraceEnd);
-		}
-
-		ServerNotifyWeaponFireVisual(
+	if (GetOwner()->HasAuthority())
+	{
+		//Listen Serverの場合は、そのまま全クライアントへ通知する。
+		MulticastWeaponFireVisual(
 			FVector_NetQuantize(MuzzleLocation),
 			QuantizedTraceEnds);
 	}
 	else
 	{
-		//Listen Server の場合はサーバー自身がAuthorityなので、
-		//Server RPCを経由せず、そのまま全員へ通知する。
-		TArray<FVector_NetQuantize> QuantizedTraceEnds;
-		QuantizedTraceEnds.Reserve(TraceEnds.Num());
-
-		for (const FVector& TraceEnd : TraceEnds)
-		{
-			QuantizedTraceEnds.Add(TraceEnd);
-		}
-
-		MulticastWeaponFireVisual(
+		//クライアントの場合は、サーバーへ発砲演出を通知する。
+		ServerNotifyWeaponFireVisual(
 			FVector_NetQuantize(MuzzleLocation),
 			QuantizedTraceEnds);
 	}
@@ -544,8 +536,7 @@ void USavaEquipmentComponent::ServerNotifyWeaponFireVisual_Implementation(
 	FVector_NetQuantize MuzzleLocation,
 	const TArray<FVector_NetQuantize>& TraceEnds)
 {
-	//視覚演出用なのでゲーム状態は変更しない。
-	//MulticastはUnreliableで送る。
+	//視覚演出だけを全クライアントへ通知する。
 	MulticastWeaponFireVisual(MuzzleLocation, TraceEnds);
 }
 
@@ -553,9 +544,9 @@ void USavaEquipmentComponent::MulticastWeaponFireVisual_Implementation(
 	FVector_NetQuantize MuzzleLocation,
 	const TArray<FVector_NetQuantize>& TraceEnds)
 {
-	APawn* Pawn = Cast<APawn>(GetOwner());
+	const APawn* Pawn = Cast<APawn>(GetOwner());
 
-	//発砲者はNotifyWeaponFireVisual()で既に即時再生している。
+	//発砲者自身は既にローカルで即時再生している。
 	//ここで再生すると二重表示になるためスキップする。
 	if (Pawn && Pawn->IsLocallyControlled())
 	{
@@ -570,8 +561,8 @@ void USavaEquipmentComponent::MulticastWeaponFireVisual_Implementation(
 		ConvertedTraceEnds.Add(FVector(TraceEnd));
 	}
 
-	OnWeaponMuzzleFlash(FVector(MuzzleLocation));
-	OnWeaponTracer(FVector(MuzzleLocation), ConvertedTraceEnds);
+	OnWeaponMuzzleFlashEvent.Broadcast(FVector(MuzzleLocation));
+	OnWeaponTracerEvent.Broadcast(FVector(MuzzleLocation), ConvertedTraceEnds);
 }
 
 //--------------------------------Helpers
