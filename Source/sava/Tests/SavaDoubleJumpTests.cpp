@@ -266,6 +266,40 @@ bool FSavaDoubleJumpTimingBoostTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaFallingGravityTest, "Sava.Air.FallingGravity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSavaFallingGravityTest::RunTest(const FString&)
+{
+	//上昇中は通常の重力、下降中だけ FallingGravityScale 倍の重力
+	ADD_LATENT_AUTOMATION_COMMAND(FDoubleJumpCommand(FVector(0, 0, 3000), nullptr,
+		[this](FDoubleJumpTestWorld& W, int32 Frame)
+		{
+			constexpr int32 Frames = 10;
+			const float Gravity = FMath::Abs(W.Movement->UCharacterMovementComponent::GetGravityZ());
+			if (Frame == 0)
+			{
+				W.SetFalling(FVector(0, 0, 600));
+				return false;
+			}
+			if (Frame == Frames)
+			{
+				TestTrue(TEXT("Rising uses normal gravity"),
+					FMath::IsNearlyEqual(W.Movement->Velocity.Z, 600.0f - Gravity * Frames * DoubleJumpTestDeltaTime, 5.0f));
+				W.SetFalling(FVector(0, 0, -100));
+				return false;
+			}
+			if (Frame == Frames * 2)
+			{
+				TestTrue(TEXT("Falling uses stronger gravity"),
+					FMath::IsNearlyEqual(W.Movement->Velocity.Z,
+						-100.0f - Gravity * W.Movement->FallingGravityScale * Frames * DoubleJumpTestDeltaTime, 5.0f));
+				return true;
+			}
+			return false;
+		}));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaDoubleJumpWallRunPriorityTest, "Sava.DoubleJump.WallRunPriority",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FSavaDoubleJumpWallRunPriorityTest::RunTest(const FString&)

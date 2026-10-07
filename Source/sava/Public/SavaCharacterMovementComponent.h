@@ -247,6 +247,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Air", meta = (ClampMin = "0"))
 	float AirOverspeedDecayRate = 0.7f;
 
+	//空中で下降しているときの重力の倍率(1=通常。上げるほど速く落ちる。上昇中・壁走り中などには影響しない)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Air", meta = (ClampMin = "0"))
+	float FallingGravityScale = 1.5f;
+
 	//壁走りを始められる最低の水平速度
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float WallRunMinSpeed = 600.0f;
@@ -544,6 +548,7 @@ public:
 	virtual bool CanAttemptJump() const override;
 	virtual bool DoJump(bool bReplayingMoves, float DeltaTime) override;
 	virtual float GetMaxSpeed() const override;
+	virtual float GetGravityZ() const override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 	virtual void ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse) override;
 
