@@ -574,6 +574,15 @@ void AsavaCharacter::HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageC
 				AttackerPlayerState->AddKill();
 			}
 		}
+
+		if (APawn* diedPawn = Cast<APawn>(this))
+		{
+			if (ASavaPlayerState* diedPlayerState =
+				diedPawn->GetPlayerState<ASavaPlayerState>())
+			{
+				diedPlayerState->AddDeath();
+			}
+		}
 	}
 
 	//誰に倒されたか(DamageInstigator)は、後でキル数の加算に使う
