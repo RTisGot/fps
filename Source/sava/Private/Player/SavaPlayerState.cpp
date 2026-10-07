@@ -45,6 +45,18 @@ void ASavaPlayerState::AddKill()
 	UE_LOG(LogTemp, Log, TEXT("KillCount increased: PlayerState = %s, KillCount = %d"), *GetName(), KillCount);
 }
 
+void ASavaPlayerState::AddDeath()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	++DeathCount;
+
+	UE_LOG(LogTemp, Log, TEXT("DeathCount increased: PlayerState = %s, DeathCount = %d"), *GetName(), DeathCount);
+}
+
 void ASavaPlayerState::Respawn()
 {
 	if (!HasAuthority() || !AbilitySystemComponent)

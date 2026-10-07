@@ -30,6 +30,12 @@ private:
     /** プレイヤー一覧を配置するVerticalBox */
     UPROPERTY(meta = (BindWidget))
     TObjectPtr<UVerticalBox> PlayerList;
+    
+    UPROPERTY(meta = (BindWidget))
+    TObjectPtr<UVerticalBox> KillList;
+
+    UPROPERTY(meta = (BindWidget))
+    TObjectPtr<UVerticalBox> DeathList;
 
     /** 表示中のキル数を更新する間隔 */
     float RefreshTimer = 0.0f;

@@ -38,14 +38,22 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Kill")
 	int32 GetKillCount() const { return KillCount; }
 
+	// 現在のデス数を取得
+	UFUNCTION(BlueprintPure, Category = "Sava|Death")
+	int32 GetDeathCount() const { return DeathCount; }
+
 	// キル数を1増加させる
 	void AddKill();
+
+	// デス数を1増加させる
+	void AddDeath();
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:
 	UPROPERTY(Replicated)
 	int32 KillCount = 0;
+	int32 DeathCount = 0;
 
 	UPROPERTY(VisibleAnywhere, Category = "Sava|Abilities")
 	TObjectPtr<USavaAbilitySystemComponent> AbilitySystemComponent;

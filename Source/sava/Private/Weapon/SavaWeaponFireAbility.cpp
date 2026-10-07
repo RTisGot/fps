@@ -4,6 +4,7 @@
 #include "Weapon/SavaCombatTestDummyCharacter.h"
 #include "Weapon/SavaEquipmentComponent.h"
 #include "Weapon/SavaWeaponData.h"
+#include "Skill/SavaDomeShield.h"
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "Abilities/Tasks/AbilityTask_WaitInputRelease.h"
@@ -283,6 +284,13 @@ void USavaWeaponFireAbility::ProcessShotOnServer(const TArray<FHitResult>& Hits,
 			continue;
 		}
 
+		//シールドに当たった弾はダメージなし
+		if (HitActor->IsA<ASavaDomeShield>())
+		{
+			DrawServerResult(GetWorld(), Hit, FColor::Cyan, TEXT("Blocked by shield"));
+			continue;
+		}
+
 		//クライアントから届いた結果は信用せず、ありえる当たりかを確認する
 		if (bFromRemoteClient)
 		{
@@ -375,6 +383,14 @@ const TCHAR* USavaWeaponFireAbility::GetHitRejectReason(const FHitResult& Hit) c
 		return TEXT("blocked by a wall");
 	}
 
+	//5. 撃った位置から当たった位置までの間にドームシールドがないか
+	FVector ShieldHitLocation;
+	FVector ShieldHitNormal;
+	if (ASavaDomeShield::FindBlockingShield(Avatar->GetWorld(), Hit.TraceStart, Hit.ImpactPoint, ShieldHitLocation, ShieldHitNormal))
+	{
+		return TEXT("blocked by a shield");
+	}
+
 	return nullptr;
 }
 
@@ -456,6 +472,20 @@ void USavaWeaponFireAbility::TraceShot(const FSavaWeaponStats& Stats, float Spre
 		const bool bHit = Stats.HitScanRadius > 0.0f
 			? World->SweepSingleByChannel(Hit, ViewLocation, TraceEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeSphere(Stats.HitScanRadius), QueryParams)
 			: World->LineTraceSingleByChannel(Hit, ViewLocation, TraceEnd, TraceChannel, QueryParams);
+
+		//ドームシールドを横切るなら、そこで弾を止める(シールドには当たり判定が無いので計算で調べる)
+		FVector ShieldHitLocation;
+		FVector ShieldHitNormal;
+		if (ASavaDomeShield* Shield = ASavaDomeShield::FindBlockingShield(
+			Avatar->GetWorld(), ViewLocation, bHit ? Hit.ImpactPoint : TraceEnd, ShieldHitLocation, ShieldHitNormal))
+		{
+			Hit = FHitResult(Shield, Cast<UPrimitiveComponent>(Shield->GetRootComponent()), ShieldHitLocation, ShieldHitNormal);
+			Hit.TraceStart = ViewLocation;
+			Hit.TraceEnd = TraceEnd;
+			Hit.Distance = FVector::Dist(ViewLocation, ShieldHitLocation);
+			OutHits.Add(Hit);
+			continue;
+		}
 
 		if (!bHit)
 		{
