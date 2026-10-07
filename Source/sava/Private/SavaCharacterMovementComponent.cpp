@@ -150,18 +150,6 @@ void USavaCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previo
 
 //--------------------------------Air
 
-float USavaCharacterMovementComponent::GetGravityZ() const
-{
-	//空中で下降しているときだけ重力を強める(ジャンプの上昇・壁走り・スライディングなどはそのまま)
-	//速度と移動の種類だけで決まるので、サーバーとクライアントで同じ結果になる
-	const float GravityZ = Super::GetGravityZ();
-	if (MovementMode == MOVE_Falling && Velocity.Z <= 0.0f)
-	{
-		return GravityZ * FallingGravityScale;
-	}
-	return GravityZ;
-}
-
 void USavaCharacterMovementComponent::PhysFalling(float DeltaTime, int32 Iterations)
 {
 	ApplyLurch(DeltaTime);
