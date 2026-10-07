@@ -4,6 +4,8 @@
 #include "Gadget/GadgetBase.h"
 #include "StunGrenade.generated.h"
 
+class UGameplayEffect;
+
 /**
  * 着弾後に起爆し、範囲内の敵プレイヤーにスタン効果を与えるグレネード。
  *
@@ -65,20 +67,16 @@ protected:
 	// 設定
 	//========================================
 
+
 	/**
-	 * スタン状態の持続時間。
-	 *
-	 * 現在はゲームデザイン上未確定。
-	 * Blueprint側で調整できるようにしている。
-	 */
-	UPROPERTY(
-		EditDefaultsOnly,
-		Category = "Gadget|Stun",
-		meta = (
-			DisplayName = "Stun Duration",
-			ClampMin = "0",
-			ForceUnits = "s"))
-	float m_StunDuration = 0.0f;
+	* スタン時に相手へ付ける GameplayEffect(GE_Stun)。
+	* スタンの秒数は GE 側の Duration で決める。
+	*/
+		UPROPERTY(
+			EditDefaultsOnly,
+			Category = "Gadget|Stun",
+			meta = (DisplayName = "Stun Effect"))
+		TSubclassOf<UGameplayEffect> m_StunEffect;
 
 	/**
 	 * 投げた本人にもスタン効果を与えるか。

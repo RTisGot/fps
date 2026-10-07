@@ -31,9 +31,6 @@ AStunGrenade::AStunGrenade()
 	// ダメージは与えない。
 	m_GadgetData.Damage = 0.0f;
 
-	// スタンの持続時間は現在未確定。
-	m_StunDuration = 0.0f;
-
 	// 球の当たり判定。
 	m_CollisionComponent->InitSphereRadius(8.0f);
 }
@@ -199,6 +196,9 @@ void AStunGrenade::ApplyGadgetEffect()
 		  * ここへ接続する。
 		  */
 
+		// スタン状態を付ける(State.Stunning → State.SprintBlocked が自動で付く)
+		USavaAbilitySystemLibrary::ApplyEffectToTarget(GetGadgetOwner(), Target, m_StunEffect);
+
 		if (m_bDrawDebug)
 		{
 			DrawDebugString(
@@ -316,17 +316,14 @@ bool AStunGrenade::IsBlockedByWall(
 		QueryParams);
 }
 
-
 void AStunGrenade::Multicast_PlayStunExplosion_Implementation(
 	const FVector_NetQuantize& ExplosionLocation)
 {
 	/*
-	 * Blueprint側で実際の視覚エフェクトを実装する。
+	 * 全クライアントでスタン起爆時の視覚効果を再生する。
 	 *
-	 * 例:
-	 *
-	 * Spawn System at Location
-	 * Play Sound at Location ← 音は後で追加
+	 * 実際のNiagaraや画面効果などは
+	 * BP_StunGrenadeのOnStunExplodedで実装する。
 	 */
 	OnStunExploded(ExplosionLocation);
 }
