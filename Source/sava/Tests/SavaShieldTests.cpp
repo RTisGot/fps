@@ -16,7 +16,7 @@ bool FSavaDomeShieldIntersectTest::RunTest(const FString&)
 	TestTrue(TEXT("Outside to inside is blocked"),
 		ASavaDomeShield::IntersectDome(Center, Radius, FVector(-1000, 0, 100), FVector(0, 0, 100), Time));
 	TestEqual(TEXT("Stops at the near surface"),
-		FVector(-1000, 0, 100).X + 1000.0f * Time, -FMath::Sqrt(400.0f * 400.0f - 100.0f * 100.0f), 0.1f);
+		-1000.0f + 1000.0f * Time, -FMath::Sqrt(400.0f * 400.0f - 100.0f * 100.0f), 0.1f);
 
 	//中から外へ撃つ: 表面で止まる
 	TestTrue(TEXT("Inside to outside is blocked"),
