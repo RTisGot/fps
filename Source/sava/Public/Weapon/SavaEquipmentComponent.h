@@ -27,6 +27,9 @@ struct FSavaWeaponLoadoutEntry
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSavaOnWeaponChanged, ESavaWeaponSlot, Slot, USavaWeaponData*, Weapon);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FSavaOnAmmoChanged, ESavaWeaponSlot, Slot, int32, AmmoInMagazine, int32, ReserveAmmo);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnWeaponMuzzleFlash, FVector, MuzzleLocation);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSavaOnWeaponTracer, FVector, MuzzleLocation, TArray<FVector>, TraceEnds);
+
 //キャラクターが持つ武器(メイン・サブの 2 枠)を管理する
 //・装備(どの武器か・カスタム)はサーバーが決めて全員へ同期する
 //・弾数は自分の画面とサーバーがそれぞれ数える(撃つたびに通信しないため)。ずれやすい予備弾はリロード時にサーバーの値へ合わせる
@@ -128,10 +131,10 @@ public:
 
 	//--------------------------------武器演出
 
-	// 現在装備している武器の銃口位置を取得する。
+	//現在装備している武器の銃口位置を取得する。
 	bool GetCurrentMuzzleLocation(FVector& OutLocation) const;
 
-	// 武器の発砲演出をサーバーへ通知する。
+	//武器の発砲演出をサーバーへ通知する。
 	void NotifyWeaponFireVisual(const FVector& MuzzleLocation, const TArray<FVector>& TraceEnds);
 
 protected:
@@ -142,13 +145,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Weapon")
 	TObjectPtr<USavaWeaponData> DefaultSecondaryWeapon;
 
-	//自分の画面でマズルフラッシュを再生する
-	UFUNCTION(BlueprintImplementableEvent, Category = "Sava|Weapon|Visual")
-	void OnWeaponMuzzleFlash(const FVector& MuzzleLocation);
+	//発砲時にマズルフラッシュを通知する
+	UPROPERTY(BlueprintAssignable, Category = "Sava|Weapon|Visual")
+	FSavaOnWeaponMuzzleFlash OnWeaponMuzzleFlashEvent;
 
-	//自分の画面でトレーサーを再生する
-	UFUNCTION(BlueprintImplementableEvent, Category = "Sava|Weapon|Visual")
-	void OnWeaponTracer(const FVector& MuzzleLocation, const TArray<FVector>& TraceEnds);
+	//発砲時にトレーサーを通知する
+	UPROPERTY(BlueprintAssignable, Category = "Sava|Weapon|Visual")
+	FSavaOnWeaponTracer OnWeaponTracerEvent;
 
 private:
 	//1 つの枠の、自分のマシン上での状態(同期しない)
