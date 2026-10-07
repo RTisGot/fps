@@ -109,6 +109,9 @@ void USavaHoldAimAbility::OnInputReleased(float TimeHeld)
 
 		AbilitySystem->ServerSetReplicatedTargetData(CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey(),
 			DataHandle, FGameplayTag(), AbilitySystem->ScopedPredictionKey);
+
+		//サーバーの確認を待たずに、自分の画面で先に反映する(必要な能力だけ実装する)
+		OnConfirmedPredicted(TargetTransform);
 	}
 	else
 	{
@@ -301,5 +304,9 @@ void USavaHoldAimAbility::OnAimEnded_Implementation(bool bConfirmed)
 }
 
 void USavaHoldAimAbility::OnConfirmed_Implementation(const FTransform& TargetTransform)
+{
+}
+
+void USavaHoldAimAbility::OnConfirmedPredicted_Implementation(const FTransform& TargetTransform)
 {
 }
