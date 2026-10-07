@@ -266,6 +266,56 @@ bool FSavaDoubleJumpTimingBoostTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaDoubleJumpWallDecayTest, "Sava.DoubleJump.WallJumpDecay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSavaDoubleJumpWallDecayTest::RunTest(const FString&)
+{
+	//壁走り → ウォールジャンプ → 落下中に二段ジャンプ: 上向き速度がウォールジャンプ1回分下がっている
+	TSharedRef<int32> PressFrame = MakeShared<int32>(-1);
+	ADD_LATENT_AUTOMATION_COMMAND(FDoubleJumpCommand(FVector(0, 0, 3000),
+		[](FDoubleJumpTestWorld& W) { W.Box(FVector(0, 80, 3000), FVector(5000, 20, 1000)); },
+		[this, PressFrame](FDoubleJumpTestWorld& W, int32 Frame)
+		{
+			W.Character->AddMovementInput(FVector::ForwardVector, 1.0f);
+			if (Frame <= 1)
+			{
+				W.SetFalling(FVector(900, 0, -100));
+				if (Frame == 1)
+				{
+					W.Press();
+					W.Movement->SetJumpHeld(true);
+				}
+				return false;
+			}
+			if (Frame == 2)
+			{
+				TestTrue(TEXT("Wall run started"), W.Movement->IsWallRunning());
+				//ジャンプを離す → ウォールジャンプ
+				W.Release();
+				W.Movement->SetJumpHeld(false);
+				return false;
+			}
+			if (*PressFrame < 0)
+			{
+				//下降に入ったら二段ジャンプ(上昇中だと横へ飛ぶので、上向きの値を確かめられない)
+				if (W.Movement->Velocity.Z < 0.0f)
+				{
+					W.Press();
+					*PressFrame = Frame;
+				}
+				return false;
+			}
+			const float Gravity = FMath::Abs(W.Movement->GetGravityZ()) * DoubleJumpTestDeltaTime;
+			const float Expected = FMath::Lerp(W.Movement->DoubleJumpZVelocity, W.Movement->DoubleJumpMinZVelocity,
+				1.0f / FMath::Max(W.Movement->WallJumpAngleDecaySteps, 1.0f));
+			AddInfo(FString::Printf(TEXT("Double jump up after one wall jump: %.0f (expected %.0f)"), W.Movement->Velocity.Z + Gravity, Expected));
+			TestTrue(TEXT("Double jump up speed decays with wall jumps"), FMath::IsNearlyEqual(W.Movement->Velocity.Z, Expected - Gravity, 10.0f));
+			TestTrue(TEXT("Decayed value is exposed for UI"), FMath::IsNearlyEqual(W.Movement->GetNextDoubleJumpZVelocity(), Expected, 1.0f));
+			return true;
+		}));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaDoubleJumpWallRunPriorityTest, "Sava.DoubleJump.WallRunPriority",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FSavaDoubleJumpWallRunPriorityTest::RunTest(const FString&)

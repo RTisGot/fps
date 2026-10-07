@@ -19,7 +19,16 @@ public:
 	void AbilityInputTagPressed(const FGameplayTag& InputTag);
 	void AbilityInputTagReleased(const FGameplayTag& InputTag);
 
+protected:
+	virtual void OnRegister() override;
+	virtual void OnUnregister() override;
+
 private:
+	//State.Stunning が付いた/外れたときに State.SprintBlocked を付け外しする
+	//(タグの変化はサーバー・クライアントの両方で起きるので、各自がローカルで付ける)
+	void OnStunningTagChanged(const FGameplayTag Tag, int32 NewCount);
+	FDelegateHandle StunningTagChangedHandle;
+
 	//狙っている最中の能力のうち、このボタンがキャンセルボタンのものをキャンセルする。1 つでもあれば true
 	bool CancelAimingAbilities(const FGameplayTag& InputTag);
 };

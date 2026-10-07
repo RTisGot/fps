@@ -3,10 +3,42 @@
 #include "AbilitySystem/SavaAbilitySystemComponent.h"
 #include "Abilities/GameplayAbility.h"
 #include "AbilitySystem/SavaHoldAimAbility.h"
+#include "SavaGameplayTags.h"
 
 USavaAbilitySystemComponent::USavaAbilitySystemComponent()
 {
 	SetIsReplicatedByDefault(true);
+}
+
+void USavaAbilitySystemComponent::OnRegister()
+{
+	Super::OnRegister();
+
+	//再登録されても二重にならないように、前の登録を外してから付ける
+	RegisterGameplayTagEvent(SavaGameplayTags::State_Stunning).Remove(StunningTagChangedHandle);
+	StunningTagChangedHandle = RegisterGameplayTagEvent(SavaGameplayTags::State_Stunning, EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &ThisClass::OnStunningTagChanged);
+}
+
+void USavaAbilitySystemComponent::OnUnregister()
+{
+	RegisterGameplayTagEvent(SavaGameplayTags::State_Stunning).Remove(StunningTagChangedHandle);
+	StunningTagChangedHandle.Reset();
+
+	Super::OnUnregister();
+}
+
+void USavaAbilitySystemComponent::OnStunningTagChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	//NewOrRemoved なので「0 → 1 以上」と「1 以上 → 0」のときだけ呼ばれる
+	if (NewCount > 0)
+	{
+		AddLooseGameplayTag(SavaGameplayTags::State_SprintBlocked);
+	}
+	else
+	{
+		RemoveLooseGameplayTag(SavaGameplayTags::State_SprintBlocked);
+	}
 }
 
 void USavaAbilitySystemComponent::AbilityInputTagPressed(const FGameplayTag& InputTag)
