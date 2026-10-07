@@ -67,6 +67,11 @@ protected:
 	UFUNCTION(BlueprintNativeEvent, Category = "Sava|Aim")
 	void OnConfirmed(const FTransform& TargetTransform);
 
+	//確定した(操作しているクライアントだけ。サーバーの確認を待たずに先に動かしたいとき用。例: ブリンクの移動)
+	//※ リッスンサーバーのホスト・一人プレイでは呼ばれない(On Confirmed だけが呼ばれる)
+	UFUNCTION(BlueprintNativeEvent, Category = "Sava|Aim")
+	void OnConfirmedPredicted(const FTransform& TargetTransform);
+
 	//独自の条件(例: 味方の近くには置けない)。自分の画面とサーバーの両方で呼ばれる
 	UFUNCTION(BlueprintNativeEvent, Category = "Sava|Aim")
 	bool IsTargetAllowed(const FTransform& TargetTransform) const;
