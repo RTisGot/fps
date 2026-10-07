@@ -3,7 +3,9 @@
 
 #include "SavaCharacterMovementComponent.h"
 #include "AbilitySystem/SavaAttributeSet.h"
+#include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
+#include "SavaGameplayTags.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -31,6 +33,13 @@ USavaCharacterMovementComponent::USavaCharacterMovementComponent()
 bool USavaCharacterMovementComponent::IsSprinting() const
 {
 	if(!bWantsToSprint || !IsMovingOnGround() || IsCrouching() || !UpdatedComponent)
+	{
+		return false;
+	}
+
+	//スタンなどでダッシュ不可のタグが付いている
+	const UAbilitySystemComponent* AbilitySystem = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner());
+	if (AbilitySystem && AbilitySystem->HasMatchingGameplayTag(SavaGameplayTags::State_SprintBlocked))
 	{
 		return false;
 	}
@@ -405,11 +414,22 @@ void USavaCharacterMovementComponent::ExitWallRun()
 	SetMovementMode(MOVE_Falling);
 }
 
+float USavaCharacterMovementComponent::GetWallJumpDecayAlpha() const
+{
+	//ウォールジャンプを繰り返した度合い(0 = 着地後まだしていない / 1 = 下限まで下がった)
+	return FMath::Clamp(WallJumpDecay / FMath::Max(WallJumpAngleDecaySteps, 1.0f), 0.0f, 1.0f);
+}
+
 float USavaCharacterMovementComponent::GetNextWallJumpUpSpeed() const
 {
 	//繰り返すほど下限(水平より少し下)へ近づく
-	const float Alpha = FMath::Clamp(WallJumpDecay / FMath::Max(WallJumpAngleDecaySteps, 1.0f), 0.0f, 1.0f);
-	return FMath::Lerp(WallJumpUpSpeed, WallJumpMinUpSpeed, Alpha);
+	return FMath::Lerp(WallJumpUpSpeed, WallJumpMinUpSpeed, GetWallJumpDecayAlpha());
+}
+
+float USavaCharacterMovementComponent::GetNextDoubleJumpZVelocity() const
+{
+	//ウォールジャンプと同じ割合で下限へ近づく
+	return FMath::Lerp(DoubleJumpZVelocity, DoubleJumpMinZVelocity, GetWallJumpDecayAlpha());
 }
 
 void USavaCharacterMovementComponent::DoWallJump()
@@ -572,7 +592,9 @@ void USavaCharacterMovementComponent::DoDoubleJump()
 	//ジャンプ直後ほど上昇が速いので、ジャンプしてから早く押すほど水平のブーストが大きくなる
 	const float RiseAlpha = DoubleJumpSidewaysRiseSpeed > 0.0f
 		? FMath::Clamp(Velocity.Z / DoubleJumpSidewaysRiseSpeed, 0.0f, 1.0f) : 0.0f;
-	const float UpSpeed = FMath::Max(Velocity.Z, DoubleJumpZVelocity * (1.0f - RiseAlpha));
+	//上向きの速度はウォールジャンプを繰り返すほど下がる(壁を使った登り続けを防ぐ)
+	const float BaseUpSpeed = GetNextDoubleJumpZVelocity();
+	const float UpSpeed = FMath::Max(Velocity.Z, BaseUpSpeed * (1.0f - RiseAlpha));
 	const float SidewaysSpeed = DoubleJumpSidewaysSpeed * RiseAlpha;
 
 	//入力があれば、その向きへ進行方向を変える(大きく変えるほど速度を失う)
@@ -593,8 +615,8 @@ void USavaCharacterMovementComponent::DoDoubleJump()
 
 	//入力も水平の動きもなければ、真上に跳ぶだけ(横へのブーストは出ない)
 	const float NewSpeed = MoveDir.IsZero() ? 0.0f : Speed + SidewaysSpeed;
-	ShowTechniqueDebug(FString::Printf(TEXT("Double Jump  up %+.0f  side +%.0f (rise %.0f)  turn %.0f deg"),
-		UpSpeed - Velocity.Z, SidewaysSpeed, Velocity.Z, TurnAngle),
+	ShowTechniqueDebug(FString::Printf(TEXT("Double Jump  up %+.0f (base %.0f)  side +%.0f (rise %.0f)  turn %.0f deg"),
+		UpSpeed - Velocity.Z, BaseUpSpeed, SidewaysSpeed, Velocity.Z, TurnAngle),
 		SidewaysSpeed > 0.0f ? FColor::Green : FColor::Silver);
 
 	Velocity = MoveDir * NewSpeed + FVector(0.0f, 0.0f, UpSpeed);
@@ -1235,7 +1257,7 @@ void USavaCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick 
 	//壁走り中と、着地前にウォールジャンプした後は、次のウォールジャンプの上向き速度を出す
 	if (IsWallRunning() || WallJumpDecay > 0.0f)
 	{
-		Line += FString::Printf(TEXT("  |  Next WJ up %+.0f"), GetNextWallJumpUpSpeed());
+		Line += FString::Printf(TEXT("  |  Next WJ up %+.0f / DJ up %+.0f"), GetNextWallJumpUpSpeed(), GetNextDoubleJumpZVelocity());
 	}
 	if (IsFalling() && CharacterOwner->CanJump())
 	{

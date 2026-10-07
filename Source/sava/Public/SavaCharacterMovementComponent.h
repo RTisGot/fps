@@ -407,6 +407,15 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|DoubleJump", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float DoubleJumpZVelocity = 420.0f;
 
+	//ウォールジャンプを繰り返したときの、二段ジャンプの上向き速度の下限(ウォールジャンプと同じ割合で下がり、着地で戻る)
+	//壁走りで二段ジャンプが回復しても、壁ジャンプ → 二段ジャンプの繰り返しで無限に登れないようにする
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|DoubleJump", meta = (ForceUnits = "cm/s"))
+	float DoubleJumpMinZVelocity = 0.0f;
+
+	//次の二段ジャンプの上向き速度(ウォールジャンプの繰り返しで下がった後の値。UI・デバッグ表示用)
+	UFUNCTION(BlueprintPure, Category = "Sava|DoubleJump")
+	float GetNextDoubleJumpZVelocity() const;
+
 	//上昇速度がこれ以上なら、上には全く足さずにすべて横へ飛ぶ(上昇が遅いほど上へ跳ぶ割合が増える)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|DoubleJump", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float DoubleJumpSidewaysRiseSpeed = 400.0f;
@@ -575,6 +584,7 @@ private:
 
 	bool DoAirJump(bool bReplayingMoves, float DeltaTime);
 	void DoDoubleJump();
+	float GetWallJumpDecayAlpha() const;
 
 	void StartLurch();
 	void ApplyLurch(float DeltaTime);

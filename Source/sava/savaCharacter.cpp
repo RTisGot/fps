@@ -18,6 +18,7 @@
 #include "Engine/LocalPlayer.h"
 #include "SavaGameUserSettings.h"
 #include "SavaSettingsWidget.h"
+#include "SavaScoreboardWidget.h"
 #include "SavaSettingsMenuController.h"
 #include "Blueprint/UserWidget.h"
 #include "InputCoreTypes.h"
@@ -133,6 +134,14 @@ void AsavaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	FInputKeyBinding& SettingsBinding = PlayerInputComponent->BindKey(
 		EKeys::Escape, IE_Pressed, this, &AsavaCharacter::ToggleSettingsMenu);
 	SettingsBinding.bExecuteWhenPaused = true;
+
+	// Tabキーでスコアボードを表示
+	PlayerInputComponent->BindKey(
+		EKeys::Tab,IE_Pressed,this,&AsavaCharacter::ShowScoreboard);
+
+	// Tabキーを離したら非表示
+	PlayerInputComponent->BindKey(
+		EKeys::Tab,IE_Released,this,&AsavaCharacter::HideScoreboard);
 }
 
 
@@ -509,6 +518,47 @@ void AsavaCharacter::ToggleSettingsMenu()
 		PlayerController->SetInputMode(InputMode);//PlayerControllerに反映
 		PlayerController->SetPause(true);
 	}
+}
+
+void AsavaCharacter::ShowScoreboard()
+{
+	APlayerController* PlayerController =
+		Cast<APlayerController>(Controller);
+
+	if (!PlayerController || !ScoreboardWidgetClass)
+	{
+		return;
+	}
+
+	if (!ScoreboardWidget)
+	{
+		ScoreboardWidget =
+			CreateWidget<USavaScoreboardWidget>(
+				PlayerController,
+				ScoreboardWidgetClass);
+	}
+
+	if (!ScoreboardWidget)
+	{
+		return;
+	}
+
+	if (!ScoreboardWidget->IsInViewport())
+	{
+		ScoreboardWidget->AddToViewport(50);
+	}
+
+	ScoreboardWidget->RefreshScoreboard();
+}
+
+void AsavaCharacter::HideScoreboard()
+{
+	if (!ScoreboardWidget)
+	{
+		return;
+	}
+
+	ScoreboardWidget->RemoveFromParent();
 }
 
 void AsavaCharacter::HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount)

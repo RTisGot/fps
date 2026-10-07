@@ -17,6 +17,7 @@ class UInputAction;
 class UInputMappingContext;
 class UUserWidget;
 class USavaSettingsMenuController;
+class USavaScoreboardWidget;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -127,7 +128,13 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	UPROPERTY(Transient)
 	TObjectPtr<USavaSettingsMenuController> SettingsMenuController;
 
-	
+	/** スコアボードWidgetのクラス */
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Scoreboard")
+	TSubclassOf<USavaScoreboardWidget> ScoreboardWidgetClass;
+
+	/** 現在表示しているスコアボード */
+	UPROPERTY(Transient)
+	TObjectPtr<USavaScoreboardWidget> ScoreboardWidget;
 	
 public:
 	AsavaCharacter(const FObjectInitializer& ObjectInitializer);
@@ -190,6 +197,12 @@ protected:
 
 
 	void ToggleSettingsMenu();
+
+	/** スコアボードを表示する */
+	void ShowScoreboard();
+
+	/** スコアボードを非表示にする */
+	void HideScoreboard();
 
 	//HP が 0 になった(サーバーだけで呼ばれる。AttributeSet の OnOutOfHealth から)
 	void HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount);

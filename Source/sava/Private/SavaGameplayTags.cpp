@@ -19,6 +19,8 @@ namespace SavaGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_Weapon_Reload, "Ability.Weapon.Reload", "リロード");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Dead, "State.Dead", "死亡中");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Stunning, "State.Stunning", "スタン中(付いている間は State.SprintBlocked も自動で付く)");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_SprintBlocked, "State.SprintBlocked", "ダッシュ不可");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Weapon_Aiming, "State.Weapon.Aiming", "ADS 中");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Weapon_Reloading, "State.Weapon.Reloading", "リロード中");
 
