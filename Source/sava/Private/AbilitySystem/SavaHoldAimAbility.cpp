@@ -73,7 +73,6 @@ void USavaHoldAimAbility::OnAimTick(float DeltaTime)
 
 void USavaHoldAimAbility::OnInputReleased(float TimeHeld)
 {
-	
 	if (!bIsAiming)
 	{
 		return;
@@ -120,9 +119,7 @@ void USavaHoldAimAbility::OnInputReleased(float TimeHeld)
 	}
 
 	FinishAiming(true);
-	if (bEndAbilityAfterConfirm) {
-		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
-	}
+	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 }
 
 void USavaHoldAimAbility::OnServerTargetDataReceived(const FGameplayAbilityTargetDataHandle& DataHandle, FGameplayTag ApplicationTag)
