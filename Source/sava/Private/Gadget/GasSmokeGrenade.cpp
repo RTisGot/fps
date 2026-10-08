@@ -52,7 +52,9 @@ void AGasSmokeGrenade::ApplyGadgetEffect()
 		UE_LOG(
 			LogTemp,
 			Error,
-			TEXT("AGasSmokeGrenade::ApplyGadgetEffect: GasSmokeAreaClass is not set."));
+			TEXT(
+				"AGasSmokeGrenade::ApplyGadgetEffect: "
+				"GasSmokeAreaClass is not set."));
 		return;
 	}
 
@@ -85,18 +87,19 @@ void AGasSmokeGrenade::ApplyGadgetEffect()
 		return;
 	}
 
+	// ガス煙の設定をArea側へ渡す。
 	GasSmokeArea->InitializeGas(
 		GetGadgetOwner(),
 		m_GadgetData.EffectRadius,
 		m_GadgetData.EffectDuration,
-		m_DamagePerSecond);
+		m_DamagePerSecond,
+		m_bAffectOwner);
 
 	GasSmokeArea->FinishSpawning(
 		FTransform(
 			SmokeRotation,
 			SmokeLocation));
 
-	// 演出はGrenade本体ではなく、
-	// 起爆位置を渡してBlueprint側で再生する。
+	// 演出は起爆位置を渡してBlueprint側で再生する。
 	OnGasSmokeStarted(SmokeLocation);
 }
