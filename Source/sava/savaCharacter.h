@@ -97,9 +97,9 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0"))
 	float WallRunCameraTiltSpeed = 8.0f;
 
-	//壁走り中に見回せる範囲(進行方向から、壁と反対側へ何度まで)
+	//壁走り中に見回せる範囲(進行方向から、壁と反対側へ何度まで)。90 以上にすると壁に背を向けられてしまう
 	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0", ClampMax = "180", ForceUnits = "Deg"))
-	float WallRunCameraYawLimitAway = 110.0f;
+	float WallRunCameraYawLimitAway = 60.0f;
 
 	//壁走り中に見回せる範囲(進行方向から、壁側へ何度まで)
 	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0", ClampMax = "180", ForceUnits = "Deg"))
