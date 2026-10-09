@@ -9,6 +9,7 @@
 
 class USavaWeaponData;
 class USkeletalMeshComponent;
+class UStaticMeshComponent;
 
 //1 つの枠の装備(サーバーが決めて全員へ同期する)
 USTRUCT(BlueprintType)
@@ -208,9 +209,13 @@ private:
 
 	FSlotState SlotStates[2];
 
-	//1 人称の腕に持たせる武器のメッシュ
+	//1 人称の腕に持たせる武器のSkeletalメッシュ
+	/*UPROPERTY(Transient)
+	TObjectPtr<USkeletalMeshComponent> WeaponMeshComponent;*/
+
+	// 1人称の腕に持たせる武器のStaticメッシュ
 	UPROPERTY(Transient)
-	TObjectPtr<USkeletalMeshComponent> WeaponMeshComponent;
+	TObjectPtr<UStaticMeshComponent> WeaponMeshComponent;
 
 	//クライアントから受け取った発砲演出を全員へ通知する
 	UFUNCTION(Server, Unreliable)

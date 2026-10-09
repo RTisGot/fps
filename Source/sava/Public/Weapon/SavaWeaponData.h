@@ -9,6 +9,7 @@
 
 class UAnimMontage;
 class USkeletalMesh;
+class UStaticMesh;
 class USoundBase;
 class UTexture2D;
 
@@ -46,9 +47,13 @@ public:
 
 	//--------------------------------見た目・音(自分の画面だけ)
 
-	//1 人称の腕に持たせるメッシュ
+	//1 人称の腕に持たせるskeletalメッシュ
+	/*UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TObjectPtr<USkeletalMesh> Mesh;*/
+
+	// 1人称の腕に持たせるStatic メッシュ
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
-	TObjectPtr<USkeletalMesh> Mesh;
+	TObjectPtr<UStaticMesh> Mesh;
 
 	//腕のメッシュのどのソケットに持たせるか
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")

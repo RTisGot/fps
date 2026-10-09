@@ -6,6 +6,7 @@
 #include "AbilitySystemGlobals.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -72,7 +73,8 @@ void USavaEquipmentComponent::BeginPlay()
 	{
 		BaseFieldOfView = Character->GetFirstPersonCameraComponent()->FieldOfView;
 
-		WeaponMeshComponent = NewObject<USkeletalMeshComponent>(Character, TEXT("WeaponMesh1P"));
+		//WeaponMeshComponent = NewObject<USkeletalMeshComponent>(Character, TEXT("WeaponMesh1P"));
+		WeaponMeshComponent = NewObject<UStaticMeshComponent>(Character, TEXT("WeaponMesh1P"));
 		WeaponMeshComponent->SetOnlyOwnerSee(true);
 		WeaponMeshComponent->bCastDynamicShadow = false;
 		WeaponMeshComponent->CastShadow = false;
@@ -285,18 +287,24 @@ void USavaEquipmentComponent::OnRep_CurrentSlot()
 void USavaEquipmentComponent::UpdateWeaponMesh()
 {
 	const AsavaCharacter* Character = Cast<AsavaCharacter>(GetOwner());
+
 	if (!WeaponMeshComponent || !Character)
 	{
 		return;
 	}
 
 	const USavaWeaponData* Weapon = GetCurrentWeaponData();
-	USkeletalMesh* Mesh = Weapon ? Weapon->Mesh.Get() : nullptr;
-	WeaponMeshComponent->SetSkeletalMeshAsset(Mesh);
+	UStaticMesh* Mesh = Weapon ? Weapon->Mesh.Get() : nullptr;
+
+	WeaponMeshComponent->SetStaticMesh(Mesh);
 	WeaponMeshComponent->SetVisibility(Mesh != nullptr);
-	if (Weapon)
+
+	if (Weapon && Mesh)
 	{
-		WeaponMeshComponent->AttachToComponent(Character->GetMesh1P(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, Weapon->AttachSocketName);
+		WeaponMeshComponent->AttachToComponent(
+			Character->GetMesh1P(),
+			FAttachmentTransformRules::SnapToTargetNotIncludingScale,
+			Weapon->AttachSocketName);
 	}
 }
 
@@ -483,20 +491,21 @@ void USavaEquipmentComponent::AbsorbPlayerPitchInput(float CurrentPitch)
 
 bool USavaEquipmentComponent::GetCurrentMuzzleLocation(FVector& OutLocation) const
 {
-	if (!WeaponMeshComponent)
+	if (!WeaponMeshComponent || !WeaponMeshComponent->GetStaticMesh())
 	{
 		return false;
 	}
 
-	static const FName MuzzleBoneName(TEXT("Muzzle"));
+	static const FName MuzzleSocketName(TEXT("Muzzle"));
 
-	const int32 MuzzleBoneIndex = WeaponMeshComponent->GetBoneIndex(MuzzleBoneName);
-	if (MuzzleBoneIndex == INDEX_NONE)
+	// 銃口ソケットが存在しない場合は取得できない。
+	if (!WeaponMeshComponent->DoesSocketExist(MuzzleSocketName))
 	{
 		return false;
 	}
 
-	OutLocation = WeaponMeshComponent->GetSocketLocation(MuzzleBoneName);
+	OutLocation = WeaponMeshComponent->GetSocketLocation(MuzzleSocketName);
+
 	return true;
 }
 
