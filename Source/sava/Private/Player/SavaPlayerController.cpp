@@ -1,6 +1,8 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/SavaPlayerController.h"
+#include "Player/SavaPlayerState.h"
+#include "Loadout/SavaLoadoutSubsystem.h"
 #include "savaCharacter.h"
 #include "SavaGameUserSettings.h"
 #include "SavaScoreboardWidget.h"
@@ -11,6 +13,7 @@
 #include "InputCoreTypes.h"
 #include "Misc/PackageName.h"
 #include "UObject/ConstructorHelpers.h"
+#include "savaGameMode.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSavaPlayerController, Log, All);
 
@@ -27,6 +30,40 @@ ASavaPlayerController::ASavaPlayerController()
 		static ConstructorHelpers::FClassFinder<USavaScoreboardWidget> ScoreboardView(TEXT("/Game/UI/WBP_Scoreboard"));
 		ScoreboardWidgetClass = ScoreboardView.Class;
 	}
+}
+
+void ASavaPlayerController::BeginPlay()
+{
+	Super::BeginPlay();
+
+	//自分の PC でだけ: 選んであるロードアウトをサーバーへ送り、以後変わるたびに送る
+	//(サーバーにある他の人の PlayerController では何もしない)
+	if (IsLocalController())
+	{
+		if (USavaLoadoutSubsystem* LoadoutSubsystem = GetGameInstance()->GetSubsystem<USavaLoadoutSubsystem>())
+		{
+			LoadoutSubsystem->OnLoadoutChanged.AddDynamic(this, &ThisClass::HandleLocalLoadoutChanged);
+			ServerSetLoadout(LoadoutSubsystem->GetLoadout());
+		}
+	}
+}
+
+void ASavaPlayerController::HandleLocalLoadoutChanged(const FSavaLoadout& Loadout)
+{
+	ServerSetLoadout(Loadout);
+}
+
+void ASavaPlayerController::ServerSetLoadout_Implementation(const FSavaLoadout& Loadout)
+{
+	//ここはサーバー。受け付けるかはルールを持つ GameMode が決める(試合中は変えられない、など)
+	ASavaPlayerState* SavaPlayerState = GetPlayerState<ASavaPlayerState>();
+	const AsavaGameMode* GameMode = GetWorld()->GetAuthGameMode<AsavaGameMode>();
+	if (!SavaPlayerState || (GameMode && !GameMode->CanChangeLoadout(SavaPlayerState)))
+	{
+		return;
+	}
+
+	SavaPlayerState->SetLoadout(Loadout);
 }
 
 void ASavaPlayerController::SetupInputComponent()
@@ -47,6 +84,10 @@ void ASavaPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (SettingsMenuController) SettingsMenuController->Discard();
 	if (SettingsWidget) SettingsWidget->RemoveFromParent();
 	if (ScoreboardWidget) ScoreboardWidget->RemoveFromParent();
+	if (USavaLoadoutSubsystem* LoadoutSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<USavaLoadoutSubsystem>() : nullptr)
+	{
+		LoadoutSubsystem->OnLoadoutChanged.RemoveDynamic(this, &ThisClass::HandleLocalLoadoutChanged);
+	}
 	Super::EndPlay(EndPlayReason);
 }
 

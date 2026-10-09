@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Loadout/SavaLoadoutTypes.h"
 #include "SavaPlayerController.generated.h"
 
 class UUserWidget;
@@ -28,7 +29,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI|Settings")
 	void CloseSettingsMenu();
 
+	//自分のロードアウトをサーバーへ送る(呼ぶのは自分の PC、実行されるのはサーバー)
+	UFUNCTION(Server, Reliable)
+	void ServerSetLoadout(const FSavaLoadout& Loadout);
+
 protected:
+	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -40,6 +46,10 @@ protected:
 	TSubclassOf<USavaScoreboardWidget> ScoreboardWidgetClass;
 
 private:
+	//自分の PC でロードアウトが変わった(USavaLoadoutSubsystem から)
+	UFUNCTION()
+	void HandleLocalLoadoutChanged(const FSavaLoadout& Loadout);
+
 	void ToggleSettingsMenu();
 
 	/** スコアボードを表示する */

@@ -4,8 +4,15 @@
 #include "AbilitySystem/SavaAbilitySystemComponent.h"
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
 #include "AbilitySystem/SavaAttributeSet.h"
+#include "AbilitySystem/SavaAbilityLoadoutComponent.h"
+#include "AbilitySystem/SavaLoadoutAbilityData.h"
+#include "Loadout/SavaLoadoutSettings.h"
+#include "Weapon/SavaEquipmentComponent.h"
+#include "Weapon/SavaWeaponData.h"
 #include "SavaGameplayTags.h"
 #include "Net/UnrealNetwork.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogSavaPlayerState, Log, All);
 
 ASavaPlayerState::ASavaPlayerState()
 {
@@ -86,6 +93,80 @@ void ASavaPlayerState::ResetForNewRound()
 	Respawn();
 }
 
+//--------------------------------Loadout
+
+void ASavaPlayerState::SetLoadout(const FSavaLoadout& NewLoadout)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	//クライアントから届いた値なので、選べるものだけか必ず確かめる
+	Loadout = USavaLoadoutSettings::Sanitize(NewLoadout);
+	bHasReceivedLoadout = true;
+	UE_LOG(LogSavaPlayerState, Log, TEXT("%s のロードアウト: %s / %s / %s / %s"), *GetPlayerName(),
+		*Loadout.PrimaryWeapon.GetAssetName(), *Loadout.SecondaryWeapon.GetAssetName(), *Loadout.Skill.GetAssetName(), *Loadout.Gadget.GetAssetName());
+
+	ApplyLoadoutTo(GetPawn());
+	OnLoadoutChanged.Broadcast(Loadout); //サーバーでは OnRep が呼ばれないので自分で呼ぶ
+}
+
+void ASavaPlayerState::ApplyLoadoutTo(APawn* TargetPawn) const
+{
+	if (!HasAuthority() || !TargetPawn)
+	{
+		return;
+	}
+
+	//同じものを入れ直すと弾が満タンに戻ったりするので、変わった枠だけ入れ替える
+	if (USavaEquipmentComponent* Equipment = USavaEquipmentComponent::FindEquipmentComponent(TargetPawn))
+	{
+		USavaWeaponData* Primary = Loadout.PrimaryWeapon.LoadSynchronous();
+		if (Primary && Equipment->GetWeaponData(ESavaWeaponSlot::Primary) != Primary)
+		{
+			Equipment->SetLoadout(ESavaWeaponSlot::Primary, Primary, {});
+		}
+
+		USavaWeaponData* Secondary = Loadout.SecondaryWeapon.LoadSynchronous();
+		if (Secondary && Equipment->GetWeaponData(ESavaWeaponSlot::Secondary) != Secondary)
+		{
+			Equipment->SetLoadout(ESavaWeaponSlot::Secondary, Secondary, {});
+		}
+	}
+
+	if (USavaAbilityLoadoutComponent* AbilityLoadout = USavaAbilityLoadoutComponent::FindAbilityLoadoutComponent(TargetPawn))
+	{
+		USavaSkillData* Skill = Loadout.Skill.LoadSynchronous();
+		if (Skill && AbilityLoadout->GetSkill() != Skill)
+		{
+			AbilityLoadout->SetSkill(Skill);
+		}
+
+		USavaGadgetData* Gadget = Loadout.Gadget.LoadSynchronous();
+		if (Gadget && AbilityLoadout->GetGadget() != Gadget)
+		{
+			AbilityLoadout->SetGadget(Gadget);
+		}
+	}
+}
+
+void ASavaPlayerState::OnRep_Loadout()
+{
+	OnLoadoutChanged.Broadcast(Loadout);
+}
+
+void ASavaPlayerState::CopyProperties(APlayerState* PlayerState)
+{
+	Super::CopyProperties(PlayerState);
+
+	if (ASavaPlayerState* NewPlayerState = Cast<ASavaPlayerState>(PlayerState))
+	{
+		NewPlayerState->Loadout = Loadout;
+		NewPlayerState->bHasReceivedLoadout = bHasReceivedLoadout;
+	}
+}
+
 void ASavaPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -93,4 +174,5 @@ void ASavaPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(ASavaPlayerState, TeamId);
 	DOREPLIFETIME(ASavaPlayerState, KillCount);
 	DOREPLIFETIME(ASavaPlayerState, DeathCount);
+	DOREPLIFETIME(ASavaPlayerState, Loadout);
 }

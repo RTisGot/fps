@@ -381,7 +381,11 @@ void AsavaCharacter::InitAbilitySystem()
 				AbilitySet->GiveToAbilitySystem(AbilitySystemComponent, &GrantedAbilityHandles);
 			}
 		}
-		//選んだスキル・ガジェットも付ける
+		//プレイヤーが選んだロードアウト(届いていれば)をこの体に入れてから、スキル・ガジェットを付ける
+		if (SavaPlayerState->HasReceivedLoadout())
+		{
+			SavaPlayerState->ApplyLoadoutTo(this);
+		}
 		AbilityLoadoutComponent->GrantAbilities(AbilitySystemComponent);
 
 		//HP 0 の通知を受け取る。PlayerState の AttributeSet は体が変わっても残るので、二重登録しない
