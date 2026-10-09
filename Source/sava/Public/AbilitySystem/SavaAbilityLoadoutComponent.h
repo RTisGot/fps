@@ -15,11 +15,11 @@ class USavaSkillData;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnSkillChanged, USavaSkillData*, Skill);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnGadgetChanged, USavaGadgetData*, Gadget);
 
-//キャラクターが持つスキル(1 つ)とガジェット(1 つ)を管理する。武器の USavaEquipmentComponent のスキル・ガジェット版
-//・「何を持つか」はサーバーが決めて全員へ同期する(UI で表示できる)
+//キャラクターが持つスキル・ガジェットを管理するコンポーネント
+//・サーバーが持ち、クライアントは追従する
 //・能力の付与・取り外しもここがやる。SetSkill / SetGadget を呼ぶだけで、古い能力を外して新しい能力を付ける
 //・ASC は PlayerState にあるため、キャラクターが持ち主になったとき・手放したときに GrantAbilities / RevokeAbilities を呼ぶ(AsavaCharacter が呼ぶ)
-//・ここで管理するスキル・ガジェットは AbilitySets(USavaAbilitySet)には入れない(二重に付与されるため)
+//・ここで管理するスキル・ガジェットは AbilitySetsには入れない(二重に付与されるため)
 UCLASS(ClassGroup = (Sava), meta = (BlueprintSpawnableComponent))
 class SAVA_API USavaAbilityLoadoutComponent : public UActorComponent
 {
@@ -44,7 +44,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Sava|Loadout")
 	void SetGadget(USavaGadgetData* NewGadget);
 
-	//--------------------------------状態(UI などから読む)
+	//--------------------------------状態
 
 	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
 	USavaSkillData* GetSkill() const { return Skill; }
