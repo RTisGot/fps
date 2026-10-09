@@ -53,6 +53,8 @@ public:
 private:
 	UPROPERTY(Replicated)
 	int32 KillCount = 0;
+
+	UPROPERTY(Replicated)
 	int32 DeathCount = 0;
 
 	UPROPERTY(VisibleAnywhere, Category = "Sava|Abilities")

@@ -7,6 +7,7 @@
 #include "ActiveGameplayEffectHandle.h"
 #include "SavaAbilitySystemLibrary.generated.h"
 
+class APlayerState;
 class UGameplayEffect;
 
 //全員が共通で使う関数(Blueprint からも呼べる)
@@ -29,6 +30,10 @@ public:
 	//任意の GameplayEffect を相手に付ける(サーバーのみ。状態異常など)
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Sava|Effect")
 	static FActiveGameplayEffectHandle ApplyEffectToTarget(AActor* EffectInstigator, AActor* Target, TSubclassOf<UGameplayEffect> EffectClass, float Level = 1.0f);
+
+	//持ち主のプレイヤーの PlayerState(キャラクター・死んだ体・その人が出した弾や設置物に対応)。見つからなければ null
+	UFUNCTION(BlueprintPure, Category = "Sava|Team")
+	static APlayerState* GetOwningPlayerState(const AActor* Actor);
 
 	//所属チーム(キャラクター・PlayerState・その人が出した弾や設置物に対応)。未所属なら 255
 	UFUNCTION(BlueprintPure, Category = "Sava|Team")

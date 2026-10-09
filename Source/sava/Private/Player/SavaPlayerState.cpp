@@ -80,4 +80,5 @@ void ASavaPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 
 	DOREPLIFETIME(ASavaPlayerState, TeamId);
 	DOREPLIFETIME(ASavaPlayerState, KillCount);
+	DOREPLIFETIME(ASavaPlayerState, DeathCount);
 }

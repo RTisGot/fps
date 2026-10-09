@@ -28,6 +28,7 @@
 #include "savaGameMode.h"
 #include "SavaGameplayTags.h"
 #include "AbilitySystem/SavaAttributeSet.h"
+#include "AbilitySystem/SavaAbilitySystemLibrary.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -566,13 +567,11 @@ void AsavaCharacter::HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageC
 
 	if (DamageInstigator && DamageInstigator != this)
 	{
-		if (APawn* AttackerPawn = Cast<APawn>(DamageInstigator))
+		//相手が死んだ後に爆発したグレネードでも、投げた人のキルになる
+		if (ASavaPlayerState* AttackerPlayerState =
+			Cast<ASavaPlayerState>(USavaAbilitySystemLibrary::GetOwningPlayerState(DamageInstigator)))
 		{
-			if (ASavaPlayerState* AttackerPlayerState =
-				AttackerPawn->GetPlayerState<ASavaPlayerState>())
-			{
-				AttackerPlayerState->AddKill();
-			}
+			AttackerPlayerState->AddKill();
 		}
 
 		if (APawn* diedPawn = Cast<APawn>(this))
