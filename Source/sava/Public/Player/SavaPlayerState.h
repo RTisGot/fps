@@ -34,6 +34,10 @@ public:
 
 	void Respawn();
 
+	//サーバーでのみ呼ぶ。ラウンドの切り替えで、生きていた人も含めて GE(クールダウン・旗の効果など)を外し、HP を戻す
+	//体を破棄した後、新しい体を出す前に呼ぶ
+	void ResetForNewRound();
+
 	// 現在のキル数を取得
 	UFUNCTION(BlueprintPure, Category = "Sava|Kill")
 	int32 GetKillCount() const { return KillCount; }

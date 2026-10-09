@@ -48,3 +48,25 @@ class SAVA_API USavaGE_GadgetChargeCost : public UGameplayEffect
 public:
 	USavaGE_GadgetChargeCost();
 };
+
+//旗を運んでいる間(無期限)。State.CarryingFlag を付け、移動速度に SetByCaller.MoveSpeedMultiplier を掛ける
+//旗(ASavaFlag)が拾われたときに付け、落とした・持ち帰ったときに外す
+UCLASS()
+class SAVA_API USavaGE_CarryingFlag : public UGameplayEffect
+{
+	GENERATED_BODY()
+
+public:
+	USavaGE_CarryingFlag(const FObjectInitializer& ObjectInitializer);
+};
+
+//ラウンド開始前のカウントダウン中(無期限)。State.RoundFrozen を付け、移動速度を 0 にする
+//CTF の GameMode がカウントダウンの開始で付け、終了で外す
+UCLASS()
+class SAVA_API USavaGE_RoundFrozen : public UGameplayEffect
+{
+	GENERATED_BODY()
+
+public:
+	USavaGE_RoundFrozen(const FObjectInitializer& ObjectInitializer);
+};

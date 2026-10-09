@@ -326,6 +326,13 @@ void AsavaCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightA
 
 bool AsavaCharacter::CanJumpInternal_Implementation() const
 {
+	//ラウンド開始前のカウントダウン中は動けない(移動速度は GE で 0 になっている)
+	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(SavaGameplayTags::State_RoundFrozen))
+	{
+		return false;
+	}
+
+
 	//通常はしゃがみ中ジャンプ不可だが、スライディング中(スライディングジャンプ)と空中(二段ジャンプ)は許可する
 	const USavaCharacterMovementComponent* SavaMovement = GetSavaCharacterMovementComponent();
 	if (SavaMovement->IsSliding() || SavaMovement->IsFalling())
@@ -549,6 +556,27 @@ void AsavaCharacter::HandleDeath()
 	}
 
 	SetLifeSpan(DeadBodyLifeSpan); //死体は自動で消える(クライアントにも消滅が伝わる)
+}
+
+void AsavaCharacter::FellOutOfWorld(const UDamageType& DamageType)
+{
+	//クライアントでは何もしない(サーバーの死亡が複製されてくる)
+	if (!HasAuthority())
+	{
+		return;
+	}
+	if (bIsDead)
+	{
+		//死体が落ちただけなら、既定どおり消す
+		Super::FellOutOfWorld(DamageType);
+		return;
+	}
+
+	if (ASavaPlayerState* SavaPlayerState = GetPlayerState<ASavaPlayerState>())
+	{
+		SavaPlayerState->AddDeath();
+	}
+	HandleDeath(); //リスポーン・旗の処理は通常の死亡と同じ(運んでいた旗は台へ戻る)
 }
 
 void AsavaCharacter::OnRep_IsDead()

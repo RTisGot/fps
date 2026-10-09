@@ -23,10 +23,13 @@ namespace SavaGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_SprintBlocked, "State.SprintBlocked", "ダッシュ不可");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Weapon_Aiming, "State.Weapon.Aiming", "ADS 中");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Weapon_Reloading, "State.Weapon.Reloading", "リロード中");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_CarryingFlag, "State.CarryingFlag", "旗を運んでいる(Ability.Type.Skill の能力は使えない)");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_RoundFrozen, "State.RoundFrozen", "ラウンド開始前のカウントダウン中(移動・ジャンプ・能力が使えない)");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(SetByCaller_Damage, "SetByCaller.Damage", "ダメージ量");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(SetByCaller_Healing, "SetByCaller.Healing", "回復量");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(SetByCaller_Cooldown, "SetByCaller.Cooldown", "クールダウン秒数");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(SetByCaller_MoveSpeedMultiplier, "SetByCaller.MoveSpeedMultiplier", "移動速度に掛ける倍率");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Cooldown, "Cooldown", "クールダウン中を表すタグの親(例: Cooldown.Skill.<能力名>)");
 }

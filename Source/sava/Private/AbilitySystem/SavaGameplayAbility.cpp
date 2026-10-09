@@ -14,6 +14,29 @@ USavaGameplayAbility::USavaGameplayAbility()
 	NetExecutionPolicy = EGameplayAbilityNetExecutionPolicy::LocalPredicted;
 
 	ActivationBlockedTags.AddTag(SavaGameplayTags::State_Dead);
+	ActivationBlockedTags.AddTag(SavaGameplayTags::State_RoundFrozen);
+}
+
+bool USavaGameplayAbility::CanActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
+{
+	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
+	{
+		return false;
+	}
+
+	//スキルは旗を運んでいる間は使えない(Blueprint で Ability.Type.Skill を付けた能力にも効くように、ここでまとめて判定する)
+	const UAbilitySystemComponent* AbilitySystem = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (AbilitySystem
+		&& GetAssetTags().HasTag(SavaGameplayTags::Ability_Type_Skill)
+		&& AbilitySystem->HasMatchingGameplayTag(SavaGameplayTags::State_CarryingFlag))
+	{
+		if (OptionalRelevantTags)
+		{
+			OptionalRelevantTags->AddTag(SavaGameplayTags::State_CarryingFlag);
+		}
+		return false;
+	}
+	return true;
 }
 
 AsavaCharacter* USavaGameplayAbility::GetSavaCharacterFromActorInfo() const

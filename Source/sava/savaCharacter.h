@@ -133,6 +133,13 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	USavaAbilitySystemComponent* GetSavaAbilitySystemComponent() const { return AbilitySystemComponent; }
 
+	//死んでいるか(死体として残っている間も true)
+	UFUNCTION(BlueprintPure, Category = "Sava|Death")
+	bool IsDead() const { return bIsDead; }
+
+	//奈落(KillZ)に落ちたら死亡扱いにする(既定では体が消えるだけで、リスポーンされないため)
+	virtual void FellOutOfWorld(const UDamageType& DamageType) override;
+
 	//キャラの操作(移動・視点・ジャンプ・能力など)を受け付けるか。設定画面を開いている間は受け付けない
 	//(設定画面は ASavaPlayerController が持つ)
 	void SetGameplayInputEnabled(APlayerController* PlayerController, bool bEnabled);

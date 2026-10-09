@@ -40,6 +40,11 @@ USavaGrappleAbility::USavaGrappleAbility()
 	CooldownDuration = FScalableFloat(2.0f);
 	CooldownTags.AddTag(TAG_Cooldown_Grapple);
 	RopeClass = ASavaGrappleRope::StaticClass();
+
+	//能力の種類(旗を運んでいる間は使えない)
+	FGameplayTagContainer Tags = GetAssetTags();
+	Tags.AddTag(SavaGameplayTags::Ability_Type_Skill);
+	SetAssetTags(Tags);
 }
 
 void USavaGrappleAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,

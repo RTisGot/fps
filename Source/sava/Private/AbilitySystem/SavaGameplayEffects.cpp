@@ -3,9 +3,20 @@
 #include "AbilitySystem/SavaGameplayEffects.h"
 #include "AbilitySystem/SavaAttributeSet.h"
 #include "SavaGameplayTags.h"
+#include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
 
 namespace
 {
+	//付いている間、相手にタグを付ける(GE の Components の "Grant Tags to Target Actor" と同じ)
+	UTargetTagsGameplayEffectComponent* MakeGrantedTagComponent(UGameplayEffect& Effect, const FGameplayTag& Tag)
+	{
+		UTargetTagsGameplayEffectComponent* TagsComponent = Effect.CreateDefaultSubobject<UTargetTagsGameplayEffectComponent>(TEXT("TargetTags"));
+		FInheritedTagContainer Tags;
+		Tags.Added.AddTag(Tag);
+		TagsComponent->SetAndApplyTargetTagChanges(Tags);
+		return TagsComponent;
+	}
+
 	FGameplayModifierInfo MakeSetByCallerAddModifier(const FGameplayAttribute& Attribute, const FGameplayTag& DataTag)
 	{
 		FSetByCallerFloat SetByCaller;
@@ -49,4 +60,35 @@ USavaGE_GadgetChargeCost::USavaGE_GadgetChargeCost()
 	Modifier.ModifierOp = EGameplayModOp::Additive;
 	Modifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(-1.0f));
 	Modifiers.Add(Modifier);
+}
+
+USavaGE_CarryingFlag::USavaGE_CarryingFlag(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	DurationPolicy = EGameplayEffectDurationType::Infinite;
+
+	FSetByCallerFloat SetByCaller;
+	SetByCaller.DataTag = SavaGameplayTags::SetByCaller_MoveSpeedMultiplier;
+
+	FGameplayModifierInfo Modifier;
+	Modifier.Attribute = USavaAttributeSet::GetMoveSpeedMultiplierAttribute();
+	Modifier.ModifierOp = EGameplayModOp::MultiplyCompound;
+	Modifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(SetByCaller);
+	Modifiers.Add(Modifier);
+
+	GEComponents.Add(MakeGrantedTagComponent(*this, SavaGameplayTags::State_CarryingFlag));
+}
+
+USavaGE_RoundFrozen::USavaGE_RoundFrozen(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	DurationPolicy = EGameplayEffectDurationType::Infinite;
+
+	FGameplayModifierInfo Modifier;
+	Modifier.Attribute = USavaAttributeSet::GetMoveSpeedMultiplierAttribute();
+	Modifier.ModifierOp = EGameplayModOp::Override;
+	Modifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(0.0f));
+	Modifiers.Add(Modifier);
+
+	GEComponents.Add(MakeGrantedTagComponent(*this, SavaGameplayTags::State_RoundFrozen));
 }
