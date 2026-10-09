@@ -74,10 +74,23 @@ void ASavaPlayerState::Respawn()
 	USavaAbilitySystemLibrary::ApplyHealing(this, this, AttributeSet->GetMaxHealth());
 }
 
+void ASavaPlayerState::ResetForNewRound()
+{
+	if (!HasAuthority() || !AbilitySystemComponent)
+	{
+		return;
+	}
+
+	AbilitySystemComponent->CancelAllAbilities();
+	AbilitySystemComponent->RemoveActiveEffects(FGameplayEffectQuery()); //死亡時と同じく、期間付き・永続の GE をすべて外す
+	Respawn();
+}
+
 void ASavaPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ASavaPlayerState, TeamId);
 	DOREPLIFETIME(ASavaPlayerState, KillCount);
+	DOREPLIFETIME(ASavaPlayerState, DeathCount);
 }

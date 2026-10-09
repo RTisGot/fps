@@ -23,7 +23,8 @@ enum class ESavaAbilityActivationPolicy : uint8
 
 //スキル・ガジェット・武器の能力はすべてこのクラスを親にする
 //・通信: 押した瞬間に自分の画面で発動し(予測)、サーバーが確認する
-//・死亡中は発動できない(Activation Blocked Tags に State.Dead が入っている)
+//・死亡中・ラウンド開始前は発動できない(Activation Blocked Tags に State.Dead / State.RoundFrozen が入っている)
+//・Ability.Type.Skill を持つ能力は、旗を運んでいる間(State.CarryingFlag)は発動できない
 //・クールダウンは Cooldown Duration と Cooldown Tags を入れるだけで動く
 //・個数制(ガジェット)は Max Charges を入れるだけで動く
 UCLASS(Abstract)
@@ -44,6 +45,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Ability")
 	USavaCharacterMovementComponent* GetSavaMovementFromActorInfo() const;
 
+	virtual bool CanActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr, FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
 	virtual const FGameplayTagContainer* GetCooldownTags() const override;
 	virtual void ApplyCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const override;
 	virtual UGameplayEffect* GetCostGameplayEffect() const override;

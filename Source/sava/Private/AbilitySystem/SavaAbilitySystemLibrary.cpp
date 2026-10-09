@@ -4,6 +4,7 @@
 #include "AbilitySystem/SavaAbilitySettings.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
+#include "AbilitySystemInterface.h"
 #include "GameFramework/Pawn.h"
 #include "Player/SavaPlayerState.h"
 #include "SavaGameplayTags.h"
@@ -23,7 +24,15 @@ namespace
 		}
 		if (const APawn* Pawn = Cast<APawn>(Actor))
 		{
-			return Pawn->GetPlayerState();
+			if (const APlayerState* PlayerState = Pawn->GetPlayerState())
+			{
+				return PlayerState;
+			}
+			//死んだ体は PlayerState との紐付けが外れる(Unpossess)が、ASC の持ち主(= PlayerState)は覚えている
+			//(死んだ人が投げたグレネードでも、味方判定とキルの加算ができるように)
+			const IAbilitySystemInterface* AbilitySystemInterface = Cast<IAbilitySystemInterface>(Pawn);
+			const UAbilitySystemComponent* AbilitySystem = AbilitySystemInterface ? AbilitySystemInterface->GetAbilitySystemComponent() : nullptr;
+			return AbilitySystem ? Cast<APlayerState>(AbilitySystem->GetOwnerActor()) : nullptr;
 		}
 		if (const APawn* InstigatorPawn = Actor->GetInstigator())
 		{
@@ -99,6 +108,11 @@ FActiveGameplayEffectHandle USavaAbilitySystemLibrary::ApplyEffectToTarget(AActo
 		return FActiveGameplayEffectHandle();
 	}
 	return SpecOwnerASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
+}
+
+APlayerState* USavaAbilitySystemLibrary::GetOwningPlayerState(const AActor* Actor)
+{
+	return const_cast<APlayerState*>(FindOwningPlayerState(Actor));
 }
 
 uint8 USavaAbilitySystemLibrary::GetTeamId(const AActor* Actor)

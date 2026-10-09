@@ -6,6 +6,8 @@
 #include "AbilitySystem/SavaGameplayEffects.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "savaCharacter.h"
 #include "Player/SavaPlayerState.h"
 #include "SavaGameplayTags.h"
 
@@ -147,6 +149,35 @@ bool FSavaTeamTest::RunTest(const FString&)
 	TestTrue(TEXT("Different teams are enemies"), USavaAbilitySystemLibrary::AreEnemies(Red1, Blue));
 	TestFalse(TEXT("Self is not an enemy"), USavaAbilitySystemLibrary::AreEnemies(NoTeamA, NoTeamA));
 	TestTrue(TEXT("Unassigned players are enemies"), USavaAbilitySystemLibrary::AreEnemies(NoTeamA, NoTeamB));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaDeadBodyTeamTest, "Sava.AbilitySystem.DeadBodyTeam",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaDeadBodyTeamTest::RunTest(const FString&)
+{
+	FSavaTestWorld TestWorld;
+	ASavaPlayerState* Thrower = TestWorld.SpawnPlayer(0);
+	ASavaPlayerState* Ally = TestWorld.SpawnPlayer(0);
+	ASavaPlayerState* Enemy = TestWorld.SpawnPlayer(1);
+
+	//死亡時と同じく、体から離れる(体の PlayerState は null になる)
+	AsavaCharacter* Body = TestWorld.World->SpawnActor<AsavaCharacter>(FVector(0, 0, 300), FRotator::ZeroRotator);
+	APlayerController* Controller = TestWorld.World->SpawnActor<APlayerController>();
+	Controller->SetPlayerState(Thrower);
+	Controller->Possess(Body);
+	Controller->UnPossess();
+	if (!TestNull(TEXT("Dead body has no PlayerState"), Body->GetPlayerState()))
+	{
+		return false;
+	}
+
+	//死んだ人が投げたグレネード(持ち主 = 死んだ体)の判定
+	TestTrue(TEXT("Dead body still belongs to its player"), USavaAbilitySystemLibrary::GetOwningPlayerState(Body) == Thrower);
+	TestFalse(TEXT("Dead body's grenade does not hurt allies"), USavaAbilitySystemLibrary::AreEnemies(Body, Ally));
+	TestTrue(TEXT("Dead body's grenade still hurts enemies"), USavaAbilitySystemLibrary::AreEnemies(Body, Enemy));
 
 	return true;
 }
