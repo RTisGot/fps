@@ -2,6 +2,7 @@
 
 #include "savaGameMode.h"
 #include "savaCharacter.h"
+#include "Player/SavaPlayerController.h"
 #include "Player/SavaPlayerState.h"
 #include "GameFramework/GameStateBase.h"
 #include "UObject/ConstructorHelpers.h"
@@ -15,6 +16,9 @@ AsavaGameMode::AsavaGameMode()
 
 	//能力とチームを持つ PlayerState を使う
 	PlayerStateClass = ASavaPlayerState::StaticClass();
+
+	//設定画面・スコアボードを持つ PlayerController を使う(キャラクターが死んでも残るため)
+	PlayerControllerClass = ASavaPlayerController::StaticClass();
 }
 
 void AsavaGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)

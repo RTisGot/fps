@@ -15,9 +15,6 @@ class USkeletalMeshComponent;
 class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
-class UUserWidget;
-class USavaSettingsMenuController;
-class USavaScoreboardWidget;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -118,24 +115,7 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	//壁走り中の壁の向き。他のプレイヤー(SimulatedProxy)へ同期する(アニメーション・演出用)
 	UPROPERTY(Replicated)
 	FVector_NetQuantizeNormal ReplicatedWallRunNormal;
-	///
-	UPROPERTY(EditDefaultsOnly, Category = UI, meta = (AllowPrivateAccess = "true"))
-	TSubclassOf<UUserWidget> SettingsWidgetClass;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UUserWidget> SettingsWidget;//生成した設定画面Widgetへの参照を保持する変数
-
-	UPROPERTY(Transient)
-	TObjectPtr<USavaSettingsMenuController> SettingsMenuController;
-
-	/** スコアボードWidgetのクラス */
-	UPROPERTY(EditDefaultsOnly, Category = "UI|Scoreboard")
-	TSubclassOf<USavaScoreboardWidget> ScoreboardWidgetClass;
-
-	/** 現在表示しているスコアボード */
-	UPROPERTY(Transient)
-	TObjectPtr<USavaScoreboardWidget> ScoreboardWidget;
-	
 public:
 	AsavaCharacter(const FObjectInitializer& ObjectInitializer);
 
@@ -153,9 +133,9 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	USavaAbilitySystemComponent* GetSavaAbilitySystemComponent() const { return AbilitySystemComponent; }
 
-	//設定メニューを閉じる関数/
-	UFUNCTION(BlueprintCallable, Category = "UI|Settings")
-	void CloseSettingsMenu();
+	//キャラの操作(移動・視点・ジャンプ・能力など)を受け付けるか。設定画面を開いている間は受け付けない
+	//(設定画面は ASavaPlayerController が持つ)
+	void SetGameplayInputEnabled(APlayerController* PlayerController, bool bEnabled);
 
 protected:
 	/** Called for movement input */
@@ -196,14 +176,6 @@ protected:
 	virtual void OnRep_PlayerState() override;
 
 
-	void ToggleSettingsMenu();
-
-	/** スコアボードを表示する */
-	void ShowScoreboard();
-
-	/** スコアボードを非表示にする */
-	void HideScoreboard();
-
 	//HP が 0 になった(サーバーだけで呼ばれる。AttributeSet の OnOutOfHealth から)
 	void HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount);
 
@@ -224,7 +196,6 @@ protected:
 
 protected:
 	// APawn interface
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void NotifyControllerChanged() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* InputComponent) override;
 	// End of APawn interface

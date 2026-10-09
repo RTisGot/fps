@@ -17,18 +17,13 @@
 #include "InputActionValue.h"
 #include "Engine/LocalPlayer.h"
 #include "SavaGameUserSettings.h"
-#include "SavaSettingsWidget.h"
-#include "SavaScoreboardWidget.h"
-#include "SavaSettingsMenuController.h"
-#include "Blueprint/UserWidget.h"
-#include "InputCoreTypes.h"
-#include "UObject/ConstructorHelpers.h"
-#include "Misc/PackageName.h"
+#include "Player/SavaPlayerController.h"
 #include "Net/UnrealNetwork.h"
 #include "savaGameMode.h"
 #include "SavaGameplayTags.h"
 #include "AbilitySystem/SavaAttributeSet.h"
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
+#include "AbilitySystem/SavaHoldAimAbility.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -60,14 +55,6 @@ AsavaCharacter::AsavaCharacter(const FObjectInitializer& ObjectInitializer)
 
 	EquipmentComponent = CreateDefaultSubobject<USavaEquipmentComponent>(TEXT("Equipment"));
 	AbilityLoadoutComponent = CreateDefaultSubobject<USavaAbilityLoadoutComponent>(TEXT("AbilityLoadout"));
-
-	// Layout, style and animation are authored in the Widget Blueprint.
-	if (FPackageName::DoesPackageExist(TEXT("/Game/WBP/WBP_SettingsMenu")))
-	{
-		static ConstructorHelpers::FClassFinder<USavaSettingsWidget> SettingsView(TEXT("/Game/WBP/WBP_SettingsMenu"));
-		SettingsWidgetClass = SettingsView.Class;
-	}
-
 }
 
 //--------------------------------Input
@@ -79,10 +66,9 @@ void AsavaCharacter::NotifyControllerChanged()
 	// Add Input Mapping Context
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
 	{
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-		{
-			Subsystem->AddMappingContext(DefaultMappingContext, 0);
-		}
+		//設定画面を開いたままリスポーンした場合は、閉じるまで操作を受け付けない
+		const ASavaPlayerController* SavaPlayerController = Cast<ASavaPlayerController>(PlayerController);
+		SetGameplayInputEnabled(PlayerController, !(SavaPlayerController && SavaPlayerController->IsSettingsMenuOpen()));
 	}
 }
 
@@ -130,19 +116,7 @@ void AsavaCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		UE_LOG(LogTemplateCharacter, Error, TEXT("'%s' Failed to find an Enhanced Input Component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
 	}
 
-	// UEnhancedInputComponent intentionally disallows legacy BindKey calls.
-	// Bind the Escape key through the base input component instead.
-	FInputKeyBinding& SettingsBinding = PlayerInputComponent->BindKey(
-		EKeys::Escape, IE_Pressed, this, &AsavaCharacter::ToggleSettingsMenu);
-	SettingsBinding.bExecuteWhenPaused = true;
-
-	// Tabキーでスコアボードを表示
-	PlayerInputComponent->BindKey(
-		EKeys::Tab,IE_Pressed,this,&AsavaCharacter::ShowScoreboard);
-
-	// Tabキーを離したら非表示
-	PlayerInputComponent->BindKey(
-		EKeys::Tab,IE_Released,this,&AsavaCharacter::HideScoreboard);
+	//Esc(設定画面)と Tab(スコアボード)は、死亡中も効くように ASavaPlayerController で受け取る
 }
 
 
@@ -462,104 +436,58 @@ void AsavaCharacter::Input_AbilityInputTagReleased(FGameplayTag InputTag)
 	}
 }
 
-//設定画面の開閉
-void AsavaCharacter::ToggleSettingsMenu()
+void AsavaCharacter::SetGameplayInputEnabled(APlayerController* PlayerController, bool bEnabled)
 {
-	APlayerController* PlayerController = Cast<APlayerController>(Controller);
-	if (!PlayerController)
+	UEnhancedInputLocalPlayerSubsystem* Subsystem = PlayerController
+		? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer())
+		: nullptr;
+	if (!Subsystem || !DefaultMappingContext)
 	{
 		return;
 	}
 
-	if (SettingsWidget && SettingsWidget->IsInViewport())
+	if (bEnabled)
 	{
-		CloseSettingsMenu();
+		//押したままのキーは、一度離すまで反応しない(AddMappingContext の既定の動き)
+		Subsystem->AddMappingContext(DefaultMappingContext, 0);
 		return;
 	}
 
-	USavaGameUserSettings* Settings = USavaGameUserSettings::GetSavaGameUserSettings();
-	if (!Settings)
+	//押していたボタンを離した扱いにしてから外す(走り続け・撃ち続けを防ぐ)
+	StopSprint();
+	StopCrouch();
+	StopJump();
+	if (AbilitySystemComponent)
 	{
-		UE_LOG(LogTemplateCharacter, Error, TEXT("SavaGameUserSettings is not configured."));
-		return;
+		//狙っている途中の能力(ブリンク・投げ物など)は、離した扱いにすると確定してしまうので先にキャンセルする
+		TArray<USavaHoldAimAbility*> AimingAbilities;
+		for (const FGameplayAbilitySpec& Spec : AbilitySystemComponent->GetActivatableAbilities())
+		{
+			for (UGameplayAbility* Instance : Spec.GetAbilityInstances())
+			{
+				if (USavaHoldAimAbility* AimAbility = Cast<USavaHoldAimAbility>(Instance))
+				{
+					AimingAbilities.Add(AimAbility);
+				}
+			}
+		}
+		for (USavaHoldAimAbility* AimAbility : AimingAbilities)
+		{
+			AimAbility->CancelAiming();
+		}
 	}
-
-	// Migrate an inherited reference to the old WBP_Setting; allow subclasses of the new view.
-	if (!SettingsWidgetClass || SettingsWidgetClass == USavaSettingsWidget::StaticClass()
-		|| !SettingsWidgetClass->IsChildOf(USavaSettingsWidget::StaticClass()))
+	if (AbilityInputConfig)
 	{
-		SettingsWidgetClass = LoadClass<USavaSettingsWidget>(nullptr, TEXT("/Game/WBP/WBP_SettingsMenu.WBP_SettingsMenu_C"));
+		for (const FSavaInputAction& Entry : AbilityInputConfig->AbilityInputActions)
+		{
+			if (Entry.InputTag.IsValid())
+			{
+				Input_AbilityInputTagReleased(Entry.InputTag);
+			}
+		}
 	}
-	if (!SettingsWidgetClass)
-	{
-		UE_LOG(LogTemplateCharacter, Error, TEXT("WBP_SettingsMenu is missing. The settings view must be a Widget Blueprint."));
-		return;
-	}
-	if (SettingsWidget && !SettingsWidget->IsA<USavaSettingsWidget>()) SettingsWidget = nullptr;
-
-	if (!SettingsWidget)
-	{
-		SettingsWidget = CreateWidget<UUserWidget>(PlayerController, SettingsWidgetClass);
-	}
-
-	if (USavaSettingsWidget* View = Cast<USavaSettingsWidget>(SettingsWidget))
-	{
-		SettingsMenuController = NewObject<USavaSettingsMenuController>(this);
-		SettingsMenuController->Initialize(Settings, GetWorld()->WorldType != EWorldType::PIE);
-		SettingsMenuController->AttachView(View);
-		View->OnCloseRequested.BindUObject(this, &AsavaCharacter::CloseSettingsMenu);
-
-		SettingsWidget->AddToViewport(100);
-		PlayerController->bShowMouseCursor = true;
-
-		FInputModeGameAndUI InputMode;                           //ゲーム操作とUI操作の両方を受け付ける入力モード
-		InputMode.SetWidgetToFocus(SettingsWidget->TakeWidget());//入力のフォーカスを設定画面に向ける
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);//マウスカーソルをゲーム画面内に閉じ込めない
-		InputMode.SetHideCursorDuringCapture(false);//マウス入力をゲームがキャプチャしたときでも、カーソルを隠さない
-		PlayerController->SetInputMode(InputMode);//PlayerControllerに反映
-		PlayerController->SetPause(true);
-	}
-}
-
-void AsavaCharacter::ShowScoreboard()
-{
-	APlayerController* PlayerController =
-		Cast<APlayerController>(Controller);
-
-	if (!PlayerController || !ScoreboardWidgetClass)
-	{
-		return;
-	}
-
-	if (!ScoreboardWidget)
-	{
-		ScoreboardWidget =
-			CreateWidget<USavaScoreboardWidget>(
-				PlayerController,
-				ScoreboardWidgetClass);
-	}
-
-	if (!ScoreboardWidget)
-	{
-		return;
-	}
-
-	if (!ScoreboardWidget->IsInViewport())
-	{
-		ScoreboardWidget->AddToViewport(50);
-	}
-
-	ScoreboardWidget->RefreshScoreboard();
-}
-
-void AsavaCharacter::HideScoreboard()
-{
-	if (!ScoreboardWidget)
-	{
-		return;
-	}
-
-	ScoreboardWidget->RemoveFromParent();
+	//マウスでの視点操作もこの中に入っている
+	Subsystem->RemoveMappingContext(DefaultMappingContext);
 }
 
 void AsavaCharacter::HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount)
@@ -643,33 +571,4 @@ void AsavaCharacter::OnRep_IsDead()
 	//3P メッシュが無いので、見た目は隠すだけ(後で死亡アニメやラグドールに差し替える)
 	Mesh1P->SetVisibility(false, true);
 	GetMesh()->SetVisibility(false, true);
-}
-
-void AsavaCharacter::CloseSettingsMenu()
-{
-	if (SettingsMenuController) SettingsMenuController->Discard();
-
-	StopSprint();
-	StopCrouch();
-	StopJump();
-	if (SettingsWidget)
-	{
-		SettingsWidget->RemoveFromParent();//現在表示されている親から外す。
-	}
-
-	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
-	{
-		PlayerController->SetPause(false);
-		PlayerController->bShowMouseCursor = false; //マウスカーソルを非表示に戻す処理
-		PlayerController->SetInputMode(FInputModeGameOnly()); //ゲーム操作だけ受け付ける
-		PlayerController->FlushPressedKeys(); //メニューを閉じた直後の誤入力を防ぐ
-	}
-}
-
-void AsavaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	// Restore an unconfirmed video preview even if the pawn/level is destroyed.
-	if (SettingsMenuController) SettingsMenuController->Discard();
-	if (SettingsWidget) SettingsWidget->RemoveFromParent();
-	Super::EndPlay(EndPlayReason);
 }
