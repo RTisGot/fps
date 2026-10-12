@@ -7,13 +7,16 @@
 #include "SavaOnlineSettings.generated.h"
 
 //部屋(セッション)の設定(Project Settings → Game → Sava Online)
-//部屋を抜けた・切断されたときは Project Settings → Maps & Modes の Game Default Map に戻る
 UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "Sava Online"))
 class SAVA_API USavaOnlineSettings : public UDeveloperSettings
 {
 	GENERATED_BODY()
 
 public:
+	//タイトルの「プレイ」で開くマップ。部屋を抜けた・切断されたときもここへ戻る
+	UPROPERTY(Config, EditAnywhere, Category = "Maps")
+	TSoftObjectPtr<UWorld> SoloLobbyMap;
+
 	//部屋を作ったときにホストが開くマップ(listen サーバーとして開く)
 	UPROPERTY(Config, EditAnywhere, Category = "Maps")
 	TSoftObjectPtr<UWorld> LobbyMap;

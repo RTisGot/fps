@@ -10,6 +10,7 @@
 #include "GameMapsSettings.h"
 #include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "UObject/UObjectGlobals.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSavaSession, Log, All);
 
@@ -26,6 +27,7 @@ void USavaSessionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	//切断・接続失敗はエンジン全体のイベントで届く(PIE では他の PIE インスタンスの分も来るので、受け取り側で自分の分か確かめる)
 	NetworkFailureHandle = GEngine->OnNetworkFailure().AddUObject(this, &ThisClass::HandleNetworkFailure);
 	TravelFailureHandle = GEngine->OnTravelFailure().AddUObject(this, &ThisClass::HandleTravelFailure);
+	PostLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &ThisClass::HandlePostLoadMap);
 }
 
 void USavaSessionSubsystem::Deinitialize()
@@ -35,6 +37,7 @@ void USavaSessionSubsystem::Deinitialize()
 		GEngine->OnNetworkFailure().Remove(NetworkFailureHandle);
 		GEngine->OnTravelFailure().Remove(TravelFailureHandle);
 	}
+	FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapHandle);
 
 	if (IOnlineSessionPtr Sessions = GetSessionInterface())
 	{
@@ -344,10 +347,30 @@ void USavaSessionSubsystem::LeaveRoom()
 	UE_LOG(LogSavaSession, Log, TEXT("部屋を抜けます"));
 	DestroySessionThen([this]()
 	{
-		//タイトルを開き直す。ホストならここで listen サーバーが閉じ、参加者は切断されてタイトルへ戻される
-		const FString TitleMap = UGameMapsSettings::GetGameDefaultMap();
-		UGameplayStatics::OpenLevel(this, FName(*TitleMap), true);
+		//ソロロビーを開き直す。ホストならここで listen サーバーが閉じ、参加者は切断されてソロロビーへ戻される
+		OpenSoloLobby();
 	});
+}
+
+void USavaSessionSubsystem::OpenSoloLobby()
+{
+	const TSoftObjectPtr<UWorld>& SoloLobbyMap = GetDefault<USavaOnlineSettings>()->SoloLobbyMap;
+	if (SoloLobbyMap.IsNull())
+	{
+		UE_LOG(LogSavaSession, Error, TEXT("Solo Lobby Map が未設定です(Project Settings → Game → Sava Online)。タイトルへ戻ります"));
+		UGameplayStatics::OpenLevel(this, FName(*UGameMapsSettings::GetGameDefaultMap()), true);
+		return;
+	}
+
+	//listen を付けないので、自分 1 人だけのサーバー(standalone)になる
+	UGameplayStatics::OpenLevelBySoftObjectPtr(this, SoloLobbyMap, true);
+}
+
+FString USavaSessionSubsystem::ConsumeDisconnectReason()
+{
+	FString Reason = MoveTemp(DisconnectReason);
+	DisconnectReason.Reset();
+	return Reason;
 }
 
 // ---------------------------------------------------------------------------
@@ -367,7 +390,7 @@ void USavaSessionSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver* NetD
 		return;
 	}
 
-	HandleConnectionLost(FString::Printf(TEXT("%s: %s"), ENetworkFailure::ToString(FailureType), *ErrorString));
+	HandleConnectionLost(TEXT("ホストとの接続が切れました"), FString::Printf(TEXT("%s: %s"), ENetworkFailure::ToString(FailureType), *ErrorString));
 }
 
 void USavaSessionSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString)
@@ -377,16 +400,30 @@ void USavaSessionSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::T
 		return;
 	}
 
-	HandleConnectionLost(FString::Printf(TEXT("%s: %s"), ETravelFailure::ToString(FailureType), *ErrorString));
+	HandleConnectionLost(TEXT("部屋に接続できませんでした"), FString::Printf(TEXT("%s: %s"), ETravelFailure::ToString(FailureType), *ErrorString));
 }
 
-void USavaSessionSubsystem::HandleConnectionLost(const FString& Reason)
+void USavaSessionSubsystem::HandleConnectionLost(const FString& Reason, const FString& Details)
 {
-	UE_LOG(LogSavaSession, Warning, TEXT("ホストとの接続が切れました: %s"), *Reason);
+	UE_LOG(LogSavaSession, Warning, TEXT("%s: %s"), *Reason, *Details);
 
-	//タイトル(Game Default Map)への移動はエンジンが行うので、ここでは部屋の情報を消すだけ
+	//この後エンジンがタイトル(Game Default Map)を開く。それは止められないので、開き終えたら HandlePostLoadMap でソロロビーへ移し直す
+	DisconnectReason = Reason;
+	bReturnToSoloLobbyPending = true;
 	DestroySessionThen([]() {});
 	OnDisconnected.Broadcast(Reason);
+}
+
+void USavaSessionSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
+{
+	if (!bReturnToSoloLobbyPending || LoadedWorld == nullptr || LoadedWorld->GetGameInstance() != GetGameInstance())
+	{
+		return;
+	}
+
+	bReturnToSoloLobbyPending = false;
+	UE_LOG(LogSavaSession, Log, TEXT("切断されたのでソロロビーへ戻ります"));
+	OpenSoloLobby();
 }
 
 // ---------------------------------------------------------------------------
@@ -432,7 +469,7 @@ namespace SavaSession
 		}));
 
 	static FAutoConsoleCommandWithWorldAndArgs LeaveRoomCommand(
-		TEXT("Sava.LeaveRoom"), TEXT("部屋を抜けてタイトルに戻る"),
+		TEXT("Sava.LeaveRoom"), TEXT("部屋を抜けてソロロビーに戻る"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
 			if (USavaSessionSubsystem* Subsystem = GetSubsystem(World))

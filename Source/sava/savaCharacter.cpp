@@ -8,6 +8,7 @@
 #include "AbilitySystem/SavaInputConfig.h"
 #include "Player/SavaPlayerState.h"
 #include "Weapon/SavaEquipmentComponent.h"
+#include "Lobby/SavaInteractTerminal.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -175,7 +176,27 @@ void AsavaCharacter::StopJump() {
 }
 
 void AsavaCharacter::StartCrouch() {
+	//端末の近くでは、しゃがまずに端末を開く(ソロロビーのロードアウト・マッチング)
+	if (ASavaInteractTerminal* Terminal = NearbyTerminal.Get(); Terminal && IsLocallyControlled())
+	{
+		Terminal->OpenMenu(GetController<APlayerController>());
+		return;
+	}
+
 	Crouch();
+}
+
+void AsavaCharacter::SetNearbyTerminal(ASavaInteractTerminal* Terminal)
+{
+	NearbyTerminal = Terminal;
+}
+
+void AsavaCharacter::ClearNearbyTerminal(ASavaInteractTerminal* Terminal)
+{
+	if (NearbyTerminal.Get() == Terminal)
+	{
+		NearbyTerminal.Reset();
+	}
 }
 
 void AsavaCharacter::StopCrouch() {

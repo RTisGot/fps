@@ -63,9 +63,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Sava|Session")
 	void JoinRoom(int32 SearchIndex);
 
-	//部屋を抜けてタイトル(Game Default Map)に戻る。ホストが抜けると部屋ごと無くなる
+	//部屋を抜けてソロロビーに戻る。ホストが抜けると部屋ごと無くなる
 	UFUNCTION(BlueprintCallable, Category = "Sava|Session")
 	void LeaveRoom();
+
+	//ソロロビーを開く(タイトルの「プレイ」から呼ぶ)
+	UFUNCTION(BlueprintCallable, Category = "Sava|Session")
+	void OpenSoloLobby();
+
+	//切断されてソロロビーへ戻ってきたときの理由を返して消す(なければ空。ソロロビーの画面を開いたときに呼ぶ)
+	UFUNCTION(BlueprintCallable, Category = "Sava|Session")
+	FString ConsumeDisconnectReason();
 
 	//作成・検索・参加の途中か(UI でボタンを押せなくするのに使う)
 	UFUNCTION(BlueprintPure, Category = "Sava|Session")
@@ -84,7 +92,7 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Session")
 	FSavaOnJoinRoomComplete OnJoinRoomComplete;
 
-	//ホストとの接続が切れた(タイトルへの移動はエンジンが行う)
+	//ホストとの接続が切れた。この後マップが変わって今の画面は消えるので、理由を出すなら ConsumeDisconnectReason を使う
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Session")
 	FSavaOnDisconnected OnDisconnected;
 
@@ -105,7 +113,11 @@ private:
 	//エンジンからの切断・接続失敗の通知
 	void HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 	void HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
-	void HandleConnectionLost(const FString& Reason);
+	//Reason は画面に出す短い文、Details はログにだけ出すエンジンの詳細
+	void HandleConnectionLost(const FString& Reason, const FString& Details);
+
+	//切断後、エンジンがタイトル(Game Default Map)を開き終えたらソロロビーへ移し直す
+	void HandlePostLoadMap(UWorld* LoadedWorld);
 
 	//Null(LAN)で動いているか
 	bool IsLANSubsystem() const;
@@ -117,6 +129,13 @@ private:
 	FDelegateHandle JoinSessionHandle;
 	FDelegateHandle NetworkFailureHandle;
 	FDelegateHandle TravelFailureHandle;
+	FDelegateHandle PostLoadMapHandle;
 
 	bool bBusy = false;
+
+	//切断され、ソロロビーへ戻す途中か
+	bool bReturnToSoloLobbyPending = false;
+
+	//最後に切断された理由(ConsumeDisconnectReason で消す)
+	FString DisconnectReason;
 };

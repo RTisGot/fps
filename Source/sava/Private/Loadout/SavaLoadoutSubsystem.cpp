@@ -43,6 +43,59 @@ void USavaLoadoutSubsystem::SetGadget(USavaGadgetData* Gadget)
 	ApplyChange(NewLoadout);
 }
 
+void USavaLoadoutSubsystem::SelectItem(UObject* Item)
+{
+	if (USavaWeaponData* Weapon = Cast<USavaWeaponData>(Item))
+	{
+		SetWeapon(Weapon->Slot, Weapon);
+	}
+	else if (USavaSkillData* Skill = Cast<USavaSkillData>(Item))
+	{
+		SetSkill(Skill);
+	}
+	else if (USavaGadgetData* Gadget = Cast<USavaGadgetData>(Item))
+	{
+		SetGadget(Gadget);
+	}
+}
+
+bool USavaLoadoutSubsystem::IsSelected(const UObject* Item) const
+{
+	if (!Item)
+	{
+		return false;
+	}
+
+	const FSoftObjectPath ItemPath(Item);
+	return Loadout.PrimaryWeapon.ToSoftObjectPath() == ItemPath
+		|| Loadout.SecondaryWeapon.ToSoftObjectPath() == ItemPath
+		|| Loadout.Skill.ToSoftObjectPath() == ItemPath
+		|| Loadout.Gadget.ToSoftObjectPath() == ItemPath;
+}
+
+void USavaLoadoutSubsystem::GetItemDisplayInfo(const UObject* Item, FText& DisplayName, UTexture2D*& Icon)
+{
+	DisplayName = FText::GetEmpty();
+	Icon = nullptr;
+
+	if (const USavaWeaponData* Weapon = Cast<USavaWeaponData>(Item))
+	{
+		DisplayName = Weapon->DisplayName;
+		Icon = Weapon->Icon;
+	}
+	else if (const USavaLoadoutAbilityData* AbilityData = Cast<USavaLoadoutAbilityData>(Item))
+	{
+		DisplayName = AbilityData->DisplayName;
+		Icon = AbilityData->Icon;
+	}
+
+	//表示名が未入力なら、アセット名を出す
+	if (DisplayName.IsEmpty() && Item)
+	{
+		DisplayName = FText::FromString(Item->GetName());
+	}
+}
+
 void USavaLoadoutSubsystem::ApplyChange(const FSavaLoadout& NewLoadout)
 {
 	//選べないもの(違う枠の武器など)を渡されたら、各リストの最初のものになる

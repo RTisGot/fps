@@ -11,6 +11,7 @@
 class USavaGadgetData;
 class USavaSkillData;
 class USavaWeaponData;
+class UTexture2D;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnLocalLoadoutChanged, const FSavaLoadout&, Loadout);
 
@@ -39,6 +40,20 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
 	void SetGadget(USavaGadgetData* Gadget);
+
+	//--------------------------------一覧の 1 項目用(武器・スキル・ガジェットのどれでも渡せる)
+
+	//その項目を選ぶ(武器はデータの Slot の枠に入る)
+	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
+	void SelectItem(UObject* Item);
+
+	//その項目を今選んでいるか
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	bool IsSelected(const UObject* Item) const;
+
+	//その項目の表示名とアイコン
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	static void GetItemDisplayInfo(const UObject* Item, FText& DisplayName, UTexture2D*& Icon);
 
 	//--------------------------------今選んでいるもの(読み込み済みのアセット)
 
