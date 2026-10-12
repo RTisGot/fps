@@ -8,6 +8,7 @@
 #include "AbilitySystem/SavaInputConfig.h"
 #include "Player/SavaPlayerState.h"
 #include "Weapon/SavaEquipmentComponent.h"
+#include "Lobby/SavaInteractTerminal.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -175,7 +176,27 @@ void AsavaCharacter::StopJump() {
 }
 
 void AsavaCharacter::StartCrouch() {
+	//端末の近くでは、しゃがまずに端末を開く(ソロロビーのロードアウト・マッチング)
+	if (ASavaInteractTerminal* Terminal = NearbyTerminal.Get(); Terminal && IsLocallyControlled())
+	{
+		Terminal->OpenMenu(GetController<APlayerController>());
+		return;
+	}
+
 	Crouch();
+}
+
+void AsavaCharacter::SetNearbyTerminal(ASavaInteractTerminal* Terminal)
+{
+	NearbyTerminal = Terminal;
+}
+
+void AsavaCharacter::ClearNearbyTerminal(ASavaInteractTerminal* Terminal)
+{
+	if (NearbyTerminal.Get() == Terminal)
+	{
+		NearbyTerminal.Reset();
+	}
 }
 
 void AsavaCharacter::StopCrouch() {
@@ -381,7 +402,11 @@ void AsavaCharacter::InitAbilitySystem()
 				AbilitySet->GiveToAbilitySystem(AbilitySystemComponent, &GrantedAbilityHandles);
 			}
 		}
-		//選んだスキル・ガジェットも付ける
+		//プレイヤーが選んだロードアウト(届いていれば)をこの体に入れてから、スキル・ガジェットを付ける
+		if (SavaPlayerState->HasReceivedLoadout())
+		{
+			SavaPlayerState->ApplyLoadoutTo(this);
+		}
 		AbilityLoadoutComponent->GrantAbilities(AbilitySystemComponent);
 
 		//HP 0 の通知を受け取る。PlayerState の AttributeSet は体が変わっても残るので、二重登録しない
