@@ -32,3 +32,4 @@ Saved/
 *.tmp
 Thumbs.db
 .DS_Store
+/Source/.clinerules

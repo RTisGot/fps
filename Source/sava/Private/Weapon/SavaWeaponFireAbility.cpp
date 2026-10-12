@@ -156,7 +156,25 @@ void USavaWeaponFireAbility::FireShot()
 
 	const FSavaWeaponStats Stats = Equipment->GetStats(FiringSlot);
 	TArray<FHitResult> Hits;
-	TraceShot(Stats, Equipment->GetCurrentSpreadAngle(), Hits);
+
+	//マズル位置を取得。武器のMuzzleOffsetソケットから計算した固定位置
+	FVector MuzzleLocation;
+	const bool bMuzzleValid = Equipment->GetCurrentMuzzleLocation(MuzzleLocation);
+
+	if (bMuzzleValid)
+	{
+		TraceShot(MuzzleLocation, Stats, Equipment->GetCurrentSpreadAngle(), Hits);
+	}
+	else
+	{
+		// マズル位置取得失敗時はカメラ位置を使う（フォールバック）
+		FVector ViewLocation;
+		FRotator ViewRotation;
+		if (GetViewPoint(ViewLocation, ViewRotation))
+		{
+			TraceShot(ViewLocation, Stats, Equipment->GetCurrentSpreadAngle(), Hits);
+		}
+	}
 
 	//デバッグ用の弾道表示
 	for (const FHitResult& Hit : Hits)
@@ -172,9 +190,8 @@ void USavaWeaponFireAbility::FireShot()
 			1.0f);
 	}
 
-	//武器の視覚演出を全プレイヤーへ通知する
-	FVector MuzzleLocation;
-	if (Equipment->GetCurrentMuzzleLocation(MuzzleLocation))
+	//武器の視覚演出を全プレイヤーへ通知する(マズル位置が有効な場合のみ)
+	if (bMuzzleValid)
 	{
 		TArray<FVector> TraceEnds;
 		TraceEnds.Reserve(Hits.Num());
@@ -447,12 +464,12 @@ bool USavaWeaponFireAbility::GetViewPoint(FVector& OutLocation, FRotator& OutRot
 	return true;
 }
 
-void USavaWeaponFireAbility::TraceShot(const FSavaWeaponStats& Stats, float SpreadAngle, TArray<FHitResult>& OutHits) const
+void USavaWeaponFireAbility::TraceShot(const FVector& MuzzleLocation, const FSavaWeaponStats& Stats, float SpreadAngle, TArray<FHitResult>& OutHits) const
 {
-	FVector ViewLocation;
 	FRotator ViewRotation;
+	FVector DummyLocation;
 	const AActor* Avatar = GetAvatarActorFromActorInfo();
-	if (!Avatar || !GetViewPoint(ViewLocation, ViewRotation))
+	if (!Avatar || !GetViewPoint(DummyLocation, ViewRotation))
 	{
 		return;
 	}
@@ -466,23 +483,23 @@ void USavaWeaponFireAbility::TraceShot(const FSavaWeaponStats& Stats, float Spre
 	{
 		//拡散: 狙った方向から最大 Spread Angle だけランダムにずらす
 		const FVector Direction = SpreadHalfAngle > 0.0f ? FMath::VRandCone(AimDirection, SpreadHalfAngle) : AimDirection;
-		const FVector TraceEnd = ViewLocation + Direction * MaxTraceDistance;
+		const FVector TraceEnd = MuzzleLocation + Direction * MaxTraceDistance;
 
 		FHitResult Hit;
 		const bool bHit = Stats.HitScanRadius > 0.0f
-			? World->SweepSingleByChannel(Hit, ViewLocation, TraceEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeSphere(Stats.HitScanRadius), QueryParams)
-			: World->LineTraceSingleByChannel(Hit, ViewLocation, TraceEnd, TraceChannel, QueryParams);
+			? World->SweepSingleByChannel(Hit, MuzzleLocation, TraceEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeSphere(Stats.HitScanRadius), QueryParams)
+			: World->LineTraceSingleByChannel(Hit, MuzzleLocation, TraceEnd, TraceChannel, QueryParams);
 
 		//ドームシールドを横切るなら、そこで弾を止める(シールドには当たり判定が無いので計算で調べる)
 		FVector ShieldHitLocation;
 		FVector ShieldHitNormal;
 		if (ASavaDomeShield* Shield = ASavaDomeShield::FindBlockingShield(
-			Avatar->GetWorld(), ViewLocation, bHit ? Hit.ImpactPoint : TraceEnd, ShieldHitLocation, ShieldHitNormal))
+			Avatar->GetWorld(), MuzzleLocation, bHit ? Hit.ImpactPoint : TraceEnd, ShieldHitLocation, ShieldHitNormal))
 		{
 			Hit = FHitResult(Shield, Cast<UPrimitiveComponent>(Shield->GetRootComponent()), ShieldHitLocation, ShieldHitNormal);
-			Hit.TraceStart = ViewLocation;
+			Hit.TraceStart = MuzzleLocation;
 			Hit.TraceEnd = TraceEnd;
-			Hit.Distance = FVector::Dist(ViewLocation, ShieldHitLocation);
+			Hit.Distance = FVector::Dist(MuzzleLocation, ShieldHitLocation);
 			OutHits.Add(Hit);
 			continue;
 		}
@@ -490,7 +507,7 @@ void USavaWeaponFireAbility::TraceShot(const FSavaWeaponStats& Stats, float Spre
 		if (!bHit)
 		{
 			//外れ: 弾道の演出用に、レイの端を当たった位置として入れておく
-			Hit = FHitResult(ViewLocation, TraceEnd);
+			Hit = FHitResult(MuzzleLocation, TraceEnd);
 			Hit.Location = TraceEnd;
 			Hit.ImpactPoint = TraceEnd;
 		}

@@ -59,6 +59,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	FName AttachSocketName = TEXT("GripPoint");
 
+	//武器アタッチ位置からの銃口(マズル)の相対位置。モーションに依存しない固定位置になる
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (ForceUnits = "cm"))
+	FVector MuzzleOffset = FVector::ZeroVector;
+
+	//マズルフラッシュの色
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	FColor MuzzleFlashColor = FColor::Red;
+
 	//撃つたびに腕で再生するアニメーション
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<UAnimMontage> FireMontage;

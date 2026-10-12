@@ -113,6 +113,9 @@ void USavaEquipmentComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		UpdateADS(DeltaTime);
 		UpdateRecoilRecovery(DeltaTime);
 	}
+
+	//デバッグ描画(エディタ・ゲーム画面のすべてで可視)
+	DrawMuzzleDebug();
 }
 
 //--------------------------------Loadout
@@ -491,22 +494,57 @@ void USavaEquipmentComponent::AbsorbPlayerPitchInput(float CurrentPitch)
 
 bool USavaEquipmentComponent::GetCurrentMuzzleLocation(FVector& OutLocation) const
 {
-	if (!WeaponMeshComponent || !WeaponMeshComponent->GetStaticMesh())
+	const USavaWeaponData* Weapon = GetCurrentWeaponData();
+	if (!Weapon)
 	{
 		return false;
 	}
 
-	static const FName MuzzleSocketName(TEXT("Muzzle"));
-
-	// 銃口ソケットが存在しない場合は取得できない。
-	if (!WeaponMeshComponent->DoesSocketExist(MuzzleSocketName))
+	// アタッチ先のソケットWorld位置・回転を取得
+	USkeletalMeshComponent* FirstPersonMesh = GetFirstPersonMesh();
+	if (!FirstPersonMesh)
 	{
 		return false;
 	}
 
-	OutLocation = WeaponMeshComponent->GetSocketLocation(MuzzleSocketName);
+	const FTransform AttachSocketTransform = FirstPersonMesh->GetSocketTransform(Weapon->AttachSocketName);
+	if (AttachSocketTransform.Equals(FTransform::Identity))
+	{
+		// ソケットが存在しない・アタッチ未完了
+		return false;
+	}
+
+	// マズル位置 = アタッチソケットWorld位置 + (回転後のMuzzleOffset)
+	OutLocation = AttachSocketTransform.GetLocation() + AttachSocketTransform.GetRotation().RotateVector(Weapon->MuzzleOffset);
 
 	return true;
+}
+
+void USavaEquipmentComponent::DrawMuzzleDebug() const
+{
+	if (!bDrawMuzzleDebug)
+	{
+		return;
+	}
+
+	FVector MuzzleLocation;
+	if (GetCurrentMuzzleLocation(MuzzleLocation))
+	{
+		// 現在の武器を描画色で表示
+		const USavaWeaponData* WeaponData = GetCurrentWeaponData();
+		FColor DrawColor = WeaponData ? WeaponData->MuzzleFlashColor : FColor::Red;
+
+		// マズル位置を球で描画
+		DrawDebugSphere(GetWorld(), MuzzleLocation, 10.0f, 12, DrawColor, false, -1.0f, 0, 2.0f);
+
+		// マズル位置から前方へ短い線を描画(方向確認用)
+		if (WeaponData)
+		{
+			const FRotator ViewRotation = GetFirstPersonMesh()->GetSocketTransform(WeaponData->AttachSocketName).GetRotation().Rotator();
+			const FVector Forward = ViewRotation.Vector();
+			DrawDebugLine(GetWorld(), MuzzleLocation, MuzzleLocation + Forward * 50.0f, FColor::Green, false, -1.0f, 0, 2.0f);
+		}
+	}
 }
 
 void USavaEquipmentComponent::NotifyWeaponFireVisual(

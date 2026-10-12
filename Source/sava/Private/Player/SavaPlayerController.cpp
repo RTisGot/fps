@@ -2,6 +2,7 @@
 
 #include "Player/SavaPlayerController.h"
 #include "savaCharacter.h"
+#include "Weapon/SavaEquipmentComponent.h"
 #include "SavaGameUserSettings.h"
 #include "SavaScoreboardWidget.h"
 #include "SavaSettingsMenuController.h"
@@ -39,6 +40,9 @@ void ASavaPlayerController::SetupInputComponent()
 	// Tabキーでスコアボードを表示 / 離したら非表示
 	InputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &ASavaPlayerController::ShowScoreboard);
 	InputComponent->BindKey(EKeys::Tab, IE_Released, this, &ASavaPlayerController::HideScoreboard);
+
+	// Pキーでマズルデバッグ描画をトグル
+	InputComponent->BindKey(EKeys::P, IE_Pressed, this, &ASavaPlayerController::ToggleMuzzleDebug);
 }
 
 void ASavaPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -176,4 +180,19 @@ void ASavaPlayerController::HideScoreboard()
 	}
 
 	ScoreboardWidget->RemoveFromParent();
+}
+
+//--------------------------------Muzzle Debug
+
+void ASavaPlayerController::ToggleMuzzleDebug()
+{
+	// 現在のPawnからEquipmentComponentを取得してトグル
+	if (APawn* LocalPawn = GetPawn())
+	{
+		if (USavaEquipmentComponent* Equipment = LocalPawn->FindComponentByClass<USavaEquipmentComponent>())
+		{
+			Equipment->bDrawMuzzleDebug = !Equipment->bDrawMuzzleDebug;
+			UE_LOG(LogSavaPlayerController, Log, TEXT("Muzzle Debug: %s"), Equipment->bDrawMuzzleDebug ? TEXT("ON") : TEXT("OFF"));
+		}
+	}
 }

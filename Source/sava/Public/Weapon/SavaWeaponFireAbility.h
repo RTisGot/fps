@@ -81,8 +81,8 @@ private:
 	//自分の画面で 1 回撃つ
 	void FireShot();
 
-	//視点から、拡散を付けて弾の数だけレイを飛ばす
-	void TraceShot(const FSavaWeaponStats& Stats, float SpreadAngle, TArray<FHitResult>& OutHits) const;
+	//マズル位置から、拡散を付けて弾の数だけレイを飛ばす
+	void TraceShot(const FVector& MuzzleLocation, const FSavaWeaponStats& Stats, float SpreadAngle, TArray<FHitResult>& OutHits) const;
 
 	//頭に当たったか(自分の画面での判定)
 	bool IsHeadHit(const FHitResult& Hit) const;

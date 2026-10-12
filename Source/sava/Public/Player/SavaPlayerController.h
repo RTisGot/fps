@@ -9,6 +9,7 @@
 class UUserWidget;
 class USavaScoreboardWidget;
 class USavaSettingsMenuController;
+class ASavaCharacter;
 
 //プレイヤーの操作の窓口。設定画面(Esc)とスコアボード(Tab)をここで持つ
 //キャラクターは死ぬと消えるが、PlayerController は残るので、リスポーンしても画面が開いたまま続く
@@ -47,6 +48,9 @@ private:
 
 	/** スコアボードを非表示にする */
 	void HideScoreboard();
+
+	/** マズルデバッグ描画のトグル */
+	void ToggleMuzzleDebug();
 
 	//今操作しているキャラクターの操作を受け付けるか(キャラクターがいなければ何もしない)
 	void SetPawnGameplayInputEnabled(bool bEnabled);
