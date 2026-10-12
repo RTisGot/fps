@@ -2,6 +2,7 @@
 
 #include "Online/SavaSessionSubsystem.h"
 #include "Online/SavaOnlineSettings.h"
+#include "SavaGameInstance.h"
 #include "Online/OnlineSessionNames.h"
 #include "OnlineSubsystemUtils.h"
 #include "Engine/Engine.h"
@@ -18,6 +19,8 @@ namespace SavaSession
 {
 	//部屋名を張り紙(セッション設定)に載せるときのキー
 	const FName RoomNameKey(TEXT("SAVA_ROOMNAME"));
+	//ホストのプレイヤー名(OwningUserName は Online Subsystem の名前で、Null では PC 名になるため)
+	const FName HostNameKey(TEXT("SAVA_HOSTNAME"));
 }
 
 void USavaSessionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -143,6 +146,10 @@ void USavaSessionSubsystem::StartCreateSession(FString RoomName)
 	SessionSettings.bUseLobbiesIfAvailable = true;
 	SessionSettings.bAllowJoinViaPresence = true;
 	SessionSettings.Set(SavaSession::RoomNameKey, RoomName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	if (const USavaGameInstance* GameInstance = Cast<USavaGameInstance>(GetGameInstance()))
+	{
+		SessionSettings.Set(SavaSession::HostNameKey, GameInstance->GetPlayerName(), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	}
 
 	CreateSessionHandle = Sessions->AddOnCreateSessionCompleteDelegate_Handle(
 		FOnCreateSessionCompleteDelegate::CreateUObject(this, &ThisClass::HandleCreateSessionComplete));
@@ -240,7 +247,10 @@ void USavaSessionSubsystem::HandleFindSessionsComplete(bool bWasSuccessful)
 			FSavaRoomInfo& Room = Rooms.AddDefaulted_GetRef();
 			Room.SearchIndex = Index;
 			Session.SessionSettings.Get(SavaSession::RoomNameKey, Room.RoomName);
-			Room.HostName = Session.OwningUserName;
+			if (!Session.SessionSettings.Get(SavaSession::HostNameKey, Room.HostName) || Room.HostName.IsEmpty())
+			{
+				Room.HostName = Session.OwningUserName;
+			}
 			Room.MaxPlayers = Session.SessionSettings.NumPublicConnections;
 			Room.CurrentPlayers = Room.MaxPlayers - Session.NumOpenPublicConnections;
 			Room.PingMs = Result.PingInMs;
