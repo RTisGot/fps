@@ -69,7 +69,16 @@ void AsavaCharacter::NotifyControllerChanged()
 	{
 		//設定画面を開いたままリスポーンした場合は、閉じるまで操作を受け付けない
 		const ASavaPlayerController* SavaPlayerController = Cast<ASavaPlayerController>(PlayerController);
-		SetGameplayInputEnabled(PlayerController, !(SavaPlayerController && SavaPlayerController->IsSettingsMenuOpen()));
+		const bool bSettingsMenuOpen = SavaPlayerController && SavaPlayerController->IsSettingsMenuOpen();
+		SetGameplayInputEnabled(PlayerController, !bSettingsMenuOpen);
+
+		//入力モード(UI 用かゲーム用か)はマップをまたいで残る。タイトル(UI 用)を通って来た場合などに備えて、
+		//自分が操作するキャラクターを持ったらゲーム用に戻す
+		if (PlayerController->IsLocalController() && !bSettingsMenuOpen)
+		{
+			PlayerController->SetInputMode(FInputModeGameOnly());
+			PlayerController->bShowMouseCursor = false;
+		}
 	}
 }
 
