@@ -63,6 +63,11 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (ForceUnits = "cm"))
 	FVector MuzzleOffset = FVector::ZeroVector;
 
+	//武器メッシュの銃口(マズル)ソケット名。空の場合は MuzzleOffset を使う
+	//このソケットはアニメーションで動かないボーンに定義すること
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	FName MuzzleSocketName = NAME_None;
+
 	//マズルフラッシュの色
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	FColor MuzzleFlashColor = FColor::Red;

@@ -500,13 +500,17 @@ bool USavaEquipmentComponent::GetCurrentMuzzleLocation(FVector& OutLocation) con
 		return false;
 	}
 
-	// アタッチ先のソケットWorld位置・回転を取得
 	USkeletalMeshComponent* FirstPersonMesh = GetFirstPersonMesh();
 	if (!FirstPersonMesh)
 	{
 		return false;
 	}
 
+
+
+	// MuzzleOffset 方式：アタッチソケット位置 + 回転後のオフセット
+
+	UE_LOG(LogTemp, Warning, TEXT("[GetCurrentMuzzleLocation] Using MuzzleOffset: AttachSocket=%s, Offset=%s"), *Weapon->AttachSocketName.ToString(), *Weapon->MuzzleOffset.ToString());
 	const FTransform AttachSocketTransform = FirstPersonMesh->GetSocketTransform(Weapon->AttachSocketName);
 	if (AttachSocketTransform.Equals(FTransform::Identity))
 	{
@@ -516,6 +520,7 @@ bool USavaEquipmentComponent::GetCurrentMuzzleLocation(FVector& OutLocation) con
 
 	// マズル位置 = アタッチソケットWorld位置 + (回転後のMuzzleOffset)
 	OutLocation = AttachSocketTransform.GetLocation() + AttachSocketTransform.GetRotation().RotateVector(Weapon->MuzzleOffset);
+	UE_LOG(LogTemp, Warning, TEXT("[GetCurrentMuzzleLocation] Using MuzzleOffset, Location: %s"), *OutLocation.ToString());
 
 	return true;
 }
