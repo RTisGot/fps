@@ -69,6 +69,11 @@ void ASavaCTFGameMode::Logout(AController* Exiting)
 	GetWorldTimerManager().SetTimerForNextTick(this, &ASavaCTFGameMode::CheckRoundEnd);
 }
 
+bool ASavaCTFGameMode::CanChangeLoadout(const ASavaPlayerState* PlayerState) const
+{
+	return PlayerState && !PlayerState->HasReceivedLoadout();
+}
+
 bool ASavaCTFGameMode::PlayerCanRestart_Implementation(APlayerController* Player)
 {
 	//途中参加でも、自分のチームがリスポーン不可ならラウンドが終わるまで出られない
