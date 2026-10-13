@@ -31,7 +31,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
 	static USavaAbilityLoadoutComponent* FindAbilityLoadoutComponent(const AActor* Actor);
 
-	virtual void BeginPlay() override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	//--------------------------------装備(サーバーのみ)
@@ -67,14 +66,6 @@ public:
 
 	//付けた能力を外す(キャラクターが持ち主でなくなるとき)
 	void RevokeAbilities();
-
-protected:
-	//装備を用意するまでの仮のスキル・ガジェット(ロードアウト画面ができるまで、キャラクターの Blueprint で設定する)
-	UPROPERTY(EditDefaultsOnly, Category = "Sava|Loadout")
-	TObjectPtr<USavaSkillData> DefaultSkill;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Sava|Loadout")
-	TObjectPtr<USavaGadgetData> DefaultGadget;
 
 private:
 	UFUNCTION()

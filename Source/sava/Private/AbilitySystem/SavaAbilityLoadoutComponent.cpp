@@ -26,23 +26,6 @@ void USavaAbilityLoadoutComponent::GetLifetimeReplicatedProps(TArray<FLifetimePr
 	DOREPLIFETIME(USavaAbilityLoadoutComponent, Gadget);
 }
 
-void USavaAbilityLoadoutComponent::BeginPlay()
-{
-	Super::BeginPlay();
-
-	if (GetOwner()->HasAuthority())
-	{
-		if (DefaultSkill && !Skill)
-		{
-			SetSkill(DefaultSkill);
-		}
-		if (DefaultGadget && !Gadget)
-		{
-			SetGadget(DefaultGadget);
-		}
-	}
-}
-
 //--------------------------------Loadout
 
 void USavaAbilityLoadoutComponent::SetSkill(USavaSkillData* NewSkill)
