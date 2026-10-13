@@ -72,4 +72,7 @@ private:
 
 	//画面を開いた人
 	TWeakObjectPtr<APlayerController> MenuOwner;
+
+	//画面を開いているか(OpenMenu で立て、CloseMenu で下ろす)
+	bool bMenuOpen = false;
 };

@@ -111,6 +111,7 @@ void ASavaInteractTerminal::OpenMenu(APlayerController* PlayerController)
 	}
 
 	MenuOwner = PlayerController;
+	bMenuOpen = true;
 	SetPromptVisible(PlayerController, false);
 	MenuWidget->AddToViewport(50);
 
@@ -134,8 +135,14 @@ void ASavaInteractTerminal::CloseMenu()
 	{
 		return;
 	}
+	bMenuOpen = false;
 
-	MenuWidget->RemoveFromParent();
+	//マップ移動のときは、エンジンが先に画面からウィジェットを外しているが、入力モードの戻しは必ず行う
+	//(入力モードはマップをまたいで残るので、戻さないと次のマップでマウスが効かなくなる)
+	if (MenuWidget)
+	{
+		MenuWidget->RemoveFromParent();
+	}
 
 	APlayerController* PlayerController = MenuOwner.Get();
 	MenuOwner.Reset();
@@ -162,5 +169,6 @@ void ASavaInteractTerminal::CloseMenu()
 
 bool ASavaInteractTerminal::IsMenuOpen() const
 {
-	return MenuWidget && MenuWidget->IsInViewport();
+	//ウィジェットが表示中かでは判断しない(マップ移動の途中では、開いたままでも外されているため)
+	return bMenuOpen;
 }
