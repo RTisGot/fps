@@ -9,6 +9,7 @@
 class ASavaFlag;
 class ASavaFlagBase;
 class ASavaGameState;
+class ASavaPlayerState;
 
 //CTF(ラウンド制)。仕様は Docs/CTF.md
 //・相手の旗を持ち帰ると、相手はそのラウンド中リスポーン不可
@@ -31,6 +32,9 @@ public:
 	virtual bool ShouldSpawnAtStartSpot(AController* Player) override;
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 	virtual void NotifyPlayerDied(AController* DeadController) override;
+
+	//試合中はロードアウトを変えられない。最初の 1 回(待合室を通らずに入ったときの分)だけ受け付ける
+	virtual bool CanChangeLoadout(const ASavaPlayerState* PlayerState) const override;
 
 	//以下は旗(ASavaFlag)が呼ぶ
 	ASavaFlagBase* FindFlagBase(uint8 TeamId) const;

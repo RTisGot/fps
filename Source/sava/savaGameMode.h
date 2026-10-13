@@ -20,6 +20,9 @@ public:
 	//サーバーで呼ぶ。死んだプレイヤーを RespawnDelay 秒後に復活させる
 	virtual void NotifyPlayerDied(AController* DeadController);
 
+	//サーバーで呼ぶ。このプレイヤーから届いたロードアウトを受け付けるか(ソロロビー・待合室ではいつでも受け付ける)
+	virtual bool CanChangeLoadout(const class ASavaPlayerState* PlayerState) const { return true; }
+
 protected:
 	//チーム数(3v3 なら 2)。参加者は人数の少ないチームへ自動で振り分ける
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Team", meta = (ClampMin = "1"))

@@ -1,7 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/SavaPlayerController.h"
+#include "Player/SavaPlayerState.h"
+#include "Loadout/SavaLoadoutSubsystem.h"
 #include "savaCharacter.h"
+#include "Weapon/SavaEquipmentComponent.h"
 #include "SavaGameUserSettings.h"
 #include "SavaScoreboardWidget.h"
 #include "SavaSettingsMenuController.h"
@@ -11,6 +14,7 @@
 #include "InputCoreTypes.h"
 #include "Misc/PackageName.h"
 #include "UObject/ConstructorHelpers.h"
+#include "savaGameMode.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSavaPlayerController, Log, All);
 
@@ -29,6 +33,40 @@ ASavaPlayerController::ASavaPlayerController()
 	}
 }
 
+void ASavaPlayerController::BeginPlay()
+{
+	Super::BeginPlay();
+
+	//自分の PC でだけ: 選んであるロードアウトをサーバーへ送り、以後変わるたびに送る
+	//(サーバーにある他の人の PlayerController では何もしない)
+	if (IsLocalController())
+	{
+		if (USavaLoadoutSubsystem* LoadoutSubsystem = GetGameInstance()->GetSubsystem<USavaLoadoutSubsystem>())
+		{
+			LoadoutSubsystem->OnLoadoutChanged.AddDynamic(this, &ThisClass::HandleLocalLoadoutChanged);
+			ServerSetLoadout(LoadoutSubsystem->GetLoadout());
+		}
+	}
+}
+
+void ASavaPlayerController::HandleLocalLoadoutChanged(const FSavaLoadout& Loadout)
+{
+	ServerSetLoadout(Loadout);
+}
+
+void ASavaPlayerController::ServerSetLoadout_Implementation(const FSavaLoadout& Loadout)
+{
+	//ここはサーバー。受け付けるかはルールを持つ GameMode が決める(試合中は変えられない、など)
+	ASavaPlayerState* SavaPlayerState = GetPlayerState<ASavaPlayerState>();
+	const AsavaGameMode* GameMode = GetWorld()->GetAuthGameMode<AsavaGameMode>();
+	if (!SavaPlayerState || (GameMode && !GameMode->CanChangeLoadout(SavaPlayerState)))
+	{
+		return;
+	}
+
+	SavaPlayerState->SetLoadout(Loadout);
+}
+
 void ASavaPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
@@ -39,6 +77,9 @@ void ASavaPlayerController::SetupInputComponent()
 	// Tabキーでスコアボードを表示 / 離したら非表示
 	InputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &ASavaPlayerController::ShowScoreboard);
 	InputComponent->BindKey(EKeys::Tab, IE_Released, this, &ASavaPlayerController::HideScoreboard);
+
+	// Pキーでマズルデバッグ描画をトグル
+	InputComponent->BindKey(EKeys::P, IE_Pressed, this, &ASavaPlayerController::ToggleMuzzleDebug);
 }
 
 void ASavaPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -47,6 +88,10 @@ void ASavaPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (SettingsMenuController) SettingsMenuController->Discard();
 	if (SettingsWidget) SettingsWidget->RemoveFromParent();
 	if (ScoreboardWidget) ScoreboardWidget->RemoveFromParent();
+	if (USavaLoadoutSubsystem* LoadoutSubsystem = GetGameInstance() ? GetGameInstance()->GetSubsystem<USavaLoadoutSubsystem>() : nullptr)
+	{
+		LoadoutSubsystem->OnLoadoutChanged.RemoveDynamic(this, &ThisClass::HandleLocalLoadoutChanged);
+	}
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -176,4 +221,19 @@ void ASavaPlayerController::HideScoreboard()
 	}
 
 	ScoreboardWidget->RemoveFromParent();
+}
+
+//--------------------------------Muzzle Debug
+
+void ASavaPlayerController::ToggleMuzzleDebug()
+{
+	// 現在のPawnからEquipmentComponentを取得してトグル
+	if (APawn* LocalPawn = GetPawn())
+	{
+		if (USavaEquipmentComponent* Equipment = LocalPawn->FindComponentByClass<USavaEquipmentComponent>())
+		{
+			Equipment->bDrawMuzzleDebug = !Equipment->bDrawMuzzleDebug;
+			UE_LOG(LogSavaPlayerController, Log, TEXT("Muzzle Debug: %s"), Equipment->bDrawMuzzleDebug ? TEXT("ON") : TEXT("OFF"));
+		}
+	}
 }

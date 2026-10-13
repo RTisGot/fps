@@ -94,6 +94,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
 	float GetCurrentSpreadAngle() const;
 
+	//--------------------------------デバッグ描画
+
+	//マズル位置をデバッグ描画する(エディタ・ゲーム画面のすべてで可視)
+	UPROPERTY(EditAnywhere, Category = "Debug")
+	bool bDrawMuzzleDebug = false;
+
+	//マズル位置をデバッグ描画する
+	void DrawMuzzleDebug() const;
+
 	//ADS の進み具合(0 = 腰撃ち、1 = ADS に入りきった。自分の画面だけ)
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
 	float GetADSAlpha() const { return ADSAlpha; }

@@ -23,6 +23,7 @@ class USavaAbilitySystemComponent;
 class USavaInputConfig;
 class USavaEquipmentComponent;
 class USavaAbilityLoadoutComponent;
+class ASavaInteractTerminal;
 UCLASS(config=Game)
 class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -116,6 +117,9 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	UPROPERTY(Replicated)
 	FVector_NetQuantizeNormal ReplicatedWallRunNormal;
 
+	//範囲に入っている端末(しゃがみキーで開く)
+	TWeakObjectPtr<ASavaInteractTerminal> NearbyTerminal;
+
 public:
 	AsavaCharacter(const FObjectInitializer& ObjectInitializer);
 
@@ -143,6 +147,10 @@ public:
 	//キャラの操作(移動・視点・ジャンプ・能力など)を受け付けるか。設定画面を開いている間は受け付けない
 	//(設定画面は ASavaPlayerController が持つ)
 	void SetGameplayInputEnabled(APlayerController* PlayerController, bool bEnabled);
+
+	//近くの端末(範囲に入ると端末が呼ぶ。自分の画面だけ)。端末の近くでは、しゃがみキーでしゃがまずに端末を開く
+	void SetNearbyTerminal(ASavaInteractTerminal* Terminal);
+	void ClearNearbyTerminal(ASavaInteractTerminal* Terminal);
 
 protected:
 	/** Called for movement input */

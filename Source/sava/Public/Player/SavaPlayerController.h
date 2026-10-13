@@ -4,11 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Loadout/SavaLoadoutTypes.h"
 #include "SavaPlayerController.generated.h"
 
 class UUserWidget;
 class USavaScoreboardWidget;
 class USavaSettingsMenuController;
+class ASavaCharacter;
 
 //プレイヤーの操作の窓口。設定画面(Esc)とスコアボード(Tab)をここで持つ
 //キャラクターは死ぬと消えるが、PlayerController は残るので、リスポーンしても画面が開いたまま続く
@@ -28,7 +30,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI|Settings")
 	void CloseSettingsMenu();
 
+	//自分のロードアウトをサーバーへ送る(呼ぶのは自分の PC、実行されるのはサーバー)
+	UFUNCTION(Server, Reliable)
+	void ServerSetLoadout(const FSavaLoadout& Loadout);
+
 protected:
+	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -40,6 +47,10 @@ protected:
 	TSubclassOf<USavaScoreboardWidget> ScoreboardWidgetClass;
 
 private:
+	//自分の PC でロードアウトが変わった(USavaLoadoutSubsystem から)
+	UFUNCTION()
+	void HandleLocalLoadoutChanged(const FSavaLoadout& Loadout);
+
 	void ToggleSettingsMenu();
 
 	/** スコアボードを表示する */
@@ -47,6 +58,9 @@ private:
 
 	/** スコアボードを非表示にする */
 	void HideScoreboard();
+
+	/** マズルデバッグ描画のトグル */
+	void ToggleMuzzleDebug();
 
 	//今操作しているキャラクターの操作を受け付けるか(キャラクターがいなければ何もしない)
 	void SetPawnGameplayInputEnabled(bool bEnabled);
