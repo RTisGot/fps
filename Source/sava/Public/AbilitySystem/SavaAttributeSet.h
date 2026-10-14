@@ -17,7 +17,7 @@
 //HP が 0 になったとき(サーバーのみ)
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FSavaOutOfHealthDelegate, AActor* /*DamageInstigator*/, AActor* /*DamageCauser*/, float /*DamageAmount*/);
 
-//プレイヤーの数値。ダメージ・回復は必ず GameplayEffect 経由で Damage / Healing に入れる(直接 Health を書き換えない)
+//プレイヤーの現在ステータス
 UCLASS()
 class SAVA_API USavaAttributeSet : public UAttributeSet
 {
