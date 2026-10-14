@@ -71,6 +71,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Sava|Session")
 	void OpenSoloLobby();
 
+	//ホストだけが呼ぶ。部屋に途中から入れるか(試合を始めるときに閉じ、検索にも出さなくする)
+	void SetRoomJoinable(bool bJoinable);
+
+	//ホストに追い出された(ASavaPlayerController::ClientWasKicked から)。この後の切断の理由をこれにする
+	void NotifyKicked(const FString& Reason);
+
 	//切断されてソロロビーへ戻ってきたときの理由を返して消す(なければ空。ソロロビーの画面を開いたときに呼ぶ)
 	UFUNCTION(BlueprintCallable, Category = "Sava|Session")
 	FString ConsumeDisconnectReason();
@@ -138,4 +144,7 @@ private:
 
 	//最後に切断された理由(ConsumeDisconnectReason で消す)
 	FString DisconnectReason;
+
+	//追い出されたときの理由(この後の切断で DisconnectReason にする)
+	FString PendingKickReason;
 };

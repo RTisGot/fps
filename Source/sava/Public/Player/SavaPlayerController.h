@@ -5,9 +5,13 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "Loadout/SavaLoadoutTypes.h"
+#include "Lobby/SavaLobbyTypes.h"
 #include "SavaPlayerController.generated.h"
 
+class ASavaPlayerState;
 class UUserWidget;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnLobbyMessage, const FText&, Message);
 class USavaScoreboardWidget;
 class USavaSettingsMenuController;
 
@@ -33,6 +37,46 @@ public:
 	UFUNCTION(Server, Reliable)
 	void ServerSetLoadout(const FSavaLoadout& Loadout);
 
+	//--------------------------------ロビー(待合室)
+	//ボタン・端末はサーバーの物なので、クライアントからは直接頼めない。自分の PlayerController を通してサーバーへ頼む
+	//受け付けるかはサーバーの ASavaLobbyGameMode が決め、だめなら理由が OnLobbyMessage で届く
+
+	//部屋のホストが操作している PlayerController か(listen サーバーで、その PC で操作している人がホスト)
+	//自分の画面でもサーバーでも同じ答えになる
+	static bool IsHostController(const APlayerController* PlayerController);
+
+	//自分が部屋のホストか(ソロでも true)
+	UFUNCTION(BlueprintPure, Category = "Sava|Lobby")
+	bool IsRoomHost() const { return IsHostController(this); }
+
+	//自分のチームを変える
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Sava|Lobby")
+	void ServerJoinTeam(uint8 TeamId);
+
+	//準備 OK を切り替える
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Sava|Lobby")
+	void ServerSetReady(bool bReady);
+
+	//ホストだけ: ルーム設定を変える
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Sava|Lobby")
+	void ServerUpdateRoomSettings(const FSavaRoomSettings& NewSettings);
+
+	//ホストだけ: 他の人のチームを変える
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Sava|Lobby")
+	void ServerMovePlayerToTeam(ASavaPlayerState* Target, uint8 TeamId);
+
+	//ホストだけ: 他の人を部屋から追い出す
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Sava|Lobby")
+	void ServerKickPlayer(ASavaPlayerState* Target);
+
+	//ホストだけ: 試合を始める
+	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Sava|Lobby")
+	void ServerStartMatch();
+
+	//サーバーからのお知らせ(頼みを断られた理由など)。画面に出すなら UI でこれを受け取る
+	UPROPERTY(BlueprintAssignable, Category = "Sava|Lobby")
+	FSavaOnLobbyMessage OnLobbyMessage;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
@@ -45,7 +89,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "UI|Scoreboard")
 	TSubclassOf<USavaScoreboardWidget> ScoreboardWidgetClass;
 
+	//ホストに追い出された。この後切断されるので、ソロロビーで理由を出せるように伝えておく
+	virtual void ClientWasKicked_Implementation(const FText& KickReason) override;
+
 private:
+	//サーバーで、ロビーの GameMode に頼む。断られたら理由を ClientShowLobbyMessage で返す(ロビー以外のマップでは何もしない)
+	void RunLobbyRequest(TFunctionRef<bool(class ASavaLobbyGameMode&, FText&)> Request);
+
+	//サーバーから自分の画面へお知らせを送る
+	UFUNCTION(Client, Reliable)
+	void ClientShowLobbyMessage(const FText& Message);
+
 	//自分の PC でロードアウトが変わった(USavaLoadoutSubsystem から)
 	UFUNCTION()
 	void HandleLocalLoadoutChanged(const FSavaLoadout& Loadout);

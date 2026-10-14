@@ -43,7 +43,19 @@ void AsavaGameMode::PostLogin(APlayerController* NewPlayer)
 	Super::PostLogin(NewPlayer); //この中でスポーンまで行われる
 }
 
-void AsavaGameMode::AssignTeam(APlayerController* NewPlayer)
+void AsavaGameMode::InitSeamlessTravelPlayer(AController* NewController)
+{
+	Super::InitSeamlessTravelPlayer(NewController);
+
+	//体をスポーンする前(この後の HandleStartingNewPlayer)に決める
+	const ASavaPlayerState* SavaPlayerState = NewController ? NewController->GetPlayerState<ASavaPlayerState>() : nullptr;
+	if (SavaPlayerState && SavaPlayerState->GetTeamId() >= NumTeams)
+	{
+		AssignTeam(NewController);
+	}
+}
+
+void AsavaGameMode::AssignTeam(AController* NewPlayer)
 {
 	ASavaPlayerState* NewPlayerState = NewPlayer ? NewPlayer->GetPlayerState<ASavaPlayerState>() : nullptr;
 	if (!NewPlayerState || !GameState)

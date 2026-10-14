@@ -17,6 +17,9 @@ public:
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
 
+	//Seamless Travel(待合室 → 試合)で移ってきた人。チームは PlayerState ごと引き継がれるので、決まっていない人だけ振り分ける
+	virtual void InitSeamlessTravelPlayer(AController* NewController) override;
+
 	//サーバーで呼ぶ。死んだプレイヤーを RespawnDelay 秒後に復活させる
 	virtual void NotifyPlayerDied(AController* DeadController);
 
@@ -39,6 +42,6 @@ protected:
 	//タイマー満了で呼ばれる。古い Pawn を片付けて新しい Pawn を出す
 	virtual void RespawnPlayer(TWeakObjectPtr<AController> Controller);
 
-private:
-	void AssignTeam(APlayerController* NewPlayer);
+	//人数の少ないチームに入れる
+	void AssignTeam(AController* NewPlayer);
 };

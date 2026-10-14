@@ -23,7 +23,7 @@ class USavaAbilitySystemComponent;
 class USavaInputConfig;
 class USavaEquipmentComponent;
 class USavaAbilityLoadoutComponent;
-class ASavaInteractTerminal;
+class ASavaInteractable;
 UCLASS(config=Game)
 class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -113,12 +113,16 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	//カメラの向きが範囲内に入ったか(入った後はしっかり固定する)
 	bool bWallRunCameraYawSettled = false;
 
+	//操作する人が決まったが、その PlayerController がまだこの PC とつながっていない(Seamless Travel 直後のクライアント)
+	//つながったら Tick で NotifyControllerChanged をやり直す
+	bool bControllerChangePending = false;
+
 	//壁走り中の壁の向き。他のプレイヤー(SimulatedProxy)へ同期する(アニメーション・演出用)
 	UPROPERTY(Replicated)
 	FVector_NetQuantizeNormal ReplicatedWallRunNormal;
 
-	//範囲に入っている端末(しゃがみキーで開く)
-	TWeakObjectPtr<ASavaInteractTerminal> NearbyTerminal;
+	//範囲に入っている端末・ボタン(しゃがみキーで使う)
+	TWeakObjectPtr<ASavaInteractable> NearbyInteractable;
 
 public:
 	AsavaCharacter(const FObjectInitializer& ObjectInitializer);
@@ -148,9 +152,9 @@ public:
 	//(設定画面は ASavaPlayerController が持つ)
 	void SetGameplayInputEnabled(APlayerController* PlayerController, bool bEnabled);
 
-	//近くの端末(範囲に入ると端末が呼ぶ。自分の画面だけ)。端末の近くでは、しゃがみキーでしゃがまずに端末を開く
-	void SetNearbyTerminal(ASavaInteractTerminal* Terminal);
-	void ClearNearbyTerminal(ASavaInteractTerminal* Terminal);
+	//近くの端末・ボタン(範囲に入ると相手が呼ぶ。自分の画面だけ)。使えるものの近くでは、しゃがみキーでしゃがまずにそれを使う
+	void SetNearbyInteractable(ASavaInteractable* Interactable);
+	void ClearNearbyInteractable(ASavaInteractable* Interactable);
 
 protected:
 	/** Called for movement input */
@@ -188,6 +192,11 @@ protected:
 
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void UnPossessed() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	//この体が変数に持っている画面(BP_FirstPersonCharacter の HUD など)を外す
+	//体が操作されなくなった・消えたときに呼ぶ(外さないと、リスポーンやラウンドの出し直しのたびに HUD が重なる)
+	void RemoveOwnedWidgets();
 	virtual void OnRep_PlayerState() override;
 
 

@@ -6,6 +6,8 @@
 #include "Engine/DeveloperSettings.h"
 #include "SavaOnlineSettings.generated.h"
 
+class AGameModeBase;
+
 //部屋(セッション)の設定(Project Settings → Game → Sava Online)
 UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "Sava Online"))
 class SAVA_API USavaOnlineSettings : public UDeveloperSettings
@@ -20,6 +22,10 @@ public:
 	//部屋を作ったときにホストが開くマップ(listen サーバーとして開く)
 	UPROPERTY(Config, EditAnywhere, Category = "Maps")
 	TSoftObjectPtr<UWorld> LobbyMap;
+
+	//LobbyMap で使う GameMode(マップの World Settings より優先する。空ならマップの設定どおり)
+	UPROPERTY(Config, EditAnywhere, Category = "Maps")
+	TSoftClassPtr<AGameModeBase> LobbyGameMode;
 
 	//1 部屋の最大人数(ホストを含む)
 	UPROPERTY(Config, EditAnywhere, Category = "Session", meta = (ClampMin = "2"))

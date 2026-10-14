@@ -5,6 +5,8 @@
 #include "CTF/SavaFlagBase.h"
 #include "CTF/SavaGameState.h"
 #include "CTF/SavaTeamPlayerStart.h"
+#include "Lobby/SavaLobbyTypes.h"
+#include "Kismet/GameplayStatics.h"
 #include "AbilitySystem/SavaAbilitySystemComponent.h"
 #include "AbilitySystem/SavaGameplayEffects.h"
 #include "Gadget/GadgetBase.h"
@@ -43,21 +45,83 @@ void ASavaCTFGameMode::InitGameState()
 	}
 }
 
+void ASavaCTFGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+	Super::InitGame(MapName, Options, ErrorMessage);
+
+	//ロビーのルーム設定(付いていなければ、この GameMode に設定した値のまま)
+	RoundsToWin = FMath::Max(1, UGameplayStatics::GetIntOption(Options, SavaMatchOptions::RoundsToWin, RoundsToWin));
+	RoundTimeLimit = FMath::Max(1.0f, static_cast<float>(UGameplayStatics::GetIntOption(Options, SavaMatchOptions::TimeLimit, FMath::RoundToInt(RoundTimeLimit))));
+	ExpectedPlayers = FMath::Max(0, UGameplayStatics::GetIntOption(Options, SavaMatchOptions::ExpectedPlayers, 0));
+	UE_LOG(LogSavaCTF, Log, TEXT("Match settings: %d rounds to win, %.0f s per round, waiting for %d players."), RoundsToWin, RoundTimeLimit, ExpectedPlayers);
+}
+
 void ASavaCTFGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
+	NotifyPlayerArrived(NewPlayer);
+}
 
-	//人数が揃ったら最初のラウンドを始める(体のスポーンが終わった次のフレームで)
-	const ASavaGameState* SavaGameState = GetSavaGameState();
-	if (SavaGameState && SavaGameState->GetRoundPhase() == ESavaRoundPhase::WaitingToStart
-		&& GetNumPlayers() >= MinPlayersToStart && !GetWorldTimerManager().IsTimerActive(PhaseTimer))
+void ASavaCTFGameMode::HandleSeamlessTravelPlayer(AController*& C)
+{
+	Super::HandleSeamlessTravelPlayer(C); //この中で PlayerController が作り直され、C が新しいものに変わる
+	NotifyPlayerArrived(C);
+}
+
+void ASavaCTFGameMode::NotifyPlayerArrived(AController* Controller)
+{
+	if (Controller)
 	{
-		PhaseTimer = GetWorldTimerManager().SetTimerForNextTick(this, &ASavaCTFGameMode::StartRound);
+		ArrivedPlayers.Add(Controller);
 	}
+
+	//待合室から来たなら、全員そろわなくても一定時間で始める
+	if (ExpectedPlayers > 0 && !GetWorldTimerManager().IsTimerActive(WaitForPlayersTimer))
+	{
+		GetWorldTimerManager().SetTimer(WaitForPlayersTimer, this, &ASavaCTFGameMode::OnWaitForPlayersTimeout, FMath::Max(WaitForPlayersTimeout, 0.01f), false);
+	}
+
+	TryStartFirstRound(false);
+}
+
+void ASavaCTFGameMode::OnWaitForPlayersTimeout()
+{
+	TryStartFirstRound(true);
+}
+
+void ASavaCTFGameMode::TryStartFirstRound(bool bTimedOut)
+{
+	const ASavaGameState* SavaGameState = GetSavaGameState();
+	if (!SavaGameState || SavaGameState->GetRoundPhase() != ESavaRoundPhase::WaitingToStart || GetWorldTimerManager().IsTimerActive(PhaseTimer))
+	{
+		return;
+	}
+
+	//抜けた人は数えない
+	for (auto It = ArrivedPlayers.CreateIterator(); It; ++It)
+	{
+		if (!It->IsValid())
+		{
+			It.RemoveCurrent();
+		}
+	}
+
+	//待合室から来たなら全員(時間切れなら MinPlayersToStart 人)、直接開いたなら MinPlayersToStart 人そろったら始める
+	const int32 RequiredPlayers = bTimedOut ? MinPlayersToStart : FMath::Max(MinPlayersToStart, ExpectedPlayers);
+	if (ArrivedPlayers.Num() < RequiredPlayers)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(WaitForPlayersTimer);
+	//体のスポーンが終わった次のフレームで始める
+	PhaseTimer = GetWorldTimerManager().SetTimerForNextTick(this, &ASavaCTFGameMode::StartRound);
 }
 
 void ASavaCTFGameMode::Logout(AController* Exiting)
 {
+	ArrivedPlayers.Remove(Exiting);
+
 	FTimerHandle Handle;
 	if (RespawnTimers.RemoveAndCopyValue(Exiting, Handle))
 	{

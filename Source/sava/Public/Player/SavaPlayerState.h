@@ -12,6 +12,7 @@ class USavaAbilitySystemComponent;
 class USavaAttributeSet;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnPlayerLoadoutChanged, const FSavaLoadout&, Loadout);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnPlayerLobbyStatusChanged, ASavaPlayerState*, PlayerState);
 
 //プレイヤーごとの情報。能力(ASC)と数値(AttributeSet)、チームをここに持つ
 UCLASS()
@@ -34,6 +35,24 @@ public:
 
 	//サーバーでのみ呼ぶ(GameMode がチーム分けに使う)
 	void SetTeamId(uint8 NewTeamId);
+
+	//--------------------------------ロビー(待合室)
+
+	//準備 OK を押しているか
+	UFUNCTION(BlueprintPure, Category = "Sava|Lobby")
+	bool IsReady() const { return bIsReady; }
+
+	//部屋のホストか(全員に同期する。自分の操作がホストかは ASavaPlayerController::IsRoomHost の方が早く確実)
+	UFUNCTION(BlueprintPure, Category = "Sava|Lobby")
+	bool IsRoomHost() const { return bIsRoomHost; }
+
+	//サーバーでのみ呼ぶ(ASavaLobbyGameMode が使う)
+	void SetReady(bool bNewReady);
+	void SetRoomHost(bool bNewRoomHost);
+
+	//チーム・準備 OK・ホストが変わった(サーバーでも、同期を受け取ったクライアントでも呼ばれる)
+	UPROPERTY(BlueprintAssignable, Category = "Sava|Lobby")
+	FSavaOnPlayerLobbyStatusChanged OnLobbyStatusChanged;
 
 	void Respawn();
 
@@ -102,6 +121,18 @@ private:
 	UPROPERTY()
 	TObjectPtr<USavaAttributeSet> AttributeSet;
 
-	UPROPERTY(Replicated)
+	UFUNCTION()
+	void OnRep_LobbyStatus();
+
+	//チーム・準備 OK・ホストが変わったことを知らせる(自分の OnLobbyStatusChanged と、ロビーの GameState へ)
+	void BroadcastLobbyStatusChanged();
+
+	UPROPERTY(ReplicatedUsing = OnRep_LobbyStatus)
 	uint8 TeamId = NoTeam;
+
+	UPROPERTY(ReplicatedUsing = OnRep_LobbyStatus)
+	bool bIsReady = false;
+
+	UPROPERTY(ReplicatedUsing = OnRep_LobbyStatus)
+	bool bIsRoomHost = false;
 };

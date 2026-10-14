@@ -188,7 +188,14 @@ void USavaSessionSubsystem::HandleCreateSessionComplete(FName SessionName, bool 
 	}
 
 	//listen を付けて開くと、このマップのサーバーになって他の人が接続できるようになる
-	UGameplayStatics::OpenLevelBySoftObjectPtr(this, LobbyMap, true, TEXT("listen"));
+	//game= を付けると、マップの World Settings に関係なくその GameMode になる
+	FString Options = TEXT("listen");
+	const TSoftClassPtr<AGameModeBase>& LobbyGameMode = GetDefault<USavaOnlineSettings>()->LobbyGameMode;
+	if (!LobbyGameMode.IsNull())
+	{
+		Options += FString::Printf(TEXT("?game=%s"), *LobbyGameMode.ToString());
+	}
+	UGameplayStatics::OpenLevelBySoftObjectPtr(this, LobbyMap, true, Options);
 }
 
 // ---------------------------------------------------------------------------
@@ -376,6 +383,29 @@ void USavaSessionSubsystem::OpenSoloLobby()
 	UGameplayStatics::OpenLevelBySoftObjectPtr(this, SoloLobbyMap, true);
 }
 
+void USavaSessionSubsystem::SetRoomJoinable(bool bJoinable)
+{
+	const IOnlineSessionPtr Sessions = GetSessionInterface();
+	const FOnlineSessionSettings* CurrentSettings = Sessions.IsValid() ? Sessions->GetSessionSettings(NAME_GameSession) : nullptr;
+	if (!CurrentSettings)
+	{
+		return; //部屋がない(ソロで動かしているときなど)
+	}
+
+	FOnlineSessionSettings NewSettings = *CurrentSettings;
+	NewSettings.bAllowJoinInProgress = bJoinable;
+	NewSettings.bShouldAdvertise = bJoinable;
+	NewSettings.bAllowJoinViaPresence = bJoinable;
+
+	UE_LOG(LogSavaSession, Log, TEXT("部屋に途中から%s"), bJoinable ? TEXT("入れるようにします") : TEXT("入れないようにします"));
+	Sessions->UpdateSession(NAME_GameSession, NewSettings, true);
+}
+
+void USavaSessionSubsystem::NotifyKicked(const FString& Reason)
+{
+	PendingKickReason = Reason.IsEmpty() ? FString(TEXT("部屋から追い出されました")) : Reason;
+}
+
 FString USavaSessionSubsystem::ConsumeDisconnectReason()
 {
 	FString Reason = MoveTemp(DisconnectReason);
@@ -413,8 +443,11 @@ void USavaSessionSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::T
 	HandleConnectionLost(TEXT("部屋に接続できませんでした"), FString::Printf(TEXT("%s: %s"), ETravelFailure::ToString(FailureType), *ErrorString));
 }
 
-void USavaSessionSubsystem::HandleConnectionLost(const FString& Reason, const FString& Details)
+void USavaSessionSubsystem::HandleConnectionLost(const FString& InReason, const FString& Details)
 {
+	//追い出されて切れたなら、その理由を出す
+	const FString Reason = PendingKickReason.IsEmpty() ? InReason : PendingKickReason;
+	PendingKickReason.Reset();
 	UE_LOG(LogSavaSession, Warning, TEXT("%s: %s"), *Reason, *Details);
 
 	//この後エンジンがタイトル(Game Default Map)を開く。それは止められないので、開き終えたら HandlePostLoadMap でソロロビーへ移し直す

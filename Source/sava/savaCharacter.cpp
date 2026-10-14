@@ -8,7 +8,7 @@
 #include "AbilitySystem/SavaInputConfig.h"
 #include "Player/SavaPlayerState.h"
 #include "Weapon/SavaEquipmentComponent.h"
-#include "Lobby/SavaInteractTerminal.h"
+#include "Lobby/SavaInteractable.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -17,6 +17,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Engine/LocalPlayer.h"
+#include "Blueprint/UserWidget.h"
 #include "SavaGameUserSettings.h"
 #include "Player/SavaPlayerController.h"
 #include "Net/UnrealNetwork.h"
@@ -62,6 +63,22 @@ AsavaCharacter::AsavaCharacter(const FObjectInitializer& ObjectInitializer)
 
 void AsavaCharacter::NotifyControllerChanged()
 {
+	//自分が操作しなくなった体(死んで抜けた・ラウンドの出し直し)の HUD は外す
+	if (!IsLocallyControlled())
+	{
+		RemoveOwnedWidgets();
+	}
+
+	//Seamless Travel(待合室 → 試合)の直後、クライアントでは作り直された PlayerController が、この PC とつながる前に届くことがある
+	//そのまま進めると HUD の作成(BP_FirstPersonCharacter)や入力の設定が失敗するので、つながるまで待つ(Tick でやり直す)
+	const APlayerController* LocalController = Cast<APlayerController>(Controller);
+	bControllerChangePending = LocalController && LocalController->IsLocalController() && !LocalController->GetLocalPlayer();
+	if (bControllerChangePending)
+	{
+		UE_LOG(LogTemplateCharacter, Log, TEXT("%s: PlayerController がまだこの PC とつながっていないので、つながるまで待ちます"), *GetName());
+		return;
+	}
+
 	Super::NotifyControllerChanged();
 
 	// Add Input Mapping Context
@@ -185,26 +202,26 @@ void AsavaCharacter::StopJump() {
 }
 
 void AsavaCharacter::StartCrouch() {
-	//端末の近くでは、しゃがまずに端末を開く(ソロロビーのロードアウト・マッチング)
-	if (ASavaInteractTerminal* Terminal = NearbyTerminal.Get(); Terminal && IsLocallyControlled())
+	//端末・ボタンの近くでは、しゃがまずにそれを使う(ホスト限定で使えないときは普通にしゃがむ)
+	if (ASavaInteractable* Interactable = NearbyInteractable.Get(); Interactable && IsLocallyControlled()
+		&& Interactable->TryInteract(GetController<APlayerController>()))
 	{
-		Terminal->OpenMenu(GetController<APlayerController>());
 		return;
 	}
 
 	Crouch();
 }
 
-void AsavaCharacter::SetNearbyTerminal(ASavaInteractTerminal* Terminal)
+void AsavaCharacter::SetNearbyInteractable(ASavaInteractable* Interactable)
 {
-	NearbyTerminal = Terminal;
+	NearbyInteractable = Interactable;
 }
 
-void AsavaCharacter::ClearNearbyTerminal(ASavaInteractTerminal* Terminal)
+void AsavaCharacter::ClearNearbyInteractable(ASavaInteractable* Interactable)
 {
-	if (NearbyTerminal.Get() == Terminal)
+	if (NearbyInteractable.Get() == Interactable)
 	{
-		NearbyTerminal.Reset();
+		NearbyInteractable.Reset();
 	}
 }
 
@@ -221,6 +238,21 @@ void AsavaCharacter::BeginPlay()
 void AsavaCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	//PlayerController がこの PC とつながったので、待っていた「操作する人が決まった」処理を行う
+	if (bControllerChangePending)
+	{
+		const APlayerController* LocalController = Cast<APlayerController>(Controller);
+		if (!LocalController)
+		{
+			bControllerChangePending = false;
+		}
+		else if (LocalController->GetLocalPlayer())
+		{
+			UE_LOG(LogTemplateCharacter, Log, TEXT("%s: PlayerController がつながったので、操作する人が決まった処理をやり直します"), *GetName());
+			NotifyControllerChanged();
+		}
+	}
 
 	//しゃがみ切り替え時のカメラのずれを滑らかに戻す(見た目だけの処理)
 	if (!CrouchCameraOffset.IsZero())
@@ -452,6 +484,30 @@ void AsavaCharacter::UnPossessed()
 	}
 
 	Super::UnPossessed();
+}
+
+void AsavaCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	RemoveOwnedWidgets();
+	Super::EndPlay(EndPlayReason);
+}
+
+void AsavaCharacter::RemoveOwnedWidgets()
+{
+	//画面は Blueprint の変数に入っているので、Widget 型の変数を探して外す
+	for (TFieldIterator<FObjectProperty> It(GetClass()); It; ++It)
+	{
+		if (!It->PropertyClass || !It->PropertyClass->IsChildOf(UUserWidget::StaticClass()))
+		{
+			continue;
+		}
+		if (UUserWidget* Widget = Cast<UUserWidget>(It->GetObjectPropertyValue_InContainer(this)))
+		{
+			Widget->RemoveFromParent();
+			//空にしておく(同じ体をまた操作したときに作り直されるように)
+			It->SetObjectPropertyValue_InContainer(this, nullptr);
+		}
+	}
 }
 
 void AsavaCharacter::OnRep_PlayerState()
