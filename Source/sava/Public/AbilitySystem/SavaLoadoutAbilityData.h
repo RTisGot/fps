@@ -11,7 +11,7 @@ class UTexture2D;
 class USavaGameplayAbility;
 
 //スキル・ガジェット 1 種類分のデータの共通部分(データアセット)
-//武器の USavaWeaponData に当たるもの。USavaAbilityLoadoutComponent が「何を持っているか」としてこれを保持する
+//USavaAbilityLoadoutComponent が「何を持っているか」としてこれを保持する
 UCLASS(Abstract, BlueprintType, Const)
 class SAVA_API USavaLoadoutAbilityData : public UPrimaryDataAsset
 {
@@ -38,7 +38,7 @@ public:
 	FGameplayTag InputTag;
 };
 
-//スキル(クールダウン制の能力。例: グラップル)
+//スキル
 //新しいスキルは、これを 1 つ作って能力とボタンを入れるだけで追加できる
 UCLASS(BlueprintType, Const)
 class SAVA_API USavaSkillData : public USavaLoadoutAbilityData
@@ -46,7 +46,7 @@ class SAVA_API USavaSkillData : public USavaLoadoutAbilityData
 	GENERATED_BODY()
 };
 
-//ガジェット(個数制の能力)。個数は能力側の Max Charges で決める。1 人 1 つ
+//ガジェット。個数は能力側の Max Charges で決める。1 人 1 つ
 UCLASS(BlueprintType, Const)
 class SAVA_API USavaGadgetData : public USavaLoadoutAbilityData
 {

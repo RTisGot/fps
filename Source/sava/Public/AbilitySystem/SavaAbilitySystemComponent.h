@@ -15,7 +15,7 @@ class SAVA_API USavaAbilitySystemComponent : public UAbilitySystemComponent
 public:
 	USavaAbilitySystemComponent();
 
-	//ボタンが押された/離された。InputTag が一致する能力を発動・通知する(キャラクターの入力から呼ぶ)
+	//キャラクターの入力からInputTag が一致する能力を発動する
 	void AbilityInputTagPressed(const FGameplayTag& InputTag);
 	void AbilityInputTagReleased(const FGameplayTag& InputTag);
 

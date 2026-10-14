@@ -21,12 +21,12 @@ enum class ESavaAbilityActivationPolicy : uint8
 	OnSpawn,
 };
 
-//スキル・ガジェット・武器の能力はすべてこのクラスを親にする
+//スキル・ガジェットの能力はすべてこのクラスを親にする
 //・通信: 押した瞬間に自分の画面で発動し(予測)、サーバーが確認する
 //・死亡中・ラウンド開始前は発動できない(Activation Blocked Tags に State.Dead / State.RoundFrozen が入っている)
 //・Ability.Type.Skill を持つ能力は、旗を運んでいる間(State.CarryingFlag)は発動できない
 //・クールダウンは Cooldown Duration と Cooldown Tags を入れるだけで動く
-//・個数制(ガジェット)は Max Charges を入れるだけで動く
+//・Max Charges を入れると個数制になる
 UCLASS(Abstract)
 class SAVA_API USavaGameplayAbility : public UGameplayAbility
 {
