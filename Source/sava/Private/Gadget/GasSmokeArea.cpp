@@ -28,6 +28,18 @@ AGasSmokeArea::AGasSmokeArea()
 	m_EffectCollisionComponent->SetCollisionResponseToChannel(
 		ECC_Pawn,
 		ECR_Overlap);
+
+	m_SmokeVisualComponent =
+		CreateDefaultSubobject<UStaticMeshComponent>(
+			TEXT("SmokeVisual"));
+
+	m_SmokeVisualComponent->SetupAttachment(
+		RootComponent);
+
+	m_SmokeVisualComponent->SetCollisionEnabled(
+		ECollisionEnabled::NoCollision);
+
+	m_SmokeVisualComponent->SetHiddenInGame(true);
 }
 
 void AGasSmokeArea::BeginPlay()
@@ -41,6 +53,7 @@ void AGasSmokeArea::BeginPlay()
 
 	OnGasSmokeStarted();
 
+	// デバッグ用にガス煙の範囲を表示する。
 	DrawDebugSphere(
 		GetWorld(),
 		GetActorLocation(),
@@ -104,6 +117,10 @@ void AGasSmokeArea::InitializeGas(
 
 	m_EffectCollisionComponent->SetSphereRadius(
 		m_EffectRadius);
+
+	UpdateSmokeVisualScale();
+
+	m_SmokeVisualComponent->SetHiddenInGame(false);
 }
 
 void AGasSmokeArea::ApplyGasDamage()
@@ -151,6 +168,43 @@ void AGasSmokeArea::ApplyGasDamage()
 			Damage,
 			this);
 	}
+}
+
+void AGasSmokeArea::UpdateSmokeVisualScale()
+{
+	if (!m_SmokeVisualComponent ||
+		!m_EffectCollisionComponent)
+	{
+		return;
+	}
+
+	UStaticMesh* SmokeMesh =
+		m_SmokeVisualComponent->GetStaticMesh();
+
+	if (!SmokeMesh)
+	{
+		return;
+	}
+
+	// メッシュのローカル空間での半径を取得する。
+	const FVector MeshSize =
+		SmokeMesh->GetBoundingBox().GetSize();
+
+	const float MeshRadius =
+		FMath::Max(MeshSize.X, FMath::Max(
+			MeshSize.Y, MeshSize.Z)) * 0.5f;
+
+	if (MeshRadius <= KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+
+	// コリジョンの半径に合うスケールを計算する。
+	const float SmokeScale =
+		m_EffectRadius / MeshRadius;
+
+	m_SmokeVisualComponent->SetRelativeScale3D(
+		FVector(SmokeScale));
 }
 
 bool AGasSmokeArea::CanDamageTarget(
