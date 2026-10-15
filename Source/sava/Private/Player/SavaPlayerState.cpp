@@ -1,6 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Player/SavaPlayerState.h"
+#include "Lobby/SavaLobbyGameState.h"
 #include "AbilitySystem/SavaAbilitySystemComponent.h"
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
 #include "AbilitySystem/SavaAttributeSet.h"
@@ -35,9 +36,44 @@ UAbilitySystemComponent* ASavaPlayerState::GetAbilitySystemComponent() const
 
 void ASavaPlayerState::SetTeamId(uint8 NewTeamId)
 {
-	if (HasAuthority())
+	if (HasAuthority() && TeamId != NewTeamId)
 	{
 		TeamId = NewTeamId;
+		BroadcastLobbyStatusChanged(); //サーバーでは OnRep が呼ばれないので自分で呼ぶ
+	}
+}
+
+void ASavaPlayerState::SetReady(bool bNewReady)
+{
+	if (HasAuthority() && bIsReady != bNewReady)
+	{
+		bIsReady = bNewReady;
+		BroadcastLobbyStatusChanged();
+	}
+}
+
+void ASavaPlayerState::SetRoomHost(bool bNewRoomHost)
+{
+	if (HasAuthority() && bIsRoomHost != bNewRoomHost)
+	{
+		bIsRoomHost = bNewRoomHost;
+		BroadcastLobbyStatusChanged();
+	}
+}
+
+void ASavaPlayerState::OnRep_LobbyStatus()
+{
+	BroadcastLobbyStatusChanged();
+}
+
+void ASavaPlayerState::BroadcastLobbyStatusChanged()
+{
+	OnLobbyStatusChanged.Broadcast(this);
+
+	//ロビーの画面は GameState の OnLobbyChanged 1 つを見ればよいようにする
+	if (ASavaLobbyGameState* LobbyGameState = GetWorld() ? GetWorld()->GetGameState<ASavaLobbyGameState>() : nullptr)
+	{
+		LobbyGameState->NotifyLobbyChanged();
 	}
 }
 
@@ -182,6 +218,9 @@ void ASavaPlayerState::CopyProperties(APlayerState* PlayerState)
 	{
 		NewPlayerState->Loadout = Loadout;
 		NewPlayerState->bHasReceivedLoadout = bHasReceivedLoadout;
+		//待合室で決めたチームのまま試合へ入る。準備 OK は持ち越さない(戻ってきたら押し直す)
+		NewPlayerState->TeamId = TeamId;
+		NewPlayerState->bIsRoomHost = bIsRoomHost;
 	}
 }
 
@@ -190,6 +229,8 @@ void ASavaPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ASavaPlayerState, TeamId);
+	DOREPLIFETIME(ASavaPlayerState, bIsReady);
+	DOREPLIFETIME(ASavaPlayerState, bIsRoomHost);
 	DOREPLIFETIME(ASavaPlayerState, KillCount);
 	DOREPLIFETIME(ASavaPlayerState, DeathCount);
 	DOREPLIFETIME(ASavaPlayerState, Loadout);

@@ -157,24 +157,12 @@ void USavaWeaponFireAbility::FireShot()
 	const FSavaWeaponStats Stats = Equipment->GetStats(FiringSlot);
 	TArray<FHitResult> Hits;
 
-	//マズル位置を取得。武器のMuzzleOffsetソケットから計算した固定位置
-	FVector MuzzleLocation;
+	// マズル位置を取得。これは視覚演出専用で、レイ判定には使用しない
+	FVector MuzzleLocation = FVector::ZeroVector;
 	const bool bMuzzleValid = Equipment->GetCurrentMuzzleLocation(MuzzleLocation);
 
-	if (bMuzzleValid)
-	{
-		TraceShot(MuzzleLocation, Stats, Equipment->GetCurrentSpreadAngle(), Hits);
-	}
-	else
-	{
-		// マズル位置取得失敗時はカメラ位置を使う（フォールバック）
-		FVector ViewLocation;
-		FRotator ViewRotation;
-		if (GetViewPoint(ViewLocation, ViewRotation))
-		{
-			TraceShot(ViewLocation, Stats, Equipment->GetCurrentSpreadAngle(), Hits);
-		}
-	}
+	// 命中判定はカメラ位置から行う
+	TraceShot(Stats, Equipment->GetCurrentSpreadAngle(), Hits);
 
 	//デバッグ用の弾道表示
 	for (const FHitResult& Hit : Hits)
@@ -464,57 +452,105 @@ bool USavaWeaponFireAbility::GetViewPoint(FVector& OutLocation, FRotator& OutRot
 	return true;
 }
 
-void USavaWeaponFireAbility::TraceShot(const FVector& MuzzleLocation, const FSavaWeaponStats& Stats, float SpreadAngle, TArray<FHitResult>& OutHits) const
+void USavaWeaponFireAbility::TraceShot(const FSavaWeaponStats& Stats, float SpreadAngle, TArray<FHitResult>& OutHits) const
 {
+	// カメラの位置と方向を取得する
+	FVector ViewLocation;
 	FRotator ViewRotation;
-	FVector DummyLocation;
+
 	const AActor* Avatar = GetAvatarActorFromActorInfo();
-	if (!Avatar || !GetViewPoint(DummyLocation, ViewRotation))
+	if (!Avatar || !GetViewPoint(ViewLocation, ViewRotation))
 	{
 		return;
 	}
 
-	const UWorld* World = Avatar->GetWorld();
-	const FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(SavaWeaponFire), false, Avatar);
+	UWorld* World = Avatar->GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const FCollisionQueryParams QueryParams(
+		SCENE_QUERY_STAT(SavaWeaponFire),
+		false,
+		Avatar
+	);
+
+	// 照準方向はカメラの向きを基準にする
 	const FVector AimDirection = ViewRotation.Vector();
 	const float SpreadHalfAngle = FMath::DegreesToRadians(SpreadAngle);
 
 	for (int32 Pellet = 0; Pellet < FMath::Max(Stats.PelletCount, 1); ++Pellet)
 	{
-		//拡散: 狙った方向から最大 Spread Angle だけランダムにずらす
+		// 狙った方向から最大 SpreadAngle だけランダムにずらす
 		const FVector Direction = SpreadHalfAngle > 0.0f ? FMath::VRandCone(AimDirection, SpreadHalfAngle) : AimDirection;
-		const FVector TraceEnd = MuzzleLocation + Direction * MaxTraceDistance;
+
+		// レイの開始位置と終了位置はカメラを基準にする
+		const FVector TraceEnd = ViewLocation + Direction * MaxTraceDistance;
 
 		FHitResult Hit;
-		const bool bHit = Stats.HitScanRadius > 0.0f
-			? World->SweepSingleByChannel(Hit, MuzzleLocation, TraceEnd, FQuat::Identity, TraceChannel, FCollisionShape::MakeSphere(Stats.HitScanRadius), QueryParams)
-			: World->LineTraceSingleByChannel(Hit, MuzzleLocation, TraceEnd, TraceChannel, QueryParams);
 
-		//ドームシールドを横切るなら、そこで弾を止める(シールドには当たり判定が無いので計算で調べる)
+		const bool bHit = Stats.HitScanRadius > 0.0f
+			? World->SweepSingleByChannel(
+				Hit,
+				ViewLocation,
+				TraceEnd,
+				FQuat::Identity,
+				TraceChannel,
+				FCollisionShape::MakeSphere(Stats.HitScanRadius),
+				QueryParams
+			)
+			: World->LineTraceSingleByChannel(
+				Hit,
+				ViewLocation,
+				TraceEnd,
+				TraceChannel,
+				QueryParams
+			);
+
+		// ドームシールドを横切る場合は、シールド位置で弾を止める
+		// シールドには通常の当たり判定がないため、専用処理で判定する
 		FVector ShieldHitLocation;
 		FVector ShieldHitNormal;
+
 		if (ASavaDomeShield* Shield = ASavaDomeShield::FindBlockingShield(
-			Avatar->GetWorld(), MuzzleLocation, bHit ? Hit.ImpactPoint : TraceEnd, ShieldHitLocation, ShieldHitNormal))
+			World,
+			ViewLocation,
+			bHit ? Hit.ImpactPoint : TraceEnd,
+			ShieldHitLocation,
+			ShieldHitNormal))
 		{
-			Hit = FHitResult(Shield, Cast<UPrimitiveComponent>(Shield->GetRootComponent()), ShieldHitLocation, ShieldHitNormal);
-			Hit.TraceStart = MuzzleLocation;
+			Hit = FHitResult(
+				Shield,
+				Cast<UPrimitiveComponent>(Shield->GetRootComponent()),
+				ShieldHitLocation,
+				ShieldHitNormal
+			);
+
+			Hit.TraceStart = ViewLocation;
 			Hit.TraceEnd = TraceEnd;
-			Hit.Distance = FVector::Dist(MuzzleLocation, ShieldHitLocation);
+			Hit.Distance = FVector::Dist(
+				ViewLocation,
+				ShieldHitLocation
+			);
+
 			OutHits.Add(Hit);
 			continue;
 		}
 
 		if (!bHit)
 		{
-			//外れ: 弾道の演出用に、レイの端を当たった位置として入れておく
-			Hit = FHitResult(MuzzleLocation, TraceEnd);
+			// 外れた弾も射程の端を結果として保持する
+			Hit = FHitResult(ViewLocation, TraceEnd);
 			Hit.Location = TraceEnd;
 			Hit.ImpactPoint = TraceEnd;
 		}
 		else if (IsHeadHit(Hit))
 		{
+			// 既存のヘッドショット判定を維持する
 			Hit.BoneName = HeadBoneName;
 		}
+
 		OutHits.Add(Hit);
 	}
 }

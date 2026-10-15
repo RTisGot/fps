@@ -24,8 +24,12 @@ class SAVA_API ASavaCTFGameMode : public AsavaGameMode
 public:
 	ASavaCTFGameMode();
 
+	//ロビーのルーム設定を URL のオプションから読む(Rounds・TimeLimit・Players。SavaMatchOptions を参照)
+	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void InitGameState() override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
+	//待合室から Seamless Travel で移ってきた人(PostLogin は呼ばれない)
+	virtual void HandleSeamlessTravelPlayer(AController*& C) override;
 	virtual void Logout(AController* Exiting) override;
 	virtual void RestartPlayer(AController* NewPlayer) override;
 	virtual bool PlayerCanRestart_Implementation(APlayerController* Player) override;
@@ -54,6 +58,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Round", meta = (ClampMin = "1"))
 	int32 MinPlayersToStart = 1;
 
+	//待合室から移ってくる人が全員そろうまで待つ上限。過ぎたら MinPlayersToStart 人いれば始める
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Round", meta = (ClampMin = "0", ForceUnits = "s"))
+	float WaitForPlayersTimeout = 30.0f;
+
 	//ラウンド開始前のカウントダウン(動けない)
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Round", meta = (ClampMin = "0", ForceUnits = "s"))
 	float PreRoundDuration = 3.0f;
@@ -68,6 +76,19 @@ protected:
 
 private:
 	ASavaGameState* GetSavaGameState() const;
+
+	//人がそろったら最初のラウンドを始める(入ってくるたびに呼ぶ)
+	void NotifyPlayerArrived(AController* Controller);
+	void TryStartFirstRound(bool bTimedOut);
+	void OnWaitForPlayersTimeout();
+
+	//待合室から移ってくる人数(URL の Players。直接このマップを開いたときは 0)
+	int32 ExpectedPlayers = 0;
+
+	//このマップに入り終えた人
+	TSet<TWeakObjectPtr<AController>> ArrivedPlayers;
+
+	FTimerHandle WaitForPlayersTimer;
 
 	//ラウンドの流れ: StartRound(カウントダウン) → BeginRoundPlay → (OnRoundTimeUp → StartDeathmatch) → EndRound → StartRound …
 	void StartRound();

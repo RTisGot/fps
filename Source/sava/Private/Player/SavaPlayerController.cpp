@@ -4,7 +4,6 @@
 #include "Player/SavaPlayerState.h"
 #include "Loadout/SavaLoadoutSubsystem.h"
 #include "savaCharacter.h"
-#include "Weapon/SavaEquipmentComponent.h"
 #include "SavaGameUserSettings.h"
 #include "SavaScoreboardWidget.h"
 #include "SavaSettingsMenuController.h"
@@ -15,6 +14,9 @@
 #include "Misc/PackageName.h"
 #include "UObject/ConstructorHelpers.h"
 #include "savaGameMode.h"
+#include "Lobby/SavaLobbyGameMode.h"
+#include "Online/SavaSessionSubsystem.h"
+#include "Engine/Engine.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSavaPlayerController, Log, All);
 
@@ -67,6 +69,104 @@ void ASavaPlayerController::ServerSetLoadout_Implementation(const FSavaLoadout& 
 	SavaPlayerState->SetLoadout(Loadout);
 }
 
+//--------------------------------Lobby
+
+bool ASavaPlayerController::IsHostController(const APlayerController* PlayerController)
+{
+	//listen サーバー(ソロも同じ)では、サーバーにあって、その PC で操作している PlayerController がホスト
+	//クライアントの PC では自分の PlayerController も Authority ではないので false になる
+	return PlayerController && PlayerController->IsLocalController() && PlayerController->HasAuthority();
+}
+
+void ASavaPlayerController::RunLobbyRequest(TFunctionRef<bool(ASavaLobbyGameMode&, FText&)> Request)
+{
+	//ロビー以外のマップでは何もしない
+	ASavaLobbyGameMode* LobbyGameMode = GetWorld()->GetAuthGameMode<ASavaLobbyGameMode>();
+	if (!LobbyGameMode)
+	{
+		return;
+	}
+
+	//断られたら、頼んだ人の画面へ理由を返す
+	FText Error;
+	if (!Request(*LobbyGameMode, Error) && !Error.IsEmpty())
+	{
+		ClientShowLobbyMessage(Error);
+	}
+}
+
+void ASavaPlayerController::ServerJoinTeam_Implementation(uint8 TeamId)
+{
+	RunLobbyRequest([this, TeamId](ASavaLobbyGameMode& GameMode, FText& Error)
+	{
+		return GameMode.RequestJoinTeam(this, TeamId, Error);
+	});
+}
+
+void ASavaPlayerController::ServerSetReady_Implementation(bool bReady)
+{
+	RunLobbyRequest([this, bReady](ASavaLobbyGameMode& GameMode, FText& Error)
+	{
+		return GameMode.RequestSetReady(this, bReady, Error);
+	});
+}
+
+void ASavaPlayerController::ServerUpdateRoomSettings_Implementation(const FSavaRoomSettings& NewSettings)
+{
+	RunLobbyRequest([this, &NewSettings](ASavaLobbyGameMode& GameMode, FText& Error)
+	{
+		return GameMode.RequestUpdateRoomSettings(this, NewSettings, Error);
+	});
+}
+
+void ASavaPlayerController::ServerMovePlayerToTeam_Implementation(ASavaPlayerState* Target, uint8 TeamId)
+{
+	RunLobbyRequest([this, Target, TeamId](ASavaLobbyGameMode& GameMode, FText& Error)
+	{
+		return GameMode.RequestMovePlayerToTeam(this, Target, TeamId, Error);
+	});
+}
+
+void ASavaPlayerController::ServerKickPlayer_Implementation(ASavaPlayerState* Target)
+{
+	RunLobbyRequest([this, Target](ASavaLobbyGameMode& GameMode, FText& Error)
+	{
+		return GameMode.RequestKickPlayer(this, Target, Error);
+	});
+}
+
+void ASavaPlayerController::ServerStartMatch_Implementation()
+{
+	RunLobbyRequest([this](ASavaLobbyGameMode& GameMode, FText& Error)
+	{
+		return GameMode.RequestStartMatch(this, Error);
+	});
+}
+
+void ASavaPlayerController::ClientShowLobbyMessage_Implementation(const FText& Message)
+{
+	UE_LOG(LogSavaPlayerController, Log, TEXT("ロビー: %s"), *Message.ToString());
+	OnLobbyMessage.Broadcast(Message);
+
+	//受け取る画面がまだないときでも分かるように、画面の左上にも出す(開発中だけ)
+#if !UE_BUILD_SHIPPING
+	if (!OnLobbyMessage.IsBound() && GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 4.0f, FColor::Yellow, Message.ToString());
+	}
+#endif
+}
+
+void ASavaPlayerController::ClientWasKicked_Implementation(const FText& KickReason)
+{
+	Super::ClientWasKicked_Implementation(KickReason);
+
+	if (USavaSessionSubsystem* Sessions = GetGameInstance() ? GetGameInstance()->GetSubsystem<USavaSessionSubsystem>() : nullptr)
+	{
+		Sessions->NotifyKicked(KickReason.ToString());
+	}
+}
+
 void ASavaPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
@@ -77,9 +177,6 @@ void ASavaPlayerController::SetupInputComponent()
 	// Tabキーでスコアボードを表示 / 離したら非表示
 	InputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &ASavaPlayerController::ShowScoreboard);
 	InputComponent->BindKey(EKeys::Tab, IE_Released, this, &ASavaPlayerController::HideScoreboard);
-
-	// Pキーでマズルデバッグ描画をトグル
-	InputComponent->BindKey(EKeys::P, IE_Pressed, this, &ASavaPlayerController::ToggleMuzzleDebug);
 }
 
 void ASavaPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -221,19 +318,4 @@ void ASavaPlayerController::HideScoreboard()
 	}
 
 	ScoreboardWidget->RemoveFromParent();
-}
-
-//--------------------------------Muzzle Debug
-
-void ASavaPlayerController::ToggleMuzzleDebug()
-{
-	// 現在のPawnからEquipmentComponentを取得してトグル
-	if (APawn* LocalPawn = GetPawn())
-	{
-		if (USavaEquipmentComponent* Equipment = LocalPawn->FindComponentByClass<USavaEquipmentComponent>())
-		{
-			Equipment->bDrawMuzzleDebug = !Equipment->bDrawMuzzleDebug;
-			UE_LOG(LogSavaPlayerController, Log, TEXT("Muzzle Debug: %s"), Equipment->bDrawMuzzleDebug ? TEXT("ON") : TEXT("OFF"));
-		}
-	}
 }
