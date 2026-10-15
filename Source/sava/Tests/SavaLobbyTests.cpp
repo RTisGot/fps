@@ -3,9 +3,12 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/GameModeBase.h"
+#include "GameFramework/PlayerController.h"
+#include "Lobby/SavaInteractButton.h"
 #include "Lobby/SavaLobbyGameMode.h"
 #include "Lobby/SavaLobbyGameState.h"
 #include "Lobby/SavaLobbySettings.h"
+#include "Player/SavaPlayerController.h"
 #include "Player/SavaPlayerState.h"
 
 namespace
@@ -188,6 +191,38 @@ bool FSavaLobbyTravelURLTest::RunTest(const FString&)
 
 	RoomSettings.ModeIndex = 1;
 	TestTrue(TEXT("No URL for a mode without a GameMode"), ASavaLobbyGameMode::BuildMatchTravelURL(RoomSettings, 6).IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaLobbyReadyButtonHostTest, "Sava.Lobby.ReadyButtonNotForHost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaLobbyReadyButtonHostTest::RunTest(const FString&)
+{
+	FSavaLobbyTestWorld TestWorld;
+	//1 人で動かしているワールドでは、自分の PlayerController がホスト
+	APlayerController* HostController = TestWorld.World->SpawnActor<APlayerController>();
+	ASavaInteractButton* Button = TestWorld.World->SpawnActor<ASavaInteractButton>();
+	TestTrue(TEXT("The local controller is the host"), ASavaPlayerController::IsHostController(HostController));
+
+	//Action は配置したものごとに Details で選ぶ値なので、テストではリフレクションで入れる
+	const FEnumProperty* ActionProperty = FindFProperty<FEnumProperty>(ASavaInteractButton::StaticClass(), TEXT("Action"));
+	if (!TestNotNull(TEXT("Action property"), ActionProperty))
+	{
+		return false;
+	}
+	ESavaInteractButtonAction* Action = ActionProperty->ContainerPtrToValuePtr<ESavaInteractButtonAction>(Button);
+
+	*Action = ESavaInteractButtonAction::ToggleReady;
+	TestFalse(TEXT("Host cannot use the ready button"), Button->CanInteract(HostController));
+
+	*Action = ESavaInteractButtonAction::JoinTeam;
+	TestTrue(TEXT("Host can use the team button"), Button->CanInteract(HostController));
+
+	*Action = ESavaInteractButtonAction::StartMatch;
+	TestTrue(TEXT("Start match is host only"), Button->IsHostOnly());
+	TestTrue(TEXT("Host can use the start button"), Button->CanInteract(HostController));
 
 	return true;
 }

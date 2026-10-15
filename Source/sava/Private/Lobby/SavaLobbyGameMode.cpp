@@ -172,6 +172,12 @@ bool ASavaLobbyGameMode::RequestSetReady(ASavaPlayerController* Requester, bool 
 		OutError = FText::FromString(TEXT("今は変えられません"));
 		return false;
 	}
+	//ホストは開始ボタンを押す人なので、準備 OK は要らない
+	if (SavaPlayerState->IsRoomHost())
+	{
+		OutError = FText::FromString(TEXT("ホストは準備 OK を押す必要はありません"));
+		return false;
+	}
 
 	SavaPlayerState->SetReady(bReady);
 	return true;

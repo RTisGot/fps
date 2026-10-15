@@ -45,7 +45,7 @@
 | Action | すること |
 |---|---|
 | Join Team | `Team Id` のチームに入る(0 = チーム 1、1 = チーム 2。満員なら断られる) |
-| Toggle Ready | 準備 OK を切り替える |
+| Toggle Ready | 準備 OK を切り替える(ホストは押せない。案内も出ない) |
 | Leave Room | 部屋を抜けてソロロビーへ(ホストが抜けると部屋ごと無くなる) |
 | Start Match | 試合を始める(Host Only に関係なく、いつもホスト限定) |
 | Custom | 何もしない。Blueprint の `On Pressed` で処理を書く |

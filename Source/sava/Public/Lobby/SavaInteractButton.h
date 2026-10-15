@@ -34,6 +34,9 @@ class SAVA_API ASavaInteractButton : public ASavaInteractable
 public:
 	virtual bool IsHostOnly() const override;
 
+	//準備 OK はホストには要らないので、ホストは押せない(案内も出ず、しゃがみキーは普通のしゃがみになる)
+	virtual bool CanInteract(const APlayerController* PlayerController) const override;
+
 	UFUNCTION(BlueprintPure, Category = "Sava|Button")
 	ESavaInteractButtonAction GetAction() const { return Action; }
 
