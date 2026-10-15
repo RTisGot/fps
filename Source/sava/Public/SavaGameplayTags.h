@@ -33,6 +33,7 @@ namespace SavaGameplayTags
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Weapon_Reloading);
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_CarryingFlag);
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_RoundFrozen);
+	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Slowed);
 
 	//GameplayEffect に数値を渡すためのキー
 	SAVA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(SetByCaller_Damage);
