@@ -70,3 +70,14 @@ class SAVA_API USavaGE_RoundFrozen : public UGameplayEffect
 public:
 	USavaGE_RoundFrozen(const FObjectInitializer& ObjectInitializer);
 };
+
+//スローエリアの中にいる間(無期限)。State.Slowed を付け、移動速度に SetByCaller.MoveSpeedMultiplier を掛ける
+//スローエリア(ASlowField)が範囲に入った敵に付け、範囲から出た・エリアが消えたときに外す
+UCLASS()
+class SAVA_API USavaGE_Slowed : public UGameplayEffect
+{
+	GENERATED_BODY()
+
+public:
+	USavaGE_Slowed(const FObjectInitializer& ObjectInitializer);
+};

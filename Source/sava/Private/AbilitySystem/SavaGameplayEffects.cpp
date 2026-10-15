@@ -92,3 +92,20 @@ USavaGE_RoundFrozen::USavaGE_RoundFrozen(const FObjectInitializer& ObjectInitial
 
 	GEComponents.Add(MakeGrantedTagComponent(*this, SavaGameplayTags::State_RoundFrozen));
 }
+
+USavaGE_Slowed::USavaGE_Slowed(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	DurationPolicy = EGameplayEffectDurationType::Infinite;
+
+	FSetByCallerFloat SetByCaller;
+	SetByCaller.DataTag = SavaGameplayTags::SetByCaller_MoveSpeedMultiplier;
+
+	FGameplayModifierInfo Modifier;
+	Modifier.Attribute = USavaAttributeSet::GetMoveSpeedMultiplierAttribute();
+	Modifier.ModifierOp = EGameplayModOp::MultiplyCompound;
+	Modifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(SetByCaller);
+	Modifiers.Add(Modifier);
+
+	GEComponents.Add(MakeGrantedTagComponent(*this, SavaGameplayTags::State_Slowed));
+}
