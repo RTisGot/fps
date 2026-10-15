@@ -25,6 +25,7 @@ namespace SavaGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Weapon_Reloading, "State.Weapon.Reloading", "リロード中");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_CarryingFlag, "State.CarryingFlag", "旗を運んでいる(Ability.Type.Skill の能力は使えない)");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_RoundFrozen, "State.RoundFrozen", "ラウンド開始前のカウントダウン中(移動・ジャンプ・能力が使えない)");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Slowed, "State.Slowed", "スローエリアで減速中(付いている人には他のスローエリアは重ねて効かない)");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(SetByCaller_Damage, "SetByCaller.Damage", "ダメージ量");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(SetByCaller_Healing, "SetByCaller.Healing", "回復量");

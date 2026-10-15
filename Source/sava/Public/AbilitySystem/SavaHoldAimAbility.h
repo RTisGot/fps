@@ -120,6 +120,9 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Sava|Aim")
 	virtual bool ComputeAim(FTransform& OutTransform, TArray<FVector>& OutPathPoints) const;
 
+	//操作しているプレイヤーの視点(サーバーでも、複製された向きで取れる)
+	bool GetViewPoint(FVector& OutLocation, FRotator& OutRotation) const;
+
 private:
 	UFUNCTION()
 	void OnInputReleased(float TimeHeld);
@@ -134,7 +137,6 @@ private:
 	void FinishAiming(bool bConfirmed);
 	void CancelThisAbility();
 
-	bool GetViewPoint(FVector& OutLocation, FRotator& OutRotation) const;
 	bool IsTargetValid(const FTransform& TargetTransform) const;
 
 	bool bIsAiming = false;
