@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "GameFramework/Actor.h"
 #include "GasSmokeArea.generated.h"
 
@@ -38,6 +39,9 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Gadget|GasSmoke")
 	void OnGasSmokeEnded();
 
+	/** 効果範囲に合わせて煙の見た目を更新する。 */
+	void UpdateSmokeVisualScale();
+
 	/**
 	 * ガス煙の効果範囲。
 	 */
@@ -53,6 +57,12 @@ protected:
 			ClampMin = "0.01",
 			ForceUnits = "s"))
 	float m_DamageInterval = 1.0f;
+
+	/**
+	 * ガス煙の視覚表現。
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Gas Smoke|Visual")
+	TObjectPtr<UStaticMeshComponent> m_SmokeVisualComponent;
 
 private:
 	/**
