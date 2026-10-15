@@ -53,6 +53,21 @@ void ASavaGameState::SetRoundPhase(ESavaRoundPhase NewPhase, float Duration)
 	PhaseEndServerTime = Duration > 0.0f ? GetServerWorldTimeSeconds() + Duration : 0.0f;
 }
 
+
+void ASavaGameState::SetDeathmatchResults(
+	const TArray<FString>& WinnerNames,
+	int32 WinningKills)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	DeathmatchWinnerNames = WinnerNames;
+	DeathmatchWinningKills = WinningKills;
+}
+
+
 void ASavaGameState::BeginNewRound()
 {
 	++RoundNumber;
@@ -122,4 +137,6 @@ void ASavaGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ASavaGameState, TeamStates);
 	DOREPLIFETIME(ASavaGameState, LastRoundWinner);
 	DOREPLIFETIME(ASavaGameState, MatchWinner);
+	DOREPLIFETIME(ASavaGameState, DeathmatchWinnerNames);
+	DOREPLIFETIME(ASavaGameState, DeathmatchWinningKills);
 }

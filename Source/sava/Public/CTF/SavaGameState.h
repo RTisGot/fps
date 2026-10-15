@@ -86,6 +86,25 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Round")
 	uint8 GetMatchWinner() const { return MatchWinner; }
 
+	// デスマッチの勝者名を取得（同率1位を含む）
+	UFUNCTION(BlueprintPure, Category = "Sava|Deathmatch")
+	const TArray<FString>& GetDeathmatchWinnerNames() const
+	{
+		return DeathmatchWinnerNames;
+	}
+
+	// デスマッチの最高キル数を取得
+	UFUNCTION(BlueprintPure, Category = "Sava|Deathmatch")
+	int32 GetDeathmatchWinningKills() const
+	{
+		return DeathmatchWinningKills;
+	}
+
+	// サーバーからデスマッチの結果を設定
+	void SetDeathmatchResults(
+		const TArray<FString>& WinnerNames,
+		int32 WinningKills);
+
 	//以下はサーバー(ASavaCTFGameMode)だけが呼ぶ
 	void InitTeams(int32 NumTeams);
 	void SetRoundPhase(ESavaRoundPhase NewPhase, float Duration);
@@ -118,6 +137,14 @@ private:
 
 	UPROPERTY(Replicated)
 	uint8 MatchWinner = NoTeam;
+
+	// デスマッチの勝者名（同率1位を含む）
+	UPROPERTY(Replicated)
+	TArray<FString> DeathmatchWinnerNames;
+
+	// 勝者のキル数
+	UPROPERTY(Replicated)
+	int32 DeathmatchWinningKills = 0;
 
 	void DrawDebugText() const;
 };

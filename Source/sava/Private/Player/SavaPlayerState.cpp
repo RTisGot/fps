@@ -11,6 +11,7 @@
 #include "Weapon/SavaWeaponData.h"
 #include "SavaGameplayTags.h"
 #include "Net/UnrealNetwork.h"
+#include "SavaDeathmatchGameMode.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSavaPlayerState, Log, All);
 
@@ -49,7 +50,24 @@ void ASavaPlayerState::AddKill()
 
 	++KillCount;
 
-	UE_LOG(LogTemp, Log, TEXT("KillCount increased: PlayerState = %s, KillCount = %d"), *GetName(), KillCount);
+	UE_LOG(LogTemp, Log,
+		TEXT("KillCount increased: PlayerState = %s, KillCount = %d"),
+		*GetName(), KillCount);
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	ASavaDeathmatchGameMode* DeathmatchGameMode =
+		Cast<ASavaDeathmatchGameMode>(
+			World->GetAuthGameMode());
+
+	if (DeathmatchGameMode)
+	{
+		DeathmatchGameMode->CheckKillLimit(this);
+	}
 }
 
 void ASavaPlayerState::AddDeath()
