@@ -83,8 +83,8 @@ public:
 	//サーバーでのみ呼ぶ。選べないものは直して持ち、今の体にもすぐ反映する
 	void SetLoadout(const FSavaLoadout& NewLoadout);
 
-	//サーバーでのみ呼ぶ。持っているロードアウトを体の武器・スキル・ガジェットに反映する(変わった枠だけ)
-	void ApplyLoadoutTo(APawn* TargetPawn) const;
+	//サーバーでのみ呼ぶ。持っているロードアウトを体のキャラクター・武器・スキル・ガジェットと最大 HP に反映する(変わった枠だけ)
+	void ApplyLoadoutTo(APawn* TargetPawn);
 
 	//選んだキャラクターの「与えるダメージ」の倍率(キャラクターが決まっていなければ 1)
 	float GetOutgoingDamageMultiplier() const;
