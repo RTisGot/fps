@@ -483,12 +483,14 @@ void ASavaCTFGameMode::EndRound(uint8 WinnerTeamId)
 	if (WinnerTeamId != ASavaGameState::NoTeam && SavaGameState->GetTeamRoundWins(WinnerTeamId) >= RoundsToWin)
 	{
 		SavaGameState->SetMatchWinner(WinnerTeamId);
-		SavaGameState->SetRoundPhase(ESavaRoundPhase::MatchEnd, 0.0f);
+		//残り時間 = ロビーへ戻るまでの秒数(画面にカウントダウンを出せる)
+		SavaGameState->SetRoundPhase(ESavaRoundPhase::MatchEnd, ReturnToLobbyDelay);
 		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 		{
 			SetRoundFrozen(It->Get(), true);
 		}
-		UE_LOG(LogSavaCTF, Log, TEXT("Match end: team %d wins."), WinnerTeamId);
+		UE_LOG(LogSavaCTF, Log, TEXT("Match end: team %d wins. Returning to the lobby in %.0f s."), WinnerTeamId, ReturnToLobbyDelay);
+		ScheduleReturnToLobby();
 		return;
 	}
 

@@ -124,6 +124,7 @@ void USavaSessionSubsystem::CreateRoom(const FString& RoomName)
 	}
 
 	SetBusy(true);
+	LastRoomSettings.Reset(); //新しい部屋は最初のルーム設定から
 	DestroySessionThen([this, RoomName]()
 	{
 		StartCreateSession(RoomName);
@@ -203,6 +204,11 @@ void USavaSessionSubsystem::HandleCreateSessionComplete(FName SessionName, bool 
 		return;
 	}
 
+	UGameplayStatics::OpenLevelBySoftObjectPtr(this, LobbyMap, true, GetLobbyOptions());
+}
+
+FString USavaSessionSubsystem::GetLobbyOptions() const
+{
 	//listen を付けて開くと、このマップのサーバーになって他の人が接続できるようになる
 	//game= を付けると、マップの World Settings に関係なくその GameMode になる
 	FString Options = TEXT("listen");
@@ -211,7 +217,7 @@ void USavaSessionSubsystem::HandleCreateSessionComplete(FName SessionName, bool 
 	{
 		Options += FString::Printf(TEXT("?game=%s"), *LobbyGameMode.ToString());
 	}
-	UGameplayStatics::OpenLevelBySoftObjectPtr(this, LobbyMap, true, Options);
+	return Options;
 }
 
 // ---------------------------------------------------------------------------
@@ -379,6 +385,7 @@ void USavaSessionSubsystem::HandleJoinSessionComplete(FName SessionName, EOnJoin
 void USavaSessionSubsystem::LeaveRoom()
 {
 	UE_LOG(LogSavaSession, Log, TEXT("部屋を抜けます"));
+	LastRoomSettings.Reset();
 	DestroySessionThen([this]()
 	{
 		//ソロロビーを開き直す。ホストならここで listen サーバーが閉じ、参加者は切断されてソロロビーへ戻される
@@ -409,6 +416,11 @@ void USavaSessionSubsystem::SetRoomJoinable(bool bJoinable)
 		return; //部屋がない(ソロで動かしているときなど)
 	}
 
+	if (CurrentSettings->bAllowJoinInProgress == bJoinable && CurrentSettings->bShouldAdvertise == bJoinable)
+	{
+		return; //もうその状態(部屋を作った直後にロビーを開いたときなど)
+	}
+
 	FOnlineSessionSettings NewSettings = *CurrentSettings;
 	NewSettings.bAllowJoinInProgress = bJoinable;
 	NewSettings.bShouldAdvertise = bJoinable;
@@ -416,6 +428,28 @@ void USavaSessionSubsystem::SetRoomJoinable(bool bJoinable)
 
 	UE_LOG(LogSavaSession, Log, TEXT("部屋に途中から%s"), bJoinable ? TEXT("入れるようにします") : TEXT("入れないようにします"));
 	Sessions->UpdateSession(NAME_GameSession, NewSettings, true);
+}
+
+void USavaSessionSubsystem::ReturnToRoomLobby()
+{
+	UWorld* World = GetGameInstance()->GetWorld();
+	if (!World || World->GetNetMode() == NM_Client)
+	{
+		return; //マップを移せるのはホストだけ
+	}
+
+	const TSoftObjectPtr<UWorld>& LobbyMap = GetDefault<USavaOnlineSettings>()->LobbyMap;
+	if (!IsInRoom() || LobbyMap.IsNull())
+	{
+		UE_LOG(LogSavaSession, Warning, TEXT("部屋がないので、ロビーではなくソロロビーへ戻ります"));
+		OpenSoloLobby();
+		return;
+	}
+
+	//GameMode の bUseSeamlessTravel が true なので、接続を切らずに全員を連れていく(チームも引き継ぐ)
+	const FString URL = FString::Printf(TEXT("%s?%s"), *LobbyMap.GetLongPackageName(), *GetLobbyOptions());
+	UE_LOG(LogSavaSession, Log, TEXT("部屋のロビーへ戻ります: %s"), *URL);
+	World->ServerTravel(URL);
 }
 
 void USavaSessionSubsystem::NotifyKicked(const FString& Reason)
