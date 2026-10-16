@@ -1,7 +1,9 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Loadout/SavaLoadoutSettings.h"
+#include "Loadout/SavaCharacterTypes.h"
 #include "AbilitySystem/SavaLoadoutAbilityData.h"
+#include "Engine/DataTable.h"
 #include "Weapon/SavaWeaponData.h"
 
 namespace SavaLoadout
@@ -36,6 +38,26 @@ namespace SavaLoadout
 	}
 }
 
+TArray<FName> USavaLoadoutSettings::GetSelectableCharacters()
+{
+	const UDataTable* Table = GetDefault<USavaLoadoutSettings>()->CharacterTable.LoadSynchronous();
+	if (!Table || Table->GetRowStruct() != FSavaCharacterRow::StaticStruct())
+	{
+		return {};
+	}
+	return Table->GetRowNames();
+}
+
+const FSavaCharacterRow* USavaLoadoutSettings::FindCharacterRow(FName CharacterId)
+{
+	const UDataTable* Table = GetDefault<USavaLoadoutSettings>()->CharacterTable.LoadSynchronous();
+	if (!Table || CharacterId.IsNone() || Table->GetRowStruct() != FSavaCharacterRow::StaticStruct())
+	{
+		return nullptr;
+	}
+	return Table->FindRow<FSavaCharacterRow>(CharacterId, TEXT("SavaLoadoutSettings"), false);
+}
+
 TArray<USavaWeaponData*> USavaLoadoutSettings::GetSelectableWeapons(ESavaWeaponSlot Slot)
 {
 	TArray<USavaWeaponData*> Weapons = SavaLoadout::LoadAll(GetDefault<USavaLoadoutSettings>()->Weapons);
@@ -56,6 +78,8 @@ TArray<USavaGadgetData*> USavaLoadoutSettings::GetSelectableGadgets()
 FSavaLoadout USavaLoadoutSettings::Sanitize(const FSavaLoadout& Loadout)
 {
 	FSavaLoadout Result;
+	const TArray<FName> Characters = GetSelectableCharacters();
+	Result.Character = Characters.Contains(Loadout.Character) ? Loadout.Character : (Characters.Num() > 0 ? Characters[0] : NAME_None);
 	Result.PrimaryWeapon = SavaLoadout::PickSelectable(Loadout.PrimaryWeapon, GetSelectableWeapons(ESavaWeaponSlot::Primary));
 	Result.SecondaryWeapon = SavaLoadout::PickSelectable(Loadout.SecondaryWeapon, GetSelectableWeapons(ESavaWeaponSlot::Secondary));
 	Result.Skill = SavaLoadout::PickSelectable(Loadout.Skill, GetSelectableSkills());

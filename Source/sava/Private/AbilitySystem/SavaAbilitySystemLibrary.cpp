@@ -76,7 +76,15 @@ bool USavaAbilitySystemLibrary::ApplyDamage(AActor* DamageInstigator, AActor* Ta
 		return false;
 	}
 
-	return ApplySetByCallerEffect(DamageInstigator, Target, USavaAbilitySettings::GetDamageEffectClass(), SavaGameplayTags::SetByCaller_Damage, Damage, DamageCauser);
+	//攻撃したプレイヤーのキャラクターの倍率を掛ける(武器・ガジェットなど、どのダメージにも掛かる)
+	const float FinalDamage = Damage * GetOutgoingDamageMultiplier(DamageInstigator);
+	return ApplySetByCallerEffect(DamageInstigator, Target, USavaAbilitySettings::GetDamageEffectClass(), SavaGameplayTags::SetByCaller_Damage, FinalDamage, DamageCauser);
+}
+
+float USavaAbilitySystemLibrary::GetOutgoingDamageMultiplier(const AActor* DamageInstigator)
+{
+	const ASavaPlayerState* PlayerState = Cast<ASavaPlayerState>(FindOwningPlayerState(DamageInstigator));
+	return PlayerState ? PlayerState->GetOutgoingDamageMultiplier() : 1.0f;
 }
 
 bool USavaAbilitySystemLibrary::ApplyHealing(AActor* HealInstigator, AActor* Target, float Amount)

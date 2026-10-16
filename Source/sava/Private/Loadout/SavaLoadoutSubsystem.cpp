@@ -3,6 +3,7 @@
 #include "Loadout/SavaLoadoutSubsystem.h"
 #include "Loadout/SavaLoadoutSaveGame.h"
 #include "Loadout/SavaLoadoutSettings.h"
+#include "Loadout/SavaCharacterTypes.h"
 #include "AbilitySystem/SavaLoadoutAbilityData.h"
 #include "Weapon/SavaWeaponData.h"
 #include "Kismet/GameplayStatics.h"
@@ -21,6 +22,13 @@ void USavaLoadoutSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 }
 
 //--------------------------------変更
+
+void USavaLoadoutSubsystem::SetCharacter(FName CharacterId)
+{
+	FSavaLoadout NewLoadout = Loadout;
+	NewLoadout.Character = CharacterId;
+	ApplyChange(NewLoadout);
+}
 
 void USavaLoadoutSubsystem::SetWeapon(ESavaWeaponSlot Slot, USavaWeaponData* Weapon)
 {
@@ -45,7 +53,11 @@ void USavaLoadoutSubsystem::SetGadget(USavaGadgetData* Gadget)
 
 void USavaLoadoutSubsystem::SelectItem(UObject* Item)
 {
-	if (USavaWeaponData* Weapon = Cast<USavaWeaponData>(Item))
+	if (const USavaCharacterOption* Character = Cast<USavaCharacterOption>(Item))
+	{
+		SetCharacter(Character->CharacterId);
+	}
+	else if (USavaWeaponData* Weapon = Cast<USavaWeaponData>(Item))
 	{
 		SetWeapon(Weapon->Slot, Weapon);
 	}
@@ -66,6 +78,11 @@ bool USavaLoadoutSubsystem::IsSelected(const UObject* Item) const
 		return false;
 	}
 
+	if (const USavaCharacterOption* Character = Cast<USavaCharacterOption>(Item))
+	{
+		return Loadout.Character == Character->CharacterId;
+	}
+
 	const FSoftObjectPath ItemPath(Item);
 	return Loadout.PrimaryWeapon.ToSoftObjectPath() == ItemPath
 		|| Loadout.SecondaryWeapon.ToSoftObjectPath() == ItemPath
@@ -77,6 +94,21 @@ void USavaLoadoutSubsystem::GetItemDisplayInfo(const UObject* Item, FText& Displ
 {
 	DisplayName = FText::GetEmpty();
 	Icon = nullptr;
+
+	if (const USavaCharacterOption* Character = Cast<USavaCharacterOption>(Item))
+	{
+		if (const FSavaCharacterRow* Row = USavaLoadoutSettings::FindCharacterRow(Character->CharacterId))
+		{
+			DisplayName = Row->DisplayName;
+			Icon = Row->Icon;
+		}
+		//表示名が未入力なら、行名を出す
+		if (DisplayName.IsEmpty())
+		{
+			DisplayName = FText::FromName(Character->CharacterId);
+		}
+		return;
+	}
 
 	if (const USavaWeaponData* Weapon = Cast<USavaWeaponData>(Item))
 	{
@@ -129,6 +161,22 @@ USavaGadgetData* USavaLoadoutSubsystem::GetGadget() const
 
 //--------------------------------選べるもの
 
+TArray<USavaCharacterOption*> USavaLoadoutSubsystem::GetSelectableCharacters()
+{
+	const TArray<FName> CharacterIds = USavaLoadoutSettings::GetSelectableCharacters();
+	if (CharacterOptions.Num() != CharacterIds.Num())
+	{
+		CharacterOptions.Reset();
+		for (const FName CharacterId : CharacterIds)
+		{
+			USavaCharacterOption* Option = NewObject<USavaCharacterOption>(this);
+			Option->CharacterId = CharacterId;
+			CharacterOptions.Add(Option);
+		}
+	}
+	return CharacterOptions;
+}
+
 TArray<USavaWeaponData*> USavaLoadoutSubsystem::GetSelectableWeapons(ESavaWeaponSlot Slot) const
 {
 	return USavaLoadoutSettings::GetSelectableWeapons(Slot);
@@ -156,8 +204,8 @@ void USavaLoadoutSubsystem::LoadFromDisk()
 
 	//初めての起動(保存がない)や、保存した武器がもう選べない場合は、各リストの最初のものになる
 	Loadout = USavaLoadoutSettings::Sanitize(Saved);
-	UE_LOG(LogSavaLoadout, Log, TEXT("ロードアウトを読み込みました: %s / %s / %s / %s"),
-		*Loadout.PrimaryWeapon.GetAssetName(), *Loadout.SecondaryWeapon.GetAssetName(),
+	UE_LOG(LogSavaLoadout, Log, TEXT("ロードアウトを読み込みました: %s / %s / %s / %s / %s"),
+		*Loadout.Character.ToString(), *Loadout.PrimaryWeapon.GetAssetName(), *Loadout.SecondaryWeapon.GetAssetName(),
 		*Loadout.Skill.GetAssetName(), *Loadout.Gadget.GetAssetName());
 }
 
@@ -188,7 +236,7 @@ namespace SavaLoadout
 	}
 
 	static FAutoConsoleCommandWithWorldAndArgs SetLoadoutCommand(
-		TEXT("Sava.SetLoadout"), TEXT("ロードアウトを変える。例: Sava.SetLoadout Skill DA_Blink(枠は Primary / Secondary / Skill / Gadget)"),
+		TEXT("Sava.SetLoadout"), TEXT("ロードアウトを変える。例: Sava.SetLoadout Skill DA_Blink(枠は Character / Primary / Secondary / Skill / Gadget。Character は DT_Character の行名)"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
 			UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
@@ -200,7 +248,18 @@ namespace SavaLoadout
 
 			const FString& SlotName = Args[0];
 			const FString& AssetName = Args[1];
-			if (SlotName == TEXT("Primary") || SlotName == TEXT("Secondary"))
+			if (SlotName == TEXT("Character"))
+			{
+				if (USavaLoadoutSettings::GetSelectableCharacters().Contains(FName(*AssetName)))
+				{
+					Subsystem->SetCharacter(FName(*AssetName));
+				}
+				else
+				{
+					UE_LOG(LogSavaLoadout, Warning, TEXT("%s は選べるキャラクターの中にありません"), *AssetName);
+				}
+			}
+			else if (SlotName == TEXT("Primary") || SlotName == TEXT("Secondary"))
 			{
 				const ESavaWeaponSlot Slot = SlotName == TEXT("Primary") ? ESavaWeaponSlot::Primary : ESavaWeaponSlot::Secondary;
 				if (USavaWeaponData* Weapon = FindByName(Subsystem->GetSelectableWeapons(Slot), AssetName))
@@ -224,8 +283,8 @@ namespace SavaLoadout
 			}
 
 			const FSavaLoadout& Loadout = Subsystem->GetLoadout();
-			UE_LOG(LogSavaLoadout, Log, TEXT("ロードアウト: %s / %s / %s / %s"),
-				*Loadout.PrimaryWeapon.GetAssetName(), *Loadout.SecondaryWeapon.GetAssetName(),
+			UE_LOG(LogSavaLoadout, Log, TEXT("ロードアウト: %s / %s / %s / %s / %s"),
+				*Loadout.Character.ToString(), *Loadout.PrimaryWeapon.GetAssetName(), *Loadout.SecondaryWeapon.GetAssetName(),
 				*Loadout.Skill.GetAssetName(), *Loadout.Gadget.GetAssetName());
 		}));
 }

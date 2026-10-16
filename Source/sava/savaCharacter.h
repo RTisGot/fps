@@ -24,6 +24,7 @@ class USavaInputConfig;
 class USavaEquipmentComponent;
 class USavaAbilityLoadoutComponent;
 class ASavaInteractable;
+struct FSavaCharacterRow;
 UCLASS(config=Game)
 class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -128,6 +129,13 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	//範囲に入っている端末・ボタン(しゃがみキーで使う)
 	TWeakObjectPtr<ASavaInteractable> NearbyInteractable;
 
+	//ロードアウトで選んだキャラクター(DT_Character の行名)。全員に複製して、カプセル・速度・カメラを揃える
+	UPROPERTY(ReplicatedUsing = OnRep_CharacterId)
+	FName CharacterId;
+
+	UFUNCTION()
+	void OnRep_CharacterId();
+
 public:
 	AsavaCharacter(const FObjectInitializer& ObjectInitializer);
 
@@ -159,6 +167,18 @@ public:
 	//近くの端末・ボタン(範囲に入ると相手が呼ぶ。自分の画面だけ)。使えるものの近くでは、しゃがみキーでしゃがまずにそれを使う
 	void SetNearbyInteractable(ASavaInteractable* Interactable);
 	void ClearNearbyInteractable(ASavaInteractable* Interactable);
+
+	//--------------------------------キャラクター(ロードアウトで選ぶ)
+
+	//DT_Character の行名(まだ決まっていなければ None)
+	UFUNCTION(BlueprintPure, Category = "Sava|Character")
+	FName GetCharacterId() const { return CharacterId; }
+
+	//サーバーでのみ呼ぶ。キャラクターを変え、能力値を体に反映する(クライアントには複製で届く)
+	void SetCharacterId(FName NewCharacterId);
+
+	//能力値(カプセル・しゃがみの高さ・歩きの速さ・カメラの高さ)を体に反映する。HP と与えるダメージは PlayerState 側
+	void ApplyCharacterStats(const FSavaCharacterRow& Row);
 
 protected:
 	/** Called for movement input */

@@ -318,13 +318,15 @@ void USavaWeaponFireAbility::ProcessShotOnServer(const TArray<FHitResult>& Hits,
 		const float Damage = Stats.CalculateDamage(FVector::Dist(Hit.TraceStart, Hit.ImpactPoint), bHeadshot);
 		if (USavaAbilitySystemLibrary::ApplyDamage(Avatar, HitActor, Damage, Avatar))
 		{
+			//表示は、キャラクターの倍率を掛けた実際のダメージにする(倍率は ApplyDamage の中で掛かる)
+			const float AppliedDamage = Damage * USavaAbilitySystemLibrary::GetOutgoingDamageMultiplier(Avatar);
 			if (ASavaCombatTestDummyCharacter* TestDummy = Cast<ASavaCombatTestDummyCharacter>(HitActor))
 			{
-				TestDummy->NotifyWeaponImpact(Hit, Damage, bHeadshot);
+				TestDummy->NotifyWeaponImpact(Hit, AppliedDamage, bHeadshot);
 			}
 			DrawServerResult(GetWorld(), Hit, bHeadshot ? FColor::Magenta : FColor::Green,
-				FString::Printf(TEXT("%s %.1f"), bHeadshot ? TEXT("HEAD") : TEXT("Body"), Damage));
-			OnHitConfirmed(Hit, Damage, bHeadshot);
+				FString::Printf(TEXT("%s %.1f"), bHeadshot ? TEXT("HEAD") : TEXT("Body"), AppliedDamage));
+			OnHitConfirmed(Hit, AppliedDamage, bHeadshot);
 		}
 		else
 		{

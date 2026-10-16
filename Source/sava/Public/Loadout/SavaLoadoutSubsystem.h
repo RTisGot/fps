@@ -8,6 +8,7 @@
 #include "Weapon/SavaWeaponTypes.h"
 #include "SavaLoadoutSubsystem.generated.h"
 
+class USavaCharacterOption;
 class USavaGadgetData;
 class USavaSkillData;
 class USavaWeaponData;
@@ -32,6 +33,10 @@ public:
 
 	//--------------------------------変更(画面から呼ぶ)
 
+	//DT_Character の行名で選ぶ
+	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
+	void SetCharacter(FName CharacterId);
+
 	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
 	void SetWeapon(ESavaWeaponSlot Slot, USavaWeaponData* Weapon);
 
@@ -41,7 +46,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
 	void SetGadget(USavaGadgetData* Gadget);
 
-	//--------------------------------一覧の 1 項目用(武器・スキル・ガジェットのどれでも渡せる)
+	//--------------------------------一覧の 1 項目用(キャラクター・武器・スキル・ガジェットのどれでも渡せる)
 
 	//その項目を選ぶ(武器はデータの Slot の枠に入る)
 	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
@@ -57,6 +62,10 @@ public:
 
 	//--------------------------------今選んでいるもの(読み込み済みのアセット)
 
+	//DT_Character の行名
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	FName GetCharacter() const { return Loadout.Character; }
+
 	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
 	USavaWeaponData* GetWeapon(ESavaWeaponSlot Slot) const;
 
@@ -67,6 +76,10 @@ public:
 	USavaGadgetData* GetGadget() const;
 
 	//--------------------------------選べるもの(Project Settings → Game → Sava Loadout)
+
+	//キャラクターの一覧。武器などと同じく、1 項目ずつ SelectItem / IsSelected / GetItemDisplayInfo に渡せる
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	TArray<USavaCharacterOption*> GetSelectableCharacters();
 
 	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
 	TArray<USavaWeaponData*> GetSelectableWeapons(ESavaWeaponSlot Slot) const;
@@ -89,4 +102,8 @@ private:
 	void SaveToDisk() const;
 
 	FSavaLoadout Loadout;
+
+	//一覧の項目(画面を開き直しても同じものを返す)
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<USavaCharacterOption>> CharacterOptions;
 };

@@ -23,6 +23,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Sava|Damage")
 	static bool ApplyDamage(AActor* DamageInstigator, AActor* Target, float Damage, AActor* DamageCauser);
 
+	//攻撃したプレイヤーのキャラクターの「与えるダメージ」の倍率(ApplyDamage が掛ける。プレイヤーでなければ 1)
+	UFUNCTION(BlueprintPure, Category = "Sava|Damage")
+	static float GetOutgoingDamageMultiplier(const AActor* DamageInstigator);
+
 	//回復する(サーバーのみ)
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Sava|Damage")
 	static bool ApplyHealing(AActor* HealInstigator, AActor* Target, float Amount);

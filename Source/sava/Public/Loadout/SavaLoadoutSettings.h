@@ -8,9 +8,11 @@
 #include "Weapon/SavaWeaponTypes.h"
 #include "SavaLoadoutSettings.generated.h"
 
+class UDataTable;
 class USavaGadgetData;
 class USavaSkillData;
 class USavaWeaponData;
+struct FSavaCharacterRow;
 
 //ロードアウトで選べるもの(Project Settings → Game → Sava Loadout)
 //・ロードアウト画面にはここに並べた順で出る
@@ -21,6 +23,10 @@ class SAVA_API USavaLoadoutSettings : public UDeveloperSettings
 	GENERATED_BODY()
 
 public:
+	//キャラクターの一覧(行の型は FSavaCharacterRow)。行の順でロードアウト画面に出る
+	UPROPERTY(Config, EditAnywhere, Category = "Loadout", meta = (RequiredAssetDataTags = "RowStructure=/Script/sava.SavaCharacterRow"))
+	TSoftObjectPtr<UDataTable> CharacterTable;
+
 	//武器(メイン・サブはそれぞれの武器データの Slot で分ける)
 	UPROPERTY(Config, EditAnywhere, Category = "Loadout")
 	TArray<TSoftObjectPtr<USavaWeaponData>> Weapons;
@@ -32,6 +38,12 @@ public:
 	TArray<TSoftObjectPtr<USavaGadgetData>> Gadgets;
 
 	virtual FName GetCategoryName() const override { return TEXT("Game"); }
+
+	//選べるキャラクター(DT_Character の行名。表の順)
+	static TArray<FName> GetSelectableCharacters();
+
+	//キャラクターの能力値(行がなければ nullptr)
+	static const FSavaCharacterRow* FindCharacterRow(FName CharacterId);
 
 	//選べるもの(読み込み済みのアセット)
 	static TArray<USavaWeaponData*> GetSelectableWeapons(ESavaWeaponSlot Slot);

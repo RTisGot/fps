@@ -26,6 +26,8 @@
 #include "AbilitySystem/SavaAttributeSet.h"
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
 #include "AbilitySystem/SavaHoldAimAbility.h"
+#include "Loadout/SavaCharacterTypes.h"
+#include "Loadout/SavaLoadoutSettings.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -317,6 +319,7 @@ void AsavaCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	//自分とサーバーは移動コンポーネントが持っているので、他のプレイヤーにだけ送る
 	DOREPLIFETIME_CONDITION(AsavaCharacter, ReplicatedWallRunNormal, COND_SimulatedOnly);
 	DOREPLIFETIME(AsavaCharacter, bIsDead);
+	DOREPLIFETIME(AsavaCharacter, CharacterId);
 }
 
 FVector AsavaCharacter::GetWallRunNormal() const
@@ -402,6 +405,64 @@ void AsavaCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightA
 void AsavaCharacter::UpdateFirstPersonCameraLocation()
 {
 	FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation - FVector(0.0f, 0.0f, CrouchCameraDrop) + CrouchCameraOffset);
+}
+
+//--------------------------------キャラクター
+
+void AsavaCharacter::SetCharacterId(FName NewCharacterId)
+{
+	if (!HasAuthority() || CharacterId == NewCharacterId)
+	{
+		return;
+	}
+
+	CharacterId = NewCharacterId;
+	OnRep_CharacterId(); //サーバーでは OnRep が呼ばれないので自分で呼ぶ
+}
+
+void AsavaCharacter::OnRep_CharacterId()
+{
+	if (const FSavaCharacterRow* Row = USavaLoadoutSettings::FindCharacterRow(CharacterId))
+	{
+		ApplyCharacterStats(*Row);
+	}
+}
+
+void AsavaCharacter::ApplyCharacterStats(const FSavaCharacterRow& Row)
+{
+	USavaCharacterMovementComponent* Movement = GetSavaCharacterMovementComponent();
+
+	//しゃがんだまま大きさを変えると、立ち上がるときの戻し先がずれるので先に立たせる
+	if (bIsCrouched)
+	{
+		Movement->bWantsToCrouch = false;
+		Movement->UnCrouch(GetLocalRole() == ROLE_SimulatedProxy);
+	}
+
+	//カプセル(0 は未入力として体の既定値を使う。高さの半分は半径より小さくできない)
+	UCapsuleComponent* Capsule = GetCapsuleComponent();
+	const UCapsuleComponent* DefaultCapsule = GetClass()->GetDefaultObject<ACharacter>()->GetCapsuleComponent();
+	const float Radius = Row.CapsuleRadius > 0.0f ? Row.CapsuleRadius : DefaultCapsule->GetUnscaledCapsuleRadius();
+	const float HalfHeight = FMath::Max(Row.CapsuleHalfHeight > 0.0f ? Row.CapsuleHalfHeight : DefaultCapsule->GetUnscaledCapsuleHalfHeight(), Radius);
+	const float OldHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	Capsule->SetCapsuleSize(Radius, HalfHeight);
+
+	//足元の高さを保つ。位置はサーバーが決めて届くので、サーバーだけ動かす
+	if (HasAuthority())
+	{
+		AddActorWorldOffset(FVector(0.0f, 0.0f, Capsule->GetScaledCapsuleHalfHeight() - OldHalfHeight), false, nullptr, ETeleportType::TeleportPhysics);
+	}
+
+	Movement->SetCrouchedHalfHeight(FMath::Max(Row.CrouchedHalfHeight, Radius));
+	Movement->MaxWalkSpeed = Row.MoveSpeed;
+
+	//目はカプセルの上端から決まった距離に置く(しゃがみ中は OnStartCrouch で縮んだ分だけ下げる)
+	//BeginPlay 前(複製が先に届いた)ならまだ控えがないので、今の位置を元にする
+	FVector BaseLocation = HasActorBegunPlay() ? CameraBaseLocation : FirstPersonCameraComponent->GetRelativeLocation();
+	BaseLocation.Z = HalfHeight - Row.EyeHeightBelowTop;
+	CameraBaseLocation = BaseLocation;
+	CrouchCameraOffset = FVector::ZeroVector;
+	UpdateFirstPersonCameraLocation();
 }
 
 bool AsavaCharacter::CanJumpInternal_Implementation() const
