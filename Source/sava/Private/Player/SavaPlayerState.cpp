@@ -7,9 +7,7 @@
 #include "AbilitySystem/SavaAttributeSet.h"
 #include "AbilitySystem/SavaAbilityLoadoutComponent.h"
 #include "AbilitySystem/SavaLoadoutAbilityData.h"
-#include "Loadout/SavaCharacterTypes.h"
 #include "Loadout/SavaLoadoutSettings.h"
-#include "savaCharacter.h"
 #include "Weapon/SavaEquipmentComponent.h"
 #include "Weapon/SavaWeaponData.h"
 #include "SavaGameplayTags.h"
@@ -161,34 +159,18 @@ void ASavaPlayerState::SetLoadout(const FSavaLoadout& NewLoadout)
 	//クライアントから届いた値なので、選べるものだけか必ず確かめる
 	Loadout = USavaLoadoutSettings::Sanitize(NewLoadout);
 	bHasReceivedLoadout = true;
-	UE_LOG(LogSavaPlayerState, Log, TEXT("%s のロードアウト: %s / %s / %s / %s / %s"), *GetPlayerName(),
-		*Loadout.Character.ToString(), *Loadout.PrimaryWeapon.GetAssetName(), *Loadout.SecondaryWeapon.GetAssetName(), *Loadout.Skill.GetAssetName(), *Loadout.Gadget.GetAssetName());
+	UE_LOG(LogSavaPlayerState, Log, TEXT("%s のロードアウト: %s / %s / %s / %s"), *GetPlayerName(),
+		*Loadout.PrimaryWeapon.GetAssetName(), *Loadout.SecondaryWeapon.GetAssetName(), *Loadout.Skill.GetAssetName(), *Loadout.Gadget.GetAssetName());
 
 	ApplyLoadoutTo(GetPawn());
 	OnLoadoutChanged.Broadcast(Loadout); //サーバーでは OnRep が呼ばれないので自分で呼ぶ
 }
 
-void ASavaPlayerState::ApplyLoadoutTo(APawn* TargetPawn)
+void ASavaPlayerState::ApplyLoadoutTo(APawn* TargetPawn) const
 {
 	if (!HasAuthority() || !TargetPawn)
 	{
 		return;
-	}
-
-	//キャラクター: 体(カプセル・速度・カメラ)と最大 HP
-	if (const FSavaCharacterRow* CharacterRow = USavaLoadoutSettings::FindCharacterRow(Loadout.Character))
-	{
-		if (AsavaCharacter* SavaCharacter = Cast<AsavaCharacter>(TargetPawn))
-		{
-			SavaCharacter->SetCharacterId(Loadout.Character);
-		}
-
-		//最大 HP が変わったら満タンにする(体を出した直後・待合室で選び直したとき)
-		if (AbilitySystemComponent && !FMath::IsNearlyEqual(AttributeSet->GetMaxHealth(), CharacterRow->MaxHP))
-		{
-			AbilitySystemComponent->SetNumericAttributeBase(USavaAttributeSet::GetMaxHealthAttribute(), CharacterRow->MaxHP);
-			USavaAbilitySystemLibrary::ApplyHealing(this, this, CharacterRow->MaxHP);
-		}
 	}
 
 	//同じものを入れ直すと弾が満タンに戻ったりするので、変わった枠だけ入れ替える
@@ -223,12 +205,6 @@ void ASavaPlayerState::ApplyLoadoutTo(APawn* TargetPawn)
 	}
 }
 
-float ASavaPlayerState::GetOutgoingDamageMultiplier() const
-{
-	const FSavaCharacterRow* CharacterRow = USavaLoadoutSettings::FindCharacterRow(Loadout.Character);
-	return CharacterRow ? CharacterRow->DamageMultiplier : 1.0f;
-}
-
 void ASavaPlayerState::OnRep_Loadout()
 {
 	OnLoadoutChanged.Broadcast(Loadout);
@@ -258,4 +234,36 @@ void ASavaPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(ASavaPlayerState, KillCount);
 	DOREPLIFETIME(ASavaPlayerState, DeathCount);
 	DOREPLIFETIME(ASavaPlayerState, Loadout);
+}
+
+bool ASavaPlayerState::GetSkillCooldown(
+	FGameplayTag CooldownTag,
+	float& RemainingTime,
+	float& Duration
+) const
+{
+	RemainingTime = 0.0f;
+	Duration = 0.0f;
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+	if (!ASC || !CooldownTag.IsValid())
+	{
+		return false;
+	}
+	FGameplayTagContainer CooldownQueryTags;
+	CooldownQueryTags.AddTag(CooldownTag);
+	const FGameplayEffectQuery Query =
+		FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+			CooldownQueryTags
+		);
+	const TArray<TPair<float, float>> Times =
+		ASC->GetActiveEffectsTimeRemainingAndDuration(Query);
+	for (const TPair<float, float>& Time : Times)
+	{
+		if (Time.Key > RemainingTime)
+		{
+			RemainingTime = Time.Key;
+			Duration = Time.Value;
+		}
+	}
+	return RemainingTime > 0.0f;
 }
