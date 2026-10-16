@@ -438,16 +438,31 @@ void USavaSessionSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver* NetD
 {
 	//自分のゲーム(PIE では自分のインスタンス)の、参加者側の接続が切れたときだけ扱う
 	//ホスト側でも「ある参加者との接続が切れた」で届くが、それは部屋が無くなったわけではない
-	if (World == nullptr || World->GetGameInstance() != GetGameInstance())
-	{
-		return;
-	}
 	if (NetDriver == nullptr || NetDriver->GetNetMode() != NM_Client)
 	{
 		return;
 	}
 
-	HandleConnectionLost(TEXT("ホストとの接続が切れました"), FString::Printf(TEXT("%s: %s"), ENetworkFailure::ToString(FailureType), *ErrorString));
+	const FString Details = FString::Printf(TEXT("%s: %s"), ENetworkFailure::ToString(FailureType), *ErrorString);
+
+	//ホストへ接続している途中で失敗した(満員・試合開始中で断られた、ホストに届かない など)
+	//このときは World が空で届き、エンジンはタイトルを開かない(今のマップのまま)
+	if (World == nullptr)
+	{
+		const FWorldContext* Context = GEngine ? GEngine->GetWorldContextFromPendingNetGameNetDriver(NetDriver) : nullptr;
+		if (Context && Context->OwningGameInstance == GetGameInstance())
+		{
+			HandleConnectionLost(TEXT("部屋に接続できませんでした"), Details, false);
+		}
+		return;
+	}
+
+	if (World->GetGameInstance() != GetGameInstance())
+	{
+		return;
+	}
+
+	HandleConnectionLost(TEXT("ホストとの接続が切れました"), Details, true);
 }
 
 void USavaSessionSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString)
@@ -457,22 +472,32 @@ void USavaSessionSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::T
 		return;
 	}
 
-	HandleConnectionLost(TEXT("部屋に接続できませんでした"), FString::Printf(TEXT("%s: %s"), ETravelFailure::ToString(FailureType), *ErrorString));
+	HandleConnectionLost(TEXT("部屋に接続できませんでした"), FString::Printf(TEXT("%s: %s"), ETravelFailure::ToString(FailureType), *ErrorString), true);
 }
 
-void USavaSessionSubsystem::HandleConnectionLost(const FString& InReason, const FString& Details)
+void USavaSessionSubsystem::HandleConnectionLost(const FString& InReason, const FString& Details, bool bEngineOpensDefaultMap)
 {
 	//追い出されて切れたなら、その理由を出す
 	const FString Reason = PendingKickReason.IsEmpty() ? InReason : PendingKickReason;
 	PendingKickReason.Reset();
 	UE_LOG(LogSavaSession, Warning, TEXT("%s: %s"), *Reason, *Details);
 
-	//この後エンジンがタイトル(Game Default Map)を開く。それは止められないので、開き終えたら HandlePostLoadMap でソロロビーへ移し直す
 	DisconnectReason = Reason;
-	bReturnToSoloLobbyPending = true;
 	SetBusy(false);
 	DestroySessionThen([]() {});
 	OnDisconnected.Broadcast(Reason);
+
+	if (bEngineOpensDefaultMap)
+	{
+		//この後エンジンがタイトル(Game Default Map)を開く。それは止められないので、開き終えたら HandlePostLoadMap でソロロビーへ移し直す
+		bReturnToSoloLobbyPending = true;
+	}
+	else
+	{
+		//エンジンはマップを変えないので、自分でソロロビーを開き直す(ソロロビーの画面が理由を出す)
+		bReturnToSoloLobbyPending = false;
+		OpenSoloLobby();
+	}
 }
 
 void USavaSessionSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)

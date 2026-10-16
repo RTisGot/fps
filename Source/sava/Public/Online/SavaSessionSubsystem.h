@@ -126,7 +126,8 @@ private:
 	void HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 	void HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
 	//Reason は画面に出す短い文、Details はログにだけ出すエンジンの詳細
-	void HandleConnectionLost(const FString& Reason, const FString& Details);
+	//bEngineOpensDefaultMap: この後エンジンがタイトルを開くか(接続途中の失敗では開かず、今のマップのまま)
+	void HandleConnectionLost(const FString& Reason, const FString& Details, bool bEngineOpensDefaultMap);
 
 	//切断後、エンジンがタイトル(Game Default Map)を開き終えたらソロロビーへ移し直す
 	void HandlePostLoadMap(UWorld* LoadedWorld);
