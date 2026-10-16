@@ -13,6 +13,8 @@
 #include "Net/UnrealNetwork.h"
 #include "SavaGameplayTags.h"
 #include "savaCharacter.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 
 namespace
 {
@@ -525,6 +527,28 @@ bool USavaEquipmentComponent::GetCurrentMuzzleLocation(FVector& OutLocation) con
 	return true;
 }
 
+void USavaEquipmentComponent::SpawnMuzzleFlash(const FVector& MuzzleLocation)
+{
+	const AActor* OwnerActor = GetOwner();
+
+	if (!OwnerActor || OwnerActor->GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	if (!MuzzleFlashSystem)
+	{
+		return;
+	}
+
+	UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+		GetWorld(),
+		MuzzleFlashSystem,
+		MuzzleLocation,
+		FRotator::ZeroRotator
+	);
+}
+
 void USavaEquipmentComponent::DrawMuzzleDebug() const
 {
 	if (!bDrawMuzzleDebug)
@@ -559,6 +583,7 @@ void USavaEquipmentComponent::NotifyWeaponFireVisual(
 	//発砲者自身にはネットワークを待たず、即座に演出を表示する。
 	OnWeaponMuzzleFlashEvent.Broadcast(MuzzleLocation);
 	OnWeaponTracerEvent.Broadcast(MuzzleLocation, TraceEnds);
+	SpawnMuzzleFlash(MuzzleLocation);
 
 	TArray<FVector_NetQuantize> QuantizedTraceEnds;
 	QuantizedTraceEnds.Reserve(TraceEnds.Num());
@@ -615,6 +640,7 @@ void USavaEquipmentComponent::MulticastWeaponFireVisual_Implementation(
 
 	OnWeaponMuzzleFlashEvent.Broadcast(FVector(MuzzleLocation));
 	OnWeaponTracerEvent.Broadcast(FVector(MuzzleLocation), ConvertedTraceEnds);
+	SpawnMuzzleFlash(MuzzleLocation);
 }
 
 //--------------------------------Helpers

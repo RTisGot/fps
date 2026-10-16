@@ -10,6 +10,7 @@
 class USavaWeaponData;
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
+class UNiagaraSystem;
 
 //1 つの枠の装備(サーバーが決めて全員へ同期する)
 USTRUCT(BlueprintType)
@@ -141,6 +142,10 @@ public:
 
 	//--------------------------------武器演出
 
+	// 発砲時に銃口へ生成するマズルフラッシュ
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon|Visual")
+	TObjectPtr<UNiagaraSystem> MuzzleFlashSystem;
+
 	//現在装備している武器の銃口位置を取得する。
 	bool GetCurrentMuzzleLocation(FVector& OutLocation) const;
 
@@ -198,6 +203,9 @@ private:
 	void UpdateWeaponMesh();
 	void UpdateADS(float DeltaTime);
 	void UpdateRecoilRecovery(float DeltaTime);
+
+	//発砲時に銃口位置へマズルフラッシュを生成
+	void SpawnMuzzleFlash(const FVector& MuzzleLocation);
 
 	//プレイヤーが自分で視点を下げた分は、反動で戻す量から引く(戻しすぎないように)
 	void AbsorbPlayerPitchInput(float CurrentPitch);
