@@ -5,6 +5,7 @@
 #include "CTF/SavaGameState.h"
 #include "TimerManager.h"
 #include "Player/SavaPlayerState.h"
+#include "Player/SavaPlayerController.h"
 
 ASavaDeathmatchGameMode::ASavaDeathmatchGameMode()
 {
@@ -144,6 +145,18 @@ void ASavaDeathmatchGameMode::FinishMatch()
 
     SavaGameState->SetRoundPhase(
         ESavaRoundPhase::MatchEnd, 0.0f);
+
+    for (FConstPlayerControllerIterator It =
+        GetWorld()->GetPlayerControllerIterator();
+        It;
+        ++It)
+    {
+        if (ASavaPlayerController* PC =
+            Cast<ASavaPlayerController>(It->Get()))
+        {
+            PC->ClientShowDeathmatchResult();
+        }
+    }
 }
 
 void ASavaDeathmatchGameMode::FinishMatchWithWinner(
@@ -180,6 +193,19 @@ void ASavaDeathmatchGameMode::FinishMatchWithWinner(
     UE_LOG(LogTemp, Warning,
         TEXT("Kill limit winner: %s / Kills: %d"),
         *Winner->GetPlayerName(), WinningKills);
+
+    // 全プレイヤーに結果画面の表示を通知する
+    for (FConstPlayerControllerIterator It =
+        GetWorld()->GetPlayerControllerIterator();
+        It;
+        ++It)
+    {
+        if (ASavaPlayerController* PC =
+            Cast<ASavaPlayerController>(It->Get()))
+        {
+            PC->ClientShowDeathmatchResult();
+        }
+    }
 }
 
 void ASavaDeathmatchGameMode::CheckKillLimit(
