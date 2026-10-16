@@ -65,6 +65,17 @@ bool USavaSessionSubsystem::IsLANSubsystem() const
 	return OnlineSubsystem && OnlineSubsystem->GetSubsystemName() == NULL_SUBSYSTEM;
 }
 
+void USavaSessionSubsystem::SetBusy(bool bInBusy)
+{
+	if (bBusy == bInBusy)
+	{
+		return;
+	}
+
+	bBusy = bInBusy;
+	OnBusyChanged.Broadcast(bBusy);
+}
+
 bool USavaSessionSubsystem::IsInRoom() const
 {
 	const IOnlineSessionPtr Sessions = GetSessionInterface();
@@ -112,7 +123,7 @@ void USavaSessionSubsystem::CreateRoom(const FString& RoomName)
 		return;
 	}
 
-	bBusy = true;
+	SetBusy(true);
 	DestroySessionThen([this, RoomName]()
 	{
 		StartCreateSession(RoomName);
@@ -124,7 +135,7 @@ void USavaSessionSubsystem::StartCreateSession(FString RoomName)
 	const IOnlineSessionPtr Sessions = GetSessionInterface();
 	if (!Sessions.IsValid())
 	{
-		bBusy = false;
+		SetBusy(false);
 		OnCreateRoomComplete.Broadcast(false);
 		return;
 	}
@@ -159,7 +170,7 @@ void USavaSessionSubsystem::StartCreateSession(FString RoomName)
 	{
 		//始められなかったとき(完了の通知が来ないことがあるので、ここで終わらせる)
 		Sessions->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionHandle);
-		bBusy = false;
+		SetBusy(false);
 		OnCreateRoomComplete.Broadcast(false);
 	}
 }
@@ -170,20 +181,25 @@ void USavaSessionSubsystem::HandleCreateSessionComplete(FName SessionName, bool 
 	{
 		Sessions->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionHandle);
 	}
-	bBusy = false;
 
 	UE_LOG(LogSavaSession, Log, TEXT("部屋の作成: %s"), bWasSuccessful ? TEXT("成功") : TEXT("失敗"));
-	OnCreateRoomComplete.Broadcast(bWasSuccessful);
-
-	if (!bWasSuccessful)
-	{
-		return;
-	}
 
 	const TSoftObjectPtr<UWorld>& LobbyMap = GetDefault<USavaOnlineSettings>()->LobbyMap;
-	if (LobbyMap.IsNull())
+	if (bWasSuccessful && LobbyMap.IsNull())
 	{
 		UE_LOG(LogSavaSession, Error, TEXT("Lobby Map が未設定です(Project Settings → Game → Sava Online)"));
+	}
+
+	//Lobby マップへ移るなら、移り終えるまで busy のまま(その間にボタンを押されて作り直されないように。HandlePostLoadMap で戻す)
+	const bool bOpenLobby = bWasSuccessful && !LobbyMap.IsNull();
+	if (!bOpenLobby)
+	{
+		SetBusy(false);
+	}
+	OnCreateRoomComplete.Broadcast(bWasSuccessful);
+
+	if (!bOpenLobby)
+	{
 		return;
 	}
 
@@ -214,7 +230,7 @@ void USavaSessionSubsystem::FindRooms()
 		return;
 	}
 
-	bBusy = true;
+	SetBusy(true);
 
 	LastSearch = MakeShared<FOnlineSessionSearch>();
 	LastSearch->MaxSearchResults = GetDefault<USavaOnlineSettings>()->MaxSearchResults;
@@ -229,7 +245,7 @@ void USavaSessionSubsystem::FindRooms()
 	if (!Sessions->FindSessions(0, LastSearch.ToSharedRef()))
 	{
 		Sessions->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsHandle);
-		bBusy = false;
+		SetBusy(false);
 		OnFindRoomsComplete.Broadcast(false, {});
 	}
 }
@@ -240,7 +256,7 @@ void USavaSessionSubsystem::HandleFindSessionsComplete(bool bWasSuccessful)
 	{
 		Sessions->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsHandle);
 	}
-	bBusy = false;
+	SetBusy(false);
 
 	TArray<FSavaRoomInfo> Rooms;
 	if (bWasSuccessful && LastSearch.IsValid())
@@ -292,7 +308,7 @@ void USavaSessionSubsystem::JoinRoom(int32 SearchIndex)
 		return;
 	}
 
-	bBusy = true;
+	SetBusy(true);
 	//検索結果は次の FindRooms で消えるのでコピーしておく
 	const FOnlineSessionSearchResult SearchResult = LastSearch->SearchResults[SearchIndex];
 	DestroySessionThen([this, SearchResult]()
@@ -306,7 +322,7 @@ void USavaSessionSubsystem::StartJoinSession(FOnlineSessionSearchResult SearchRe
 	const IOnlineSessionPtr Sessions = GetSessionInterface();
 	if (!Sessions.IsValid())
 	{
-		bBusy = false;
+		SetBusy(false);
 		OnJoinRoomComplete.Broadcast(false);
 		return;
 	}
@@ -318,7 +334,7 @@ void USavaSessionSubsystem::StartJoinSession(FOnlineSessionSearchResult SearchRe
 	if (!Sessions->JoinSession(0, NAME_GameSession, SearchResult))
 	{
 		Sessions->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionHandle);
-		bBusy = false;
+		SetBusy(false);
 		OnJoinRoomComplete.Broadcast(false);
 	}
 }
@@ -330,7 +346,6 @@ void USavaSessionSubsystem::HandleJoinSessionComplete(FName SessionName, EOnJoin
 	{
 		Sessions->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionHandle);
 	}
-	bBusy = false;
 
 	//部屋に入れたら、張り紙に書かれたホストの連絡先(アドレス)を受け取って、そこへ接続しに行く
 	FString ConnectString;
@@ -347,10 +362,12 @@ void USavaSessionSubsystem::HandleJoinSessionComplete(FName SessionName, EOnJoin
 	{
 		//入れなかったのに部屋の情報だけ残らないように消しておく
 		DestroySessionThen([]() {});
+		SetBusy(false);
 		OnJoinRoomComplete.Broadcast(false);
 		return;
 	}
 
+	//ホストへ移り終えるまで busy のまま(HandlePostLoadMap で戻す。接続に失敗したときは HandleConnectionLost で戻す)
 	OnJoinRoomComplete.Broadcast(true);
 	PlayerController->ClientTravel(ConnectString, TRAVEL_Absolute);
 }
@@ -453,13 +470,22 @@ void USavaSessionSubsystem::HandleConnectionLost(const FString& InReason, const 
 	//この後エンジンがタイトル(Game Default Map)を開く。それは止められないので、開き終えたら HandlePostLoadMap でソロロビーへ移し直す
 	DisconnectReason = Reason;
 	bReturnToSoloLobbyPending = true;
+	SetBusy(false);
 	DestroySessionThen([]() {});
 	OnDisconnected.Broadcast(Reason);
 }
 
 void USavaSessionSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
 {
-	if (!bReturnToSoloLobbyPending || LoadedWorld == nullptr || LoadedWorld->GetGameInstance() != GetGameInstance())
+	if (LoadedWorld == nullptr || LoadedWorld->GetGameInstance() != GetGameInstance())
+	{
+		return;
+	}
+
+	//作成・参加の後のマップ移動が終わった
+	SetBusy(false);
+
+	if (!bReturnToSoloLobbyPending)
 	{
 		return;
 	}

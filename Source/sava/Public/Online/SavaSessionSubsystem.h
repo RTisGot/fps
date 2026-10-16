@@ -38,6 +38,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnCreateRoomComplete, bool, bSu
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSavaOnFindRoomsComplete, bool, bSuccess, const TArray<FSavaRoomInfo>&, Rooms);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnJoinRoomComplete, bool, bSuccess);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnDisconnected, const FString&, Reason);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnBusyChanged, bool, bBusy);
 
 //部屋(オンラインセッション)を作る・探す・入る・抜ける。部屋に入った後のこと(チーム・Ready)は GameMode が受け持つ
 //中身は Online Subsystem(今は Null = LAN、あとで EOS)。どれを使うかは DefaultEngine.ini の [OnlineSubsystem] で切り替える
@@ -82,6 +83,7 @@ public:
 	FString ConsumeDisconnectReason();
 
 	//作成・検索・参加の途中か(UI でボタンを押せなくするのに使う)
+	//作成・参加に成功した後も、マップを移り終えるまでは true のまま
 	UFUNCTION(BlueprintPure, Category = "Sava|Session")
 	bool IsBusy() const { return bBusy; }
 
@@ -97,6 +99,10 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Session")
 	FSavaOnJoinRoomComplete OnJoinRoomComplete;
+
+	//IsBusy が変わった。UI はこれでボタンの Is Enabled を切り替える(画面を開いたときは IsBusy で初期値を合わせる)
+	UPROPERTY(BlueprintAssignable, Category = "Sava|Session")
+	FSavaOnBusyChanged OnBusyChanged;
 
 	//ホストとの接続が切れた。この後マップが変わって今の画面は消えるので、理由を出すなら ConsumeDisconnectReason を使う
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Session")
@@ -136,6 +142,9 @@ private:
 	FDelegateHandle NetworkFailureHandle;
 	FDelegateHandle TravelFailureHandle;
 	FDelegateHandle PostLoadMapHandle;
+
+	//bBusy を変えて OnBusyChanged を出す
+	void SetBusy(bool bInBusy);
 
 	bool bBusy = false;
 
