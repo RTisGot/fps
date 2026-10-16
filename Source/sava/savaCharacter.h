@@ -89,6 +89,10 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 
 	FVector CameraBaseLocation = FVector::ZeroVector; //カメラ本来の相対位置
 	FVector CrouchCameraOffset = FVector::ZeroVector; //しゃがみ切り替え直後のずれ(0 へ補間する)
+	float CrouchCameraDrop = 0.0f; //しゃがみ中にカメラを下げる量(カプセルが縮んだ分。目がカプセルの上に出ないように)
+
+	//カメラを「本来の位置 - しゃがみで下げる量 + 切り替え直後のずれ」に置く
+	void UpdateFirstPersonCameraLocation();
 
 	//壁走り中にカメラを壁と反対側へ傾ける角度(マイナスにすると壁側へ傾く)
 	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "-45", ClampMax = "45", ForceUnits = "Deg"))

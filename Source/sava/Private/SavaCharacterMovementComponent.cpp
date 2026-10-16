@@ -15,6 +15,8 @@ USavaCharacterMovementComponent::USavaCharacterMovementComponent()
 {
 	//しゃがみを有効化(初期値は false で Crouch() が何もしない)
 	NavAgentProps.bCanCrouch = true;
+	//しゃがみ時のカプセルの高さの半分(高さ 110cm)。エンジンは半径(55)より小さくできないので、半径と同じ値を明示する
+	SetCrouchedHalfHeight(55.0f);
 
 	//エンジン標準の移動の値(調整済みの値を初期値にする)
 	MaxWalkSpeed = 800.0f;

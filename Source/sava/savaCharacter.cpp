@@ -258,7 +258,7 @@ void AsavaCharacter::Tick(float DeltaSeconds)
 	if (!CrouchCameraOffset.IsZero())
 	{
 		CrouchCameraOffset = FMath::VInterpTo(CrouchCameraOffset, FVector::ZeroVector, DeltaSeconds, CrouchCameraInterpSpeed);
-		FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation + CrouchCameraOffset);
+		UpdateFirstPersonCameraLocation();
 	}
 
 	//壁の向きを他のプレイヤーへ同期する(サーバーだけが書き込む。値が変わったときだけ送られる)
@@ -367,23 +367,41 @@ void AsavaCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeigh
 {
 	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
-	//地上ではカプセルが足元基準で縮み、カメラが一瞬で下がるので、元の高さから補間させる
+	//カプセルの上端は中心より ScaledHalfHeightAdjust だけ下がるので、カメラも同じだけ下げる
+	//(下げないと、しゃがんだときに目がカプセルの上に出て、自分は撃てるのに撃たれない高さができる)
+	CrouchCameraDrop = ScaledHalfHeightAdjust;
+	float CameraJump = ScaledHalfHeightAdjust;
+
+	//地上ではカプセルが足元基準で縮み、中心も一瞬で下がる
 	if (GetCharacterMovement()->bCrouchMaintainsBaseLocation)
 	{
-		CrouchCameraOffset.Z += ScaledHalfHeightAdjust;
-		FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation + CrouchCameraOffset);
+		CameraJump += ScaledHalfHeightAdjust;
 	}
+
+	//一瞬で下がった分を打ち消して、元の高さから補間させる
+	CrouchCameraOffset.Z += CameraJump;
+	UpdateFirstPersonCameraLocation();
 }
 
 void AsavaCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 
+	CrouchCameraDrop = 0.0f;
+	float CameraJump = ScaledHalfHeightAdjust;
+
 	if (GetCharacterMovement()->bCrouchMaintainsBaseLocation)
 	{
-		CrouchCameraOffset.Z -= ScaledHalfHeightAdjust;
-		FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation + CrouchCameraOffset);
+		CameraJump += ScaledHalfHeightAdjust;
 	}
+
+	CrouchCameraOffset.Z -= CameraJump;
+	UpdateFirstPersonCameraLocation();
+}
+
+void AsavaCharacter::UpdateFirstPersonCameraLocation()
+{
+	FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation - FVector(0.0f, 0.0f, CrouchCameraDrop) + CrouchCameraOffset);
 }
 
 bool AsavaCharacter::CanJumpInternal_Implementation() const
