@@ -6,6 +6,7 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "OnlineSessionSettings.h"
+#include "Lobby/SavaLobbyTypes.h"
 #include "SavaSessionSubsystem.generated.h"
 
 //部屋一覧の 1 行分(UI に渡す)
@@ -75,6 +76,15 @@ public:
 	//ホストだけが呼ぶ。部屋に途中から入れるか(試合を始めるときに閉じ、検索にも出さなくする)
 	void SetRoomJoinable(bool bJoinable);
 
+	//ホストだけが呼ぶ。試合が終わったら、全員を連れて部屋のロビーへ戻る(Seamless Travel)
+	//部屋がない(試合マップを直接開いて試したときなど)なら、ソロロビーへ戻る
+	void ReturnToRoomLobby();
+
+	//ホストだけが使う。試合を始めたときのルーム設定を覚えておき、ロビーへ戻ったときに引き継ぐ
+	//(ロビーの GameState はマップを移るたびに作り直されるため)。部屋を作り直す・抜けると消える
+	void SetLastRoomSettings(const FSavaRoomSettings& RoomSettings) { LastRoomSettings = RoomSettings; }
+	const TOptional<FSavaRoomSettings>& GetLastRoomSettings() const { return LastRoomSettings; }
+
 	//ホストに追い出された(ASavaPlayerController::ClientWasKicked から)。この後の切断の理由をこれにする
 	void NotifyKicked(const FString& Reason);
 
@@ -126,13 +136,19 @@ private:
 	void HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 	void HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
 	//Reason は画面に出す短い文、Details はログにだけ出すエンジンの詳細
-	void HandleConnectionLost(const FString& Reason, const FString& Details);
+	//bEngineOpensDefaultMap: この後エンジンがタイトルを開くか(接続途中の失敗では開かず、今のマップのまま)
+	void HandleConnectionLost(const FString& Reason, const FString& Details, bool bEngineOpensDefaultMap);
 
 	//切断後、エンジンがタイトル(Game Default Map)を開き終えたらソロロビーへ移し直す
 	void HandlePostLoadMap(UWorld* LoadedWorld);
 
 	//Null(LAN)で動いているか
 	bool IsLANSubsystem() const;
+
+	//部屋のロビーを開くときの URL オプション(listen と GameMode)
+	FString GetLobbyOptions() const;
+
+	TOptional<FSavaRoomSettings> LastRoomSettings;
 
 	TSharedPtr<FOnlineSessionSearch> LastSearch;
 

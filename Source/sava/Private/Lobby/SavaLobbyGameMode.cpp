@@ -16,9 +16,8 @@ ASavaLobbyGameMode::ASavaLobbyGameMode()
 {
 	GameStateClass = ASavaLobbyGameState::StaticClass();
 
-	//試合マップへ移るとき、接続を切らずに全員を連れていく(PlayerState のチーム・ロードアウトも引き継ぐ)
+	//試合マップへは接続を切らずに全員を連れていく(bUseSeamlessTravel は AsavaGameMode で true)
 	//PIE では net.AllowPIESeamlessTravel=1 のときだけ効く(DefaultEngine.ini で設定済み)
-	bUseSeamlessTravel = true;
 }
 
 ASavaLobbyGameState* ASavaLobbyGameMode::GetLobbyGameState() const
@@ -33,11 +32,27 @@ void ASavaLobbyGameMode::InitGameState()
 	if (ASavaLobbyGameState* LobbyGameState = GetLobbyGameState())
 	{
 		LobbyGameState->InitTeams(NumTeams, MaxPlayersPerTeam);
-		LobbyGameState->SetRoomSettings(GetDefault<USavaLobbySettings>()->MakeDefaultRoomSettings());
+
+		//試合から戻ってきたなら、前の試合のルーム設定のまま(部屋を作った直後は最初の設定)
+		const USavaLobbySettings* LobbySettings = GetDefault<USavaLobbySettings>();
+		const USavaSessionSubsystem* Sessions = GetGameInstance()->GetSubsystem<USavaSessionSubsystem>();
+		const TOptional<FSavaRoomSettings> LastRoomSettings = Sessions ? Sessions->GetLastRoomSettings() : TOptional<FSavaRoomSettings>();
+		LobbyGameState->SetRoomSettings(LastRoomSettings.IsSet() ? LobbySettings->Sanitize(LastRoomSettings.GetValue()) : LobbySettings->MakeDefaultRoomSettings());
 	}
 	else
 	{
 		UE_LOG(LogSavaLobby, Error, TEXT("GameState が ASavaLobbyGameState ではありません。GameMode の Game State Class を SavaLobbyGameState にしてください"));
+	}
+}
+
+void ASavaLobbyGameMode::BeginPlay()
+{
+	Super::BeginPlay();
+
+	//試合から戻ってきたら、また途中から入れるようにする(試合を始めるときに閉じている)
+	if (USavaSessionSubsystem* Sessions = GetGameInstance()->GetSubsystem<USavaSessionSubsystem>())
+	{
+		Sessions->SetRoomJoinable(true);
 	}
 }
 
@@ -274,10 +289,11 @@ bool ASavaLobbyGameMode::RequestStartMatch(ASavaPlayerController* Requester, FTe
 	UE_LOG(LogSavaLobby, Log, TEXT("試合を始めます"));
 	LobbyGameState->SetMatchStarting(true);
 
-	//試合中は部屋に入れないようにする(検索にも出さない)
+	//試合中は部屋に入れないようにする(検索にも出さない)。ルーム設定は戻ってきたときのために覚えておく
 	if (USavaSessionSubsystem* Sessions = GetGameInstance()->GetSubsystem<USavaSessionSubsystem>())
 	{
 		Sessions->SetRoomJoinable(false);
+		Sessions->SetLastRoomSettings(LobbyGameState->GetRoomSettings());
 	}
 
 	GetWorldTimerManager().SetTimer(StartMatchTimer, this, &ThisClass::TravelToMatch, FMath::Max(StartMatchDelay, 0.01f), false);
