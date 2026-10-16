@@ -44,4 +44,16 @@ protected:
 
 	//人数の少ないチームに入れる
 	void AssignTeam(AController* NewPlayer);
+
+	//試合が終わってから部屋のロビーへ戻るまでの秒数(結果を見る間)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Match", meta = (ClampMin = "0", ForceUnits = "s"))
+	float ReturnToLobbyDelay = 10.0f;
+
+	//試合が終わったら呼ぶ。ReturnToLobbyDelay 秒後に全員を連れて部屋のロビーへ戻る
+	void ScheduleReturnToLobby();
+
+private:
+	void ReturnToLobby();
+
+	FTimerHandle ReturnToLobbyTimer;
 };

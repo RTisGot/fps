@@ -77,6 +77,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Lobby")
 	FSavaOnLobbyMessage OnLobbyMessage;
 
+	// デスマッチの結果を表示する
+	UFUNCTION(Client, Reliable)
+	void ClientShowDeathmatchResult();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
@@ -124,4 +128,12 @@ private:
 	/** 現在表示しているスコアボード */
 	UPROPERTY(Transient)
 	TObjectPtr<USavaScoreboardWidget> ScoreboardWidget;
+
+	// デスマッチの結果画面のWidgetクラス
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Deathmatch")
+	TSubclassOf<UUserWidget> DeathmatchResultWidgetClass;
+
+	// 作成した結果画面Widget
+	UPROPERTY(Transient)
+	TObjectPtr<UUserWidget> DeathmatchResultWidget;
 };

@@ -319,3 +319,39 @@ void ASavaPlayerController::HideScoreboard()
 
 	ScoreboardWidget->RemoveFromParent();
 }
+
+void ASavaPlayerController::ClientShowDeathmatchResult_Implementation()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (DeathmatchResultWidget &&
+		DeathmatchResultWidget->IsInViewport())
+	{
+		return;
+	}
+
+	if (!DeathmatchResultWidgetClass)
+	{
+		UE_LOG(LogSavaPlayerController, Error,
+			TEXT("DeathmatchResultWidgetClass is not set."));
+		return;
+	}
+
+	DeathmatchResultWidget = CreateWidget<UUserWidget>(
+		this,
+		DeathmatchResultWidgetClass
+	);
+
+	if (!DeathmatchResultWidget)
+	{
+		return;
+	}
+
+	DeathmatchResultWidget->AddToViewport(100);
+
+	bShowMouseCursor = true;
+	SetInputMode(FInputModeGameAndUI());
+}

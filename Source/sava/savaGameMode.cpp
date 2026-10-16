@@ -4,7 +4,10 @@
 #include "savaCharacter.h"
 #include "Player/SavaPlayerController.h"
 #include "Player/SavaPlayerState.h"
+#include "Online/SavaSessionSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "GameFramework/GameStateBase.h"
+#include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
 AsavaGameMode::AsavaGameMode()
@@ -19,6 +22,23 @@ AsavaGameMode::AsavaGameMode()
 
 	//設定画面・スコアボードを持つ PlayerController を使う(キャラクターが死んでも残るため)
 	PlayerControllerClass = ASavaPlayerController::StaticClass();
+
+	//待合室 ⇔ 試合のマップ移動で、接続を切らずに全員を連れていく(PlayerState のチーム・ロードアウトも引き継ぐ)
+	//ServerTravel を呼んだ側(移る前のマップ)の GameMode の設定が使われる
+	bUseSeamlessTravel = true;
+}
+
+void AsavaGameMode::ScheduleReturnToLobby()
+{
+	GetWorldTimerManager().SetTimer(ReturnToLobbyTimer, this, &AsavaGameMode::ReturnToLobby, FMath::Max(ReturnToLobbyDelay, 0.01f), false);
+}
+
+void AsavaGameMode::ReturnToLobby()
+{
+	if (USavaSessionSubsystem* Sessions = GetGameInstance()->GetSubsystem<USavaSessionSubsystem>())
+	{
+		Sessions->ReturnToRoomLobby();
+	}
 }
 
 void AsavaGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)

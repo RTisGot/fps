@@ -6,6 +6,7 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "OnlineSessionSettings.h"
+#include "Lobby/SavaLobbyTypes.h"
 #include "SavaSessionSubsystem.generated.h"
 
 //部屋一覧の 1 行分(UI に渡す)
@@ -38,6 +39,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnCreateRoomComplete, bool, bSu
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSavaOnFindRoomsComplete, bool, bSuccess, const TArray<FSavaRoomInfo>&, Rooms);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnJoinRoomComplete, bool, bSuccess);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnDisconnected, const FString&, Reason);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnBusyChanged, bool, bBusy);
 
 //部屋(オンラインセッション)を作る・探す・入る・抜ける。部屋に入った後のこと(チーム・Ready)は GameMode が受け持つ
 //中身は Online Subsystem(今は Null = LAN、あとで EOS)。どれを使うかは DefaultEngine.ini の [OnlineSubsystem] で切り替える
@@ -74,6 +76,15 @@ public:
 	//ホストだけが呼ぶ。部屋に途中から入れるか(試合を始めるときに閉じ、検索にも出さなくする)
 	void SetRoomJoinable(bool bJoinable);
 
+	//ホストだけが呼ぶ。試合が終わったら、全員を連れて部屋のロビーへ戻る(Seamless Travel)
+	//部屋がない(試合マップを直接開いて試したときなど)なら、ソロロビーへ戻る
+	void ReturnToRoomLobby();
+
+	//ホストだけが使う。試合を始めたときのルーム設定を覚えておき、ロビーへ戻ったときに引き継ぐ
+	//(ロビーの GameState はマップを移るたびに作り直されるため)。部屋を作り直す・抜けると消える
+	void SetLastRoomSettings(const FSavaRoomSettings& RoomSettings) { LastRoomSettings = RoomSettings; }
+	const TOptional<FSavaRoomSettings>& GetLastRoomSettings() const { return LastRoomSettings; }
+
 	//ホストに追い出された(ASavaPlayerController::ClientWasKicked から)。この後の切断の理由をこれにする
 	void NotifyKicked(const FString& Reason);
 
@@ -82,6 +93,7 @@ public:
 	FString ConsumeDisconnectReason();
 
 	//作成・検索・参加の途中か(UI でボタンを押せなくするのに使う)
+	//作成・参加に成功した後も、マップを移り終えるまでは true のまま
 	UFUNCTION(BlueprintPure, Category = "Sava|Session")
 	bool IsBusy() const { return bBusy; }
 
@@ -97,6 +109,10 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Session")
 	FSavaOnJoinRoomComplete OnJoinRoomComplete;
+
+	//IsBusy が変わった。UI はこれでボタンの Is Enabled を切り替える(画面を開いたときは IsBusy で初期値を合わせる)
+	UPROPERTY(BlueprintAssignable, Category = "Sava|Session")
+	FSavaOnBusyChanged OnBusyChanged;
 
 	//ホストとの接続が切れた。この後マップが変わって今の画面は消えるので、理由を出すなら ConsumeDisconnectReason を使う
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Session")
@@ -120,13 +136,19 @@ private:
 	void HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 	void HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
 	//Reason は画面に出す短い文、Details はログにだけ出すエンジンの詳細
-	void HandleConnectionLost(const FString& Reason, const FString& Details);
+	//bEngineOpensDefaultMap: この後エンジンがタイトルを開くか(接続途中の失敗では開かず、今のマップのまま)
+	void HandleConnectionLost(const FString& Reason, const FString& Details, bool bEngineOpensDefaultMap);
 
 	//切断後、エンジンがタイトル(Game Default Map)を開き終えたらソロロビーへ移し直す
 	void HandlePostLoadMap(UWorld* LoadedWorld);
 
 	//Null(LAN)で動いているか
 	bool IsLANSubsystem() const;
+
+	//部屋のロビーを開くときの URL オプション(listen と GameMode)
+	FString GetLobbyOptions() const;
+
+	TOptional<FSavaRoomSettings> LastRoomSettings;
 
 	TSharedPtr<FOnlineSessionSearch> LastSearch;
 
@@ -136,6 +158,9 @@ private:
 	FDelegateHandle NetworkFailureHandle;
 	FDelegateHandle TravelFailureHandle;
 	FDelegateHandle PostLoadMapHandle;
+
+	//bBusy を変えて OnBusyChanged を出す
+	void SetBusy(bool bInBusy);
 
 	bool bBusy = false;
 
