@@ -95,9 +95,9 @@ void ASavaInteractable::RefreshPrompt(APlayerController* PlayerController)
 		return;
 	}
 
-	//使えるなら通常の案内、ホスト限定で使えないなら「ホストのみ」の案内
+	//使えるなら通常の案内、ホスト限定で使えないなら「ホストのみ」の案内、それ以外で使えないなら何も出さない
 	const bool bUsable = CanInteract(PlayerController);
-	const TSubclassOf<UUserWidget> WidgetClass = bUsable ? PromptWidgetClass : HostOnlyPromptWidgetClass;
+	const TSubclassOf<UUserWidget> WidgetClass = bUsable ? PromptWidgetClass : (IsHostOnly() ? HostOnlyPromptWidgetClass : nullptr);
 	TObjectPtr<UUserWidget>& Widget = bUsable ? PromptWidget : HostOnlyPromptWidget;
 	if (!WidgetClass)
 	{

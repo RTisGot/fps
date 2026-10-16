@@ -12,6 +12,16 @@ bool ASavaInteractButton::IsHostOnly() const
 	return Super::IsHostOnly() || Action == ESavaInteractButtonAction::StartMatch;
 }
 
+bool ASavaInteractButton::CanInteract(const APlayerController* PlayerController) const
+{
+	if (Action == ESavaInteractButtonAction::ToggleReady && ASavaPlayerController::IsHostController(PlayerController))
+	{
+		return false;
+	}
+
+	return Super::CanInteract(PlayerController);
+}
+
 void ASavaInteractButton::OnInteract(APlayerController* PlayerController)
 {
 	ASavaPlayerController* SavaPlayerController = Cast<ASavaPlayerController>(PlayerController);
