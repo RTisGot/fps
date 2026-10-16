@@ -86,6 +86,9 @@ public:
 	//サーバーでのみ呼ぶ。持っているロードアウトを体の武器・スキル・ガジェットに反映する(変わった枠だけ)
 	void ApplyLoadoutTo(APawn* TargetPawn) const;
 
+	//選んだキャラクターの「与えるダメージ」の倍率(キャラクターが決まっていなければ 1)
+	float GetOutgoingDamageMultiplier() const;
+
 	//本人からロードアウトが一度でも届いたか(試合中は最初の 1 回だけ受け付けるのに使う)
 	bool HasReceivedLoadout() const { return bHasReceivedLoadout; }
 

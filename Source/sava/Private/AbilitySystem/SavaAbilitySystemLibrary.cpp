@@ -84,7 +84,8 @@ bool USavaAbilitySystemLibrary::ApplyDamage(AActor* DamageInstigator, AActor* Ta
 float USavaAbilitySystemLibrary::GetOutgoingDamageMultiplier(const AActor* DamageInstigator)
 {
 	const ASavaPlayerState* PlayerState = Cast<ASavaPlayerState>(FindOwningPlayerState(DamageInstigator));
-	return PlayerState ? PlayerState->GetOutgoingDamageMultiplier() : 1.0f;
+	return 0;
+	//return PlayerState ? PlayerState->GetOutgoingDamageMultiplier() : 1.0f;
 }
 
 bool USavaAbilitySystemLibrary::ApplyHealing(AActor* HealInstigator, AActor* Target, float Amount)
