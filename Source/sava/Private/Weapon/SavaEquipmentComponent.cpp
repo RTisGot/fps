@@ -129,7 +129,13 @@ void USavaEquipmentComponent::SetLoadout(ESavaWeaponSlot Slot, USavaWeaponData* 
 		return;
 	}
 
+	//同じものを入れ直しても何もしない(弾が満タンに戻らないように)
 	FSavaWeaponLoadoutEntry& Entry = Loadout[ToIndex(Slot)];
+	if (Entry.Weapon == Weapon && AreModifiersEqual(Entry.Modifiers, Modifiers))
+	{
+		return;
+	}
+
 	Entry.Weapon = Weapon;
 	Entry.Modifiers = Modifiers;
 	ApplyLoadout();

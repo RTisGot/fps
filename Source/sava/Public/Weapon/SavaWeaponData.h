@@ -45,6 +45,24 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon", meta = (ShowOnlyInnerProperties))
 	FSavaWeaponStats Stats;
 
+	//カスタマイズのスライダーの効きの強さ(1 で標準、0 でそのスライダーは効かない)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	FSavaWeaponTuningStrength TuningStrength;
+
+	//カスタマイズのスライダーの値を、この武器のカスタムにする
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	FSavaWeaponModifier MakeTuningModifier(const FSavaWeaponTuning& Tuning) const
+	{
+		return USavaWeaponLibrary::MakeTuningModifier(Stats, Tuning, TuningStrength);
+	}
+
+	//カスタマイズを適用した数値(ロードアウト画面で数値を見せる用)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	FSavaWeaponStats GetTunedStats(const FSavaWeaponTuning& Tuning) const
+	{
+		return USavaWeaponLibrary::ApplyWeaponModifiers(Stats, { MakeTuningModifier(Tuning) });
+	}
+
 	//--------------------------------見た目・音(自分の画面だけ)
 
 	//1 人称の腕に持たせるskeletalメッシュ

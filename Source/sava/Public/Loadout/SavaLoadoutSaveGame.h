@@ -16,4 +16,8 @@ class SAVA_API USavaLoadoutSaveGame : public USaveGame
 public:
 	UPROPERTY()
 	FSavaLoadout Loadout;
+
+	//武器ごとのカスタマイズ(今選んでいない武器の分も覚えておく)
+	UPROPERTY()
+	TMap<FSoftObjectPath, FSavaWeaponTuning> WeaponTunings;
 };

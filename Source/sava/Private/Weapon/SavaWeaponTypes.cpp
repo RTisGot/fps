@@ -79,3 +79,135 @@ FSavaWeaponStats USavaWeaponLibrary::ApplyWeaponModifiers(const FSavaWeaponStats
 	Stats.ADSMovementSpreadScale = FMath::Clamp(Stats.ADSMovementSpreadScale, 0.0f, 1.0f);
 	return Stats;
 }
+
+//--------------------------------カスタマイズ
+
+namespace SavaWeaponTuning
+{
+	//スライダーを + の端まで振ったときの倍率(- の端ではこの逆数になる)
+	constexpr float AmmoDamage = 1.15f;
+	constexpr float MagazineSizeRatio = 0.25f; //マガジンの弾数に対する増減の割合
+	constexpr float MagazineReloadTime = 1.25f;
+	constexpr float MuzzleVerticalRecoil = 0.8f;
+	constexpr float MuzzleHorizontalRecoil = 1.25f;
+	constexpr float StockADSTime = 1.2f;
+	constexpr float StockADSMovementSpreadScale = 0.7f;
+	constexpr float StockRecoilRecovery = 1.2f;
+	constexpr float BarrelFalloff = 1.25f;
+	constexpr float BarrelHipSpread = 1.3f;
+	constexpr float FrameMovementSpread = 1.3f;
+	constexpr float FrameADSSpread = 1.0f / 1.3f;
+
+	template <typename T>
+	auto& GetField(T& Values, ESavaWeaponTuning Tuning)
+	{
+		switch (Tuning)
+		{
+		case ESavaWeaponTuning::Magazine: return Values.Magazine;
+		case ESavaWeaponTuning::Muzzle: return Values.Muzzle;
+		case ESavaWeaponTuning::Stock: return Values.Stock;
+		case ESavaWeaponTuning::Barrel: return Values.Barrel;
+		case ESavaWeaponTuning::Frame: return Values.Frame;
+		default: return Values.Ammo;
+		}
+	}
+
+	float SanitizeValue(float Value)
+	{
+		if (!FMath::IsFinite(Value))
+		{
+			return 0.0f;
+		}
+		return FMath::RoundToFloat(FMath::Clamp(Value, -1.0f, 1.0f) * 100.0f) / 100.0f;
+	}
+}
+
+float FSavaWeaponTuning::GetValue(ESavaWeaponTuning Tuning) const
+{
+	return SavaWeaponTuning::GetField(*this, Tuning);
+}
+
+void FSavaWeaponTuning::SetValue(ESavaWeaponTuning Tuning, float Value)
+{
+	SavaWeaponTuning::GetField(*this, Tuning) = Value;
+}
+
+FSavaWeaponTuning FSavaWeaponTuning::GetSanitized() const
+{
+	FSavaWeaponTuning Result;
+	Result.Ammo = SavaWeaponTuning::SanitizeValue(Ammo);
+	Result.Magazine = SavaWeaponTuning::SanitizeValue(Magazine);
+	Result.Muzzle = SavaWeaponTuning::SanitizeValue(Muzzle);
+	Result.Stock = SavaWeaponTuning::SanitizeValue(Stock);
+	Result.Barrel = SavaWeaponTuning::SanitizeValue(Barrel);
+	Result.Frame = SavaWeaponTuning::SanitizeValue(Frame);
+	return Result;
+}
+
+bool FSavaWeaponTuning::operator==(const FSavaWeaponTuning& Other) const
+{
+	return Ammo == Other.Ammo
+		&& Magazine == Other.Magazine
+		&& Muzzle == Other.Muzzle
+		&& Stock == Other.Stock
+		&& Barrel == Other.Barrel
+		&& Frame == Other.Frame;
+}
+
+float FSavaWeaponTuningStrength::GetValue(ESavaWeaponTuning Tuning) const
+{
+	return SavaWeaponTuning::GetField(*this, Tuning);
+}
+
+FSavaWeaponModifier USavaWeaponLibrary::MakeTuningModifier(const FSavaWeaponStats& BaseStats, const FSavaWeaponTuning& Tuning, const FSavaWeaponTuningStrength& Strength)
+{
+	using namespace SavaWeaponTuning;
+	const FSavaWeaponTuning Values = Tuning.GetSanitized();
+
+	//スライダーの値 × 武器ごとの強さ。倍率は「端の倍率 ^ これ」にする(+1 で端の倍率、-1 でその逆数、0 で変化なし)
+	auto GetAmount = [&Values, &Strength](ESavaWeaponTuning Slider)
+	{
+		return Values.GetValue(Slider) * FMath::Max(Strength.GetValue(Slider), 0.0f);
+	};
+
+	FSavaWeaponModifier Modifier;
+
+	//弾薬: 1 発のダメージ(頭・最低ダメージも同じ割合)を上げた分だけ連射を遅くする
+	const float Ammo = GetAmount(ESavaWeaponTuning::Ammo);
+	const float DamageScale = FMath::Pow(AmmoDamage, Ammo);
+	Modifier.DamageMultiplier = DamageScale;
+	Modifier.HeadDamageMultiplier = DamageScale;
+	Modifier.MinimumDamageMultiplier = DamageScale;
+	Modifier.RateOfFireMultiplier = 1.0f / DamageScale;
+
+	const float Magazine = GetAmount(ESavaWeaponTuning::Magazine);
+	//0.5 は 0 から遠い方へ丸める(+ と - で増減の数をそろえるため)
+	Modifier.MagazineSizeAdd = static_cast<int32>(FMath::RoundHalfFromZero(BaseStats.MagazineSize * MagazineSizeRatio * Magazine));
+	Modifier.ReloadTimeMultiplier = FMath::Pow(MagazineReloadTime, Magazine);
+
+	const float Muzzle = GetAmount(ESavaWeaponTuning::Muzzle);
+	Modifier.VerticalRecoilMultiplier = FMath::Pow(MuzzleVerticalRecoil, Muzzle);
+	Modifier.HorizontalRecoilMultiplier = FMath::Pow(MuzzleHorizontalRecoil, Muzzle);
+
+	const float Stock = GetAmount(ESavaWeaponTuning::Stock);
+	Modifier.ADSTimeMultiplier = FMath::Pow(StockADSTime, Stock);
+	Modifier.ADSMovementSpreadScaleMultiplier = FMath::Pow(StockADSMovementSpreadScale, Stock);
+	Modifier.RecoilRecoveryMultiplier = FMath::Pow(StockRecoilRecovery, Stock);
+
+	const float Barrel = GetAmount(ESavaWeaponTuning::Barrel);
+	Modifier.FalloffStartMultiplier = FMath::Pow(BarrelFalloff, Barrel);
+	Modifier.FalloffEndMultiplier = FMath::Pow(BarrelFalloff, Barrel);
+	Modifier.HipSpreadMultiplier = FMath::Pow(BarrelHipSpread, Barrel);
+
+	const float Frame = GetAmount(ESavaWeaponTuning::Frame);
+	Modifier.MovementSpreadMultiplier = FMath::Pow(FrameMovementSpread, Frame);
+	Modifier.JumpSpreadMultiplier = FMath::Pow(FrameMovementSpread, Frame);
+	Modifier.ADSSpreadMultiplier = FMath::Pow(FrameADSSpread, Frame);
+	return Modifier;
+}
+
+FSavaWeaponTuning USavaWeaponLibrary::SetTuningValue(FSavaWeaponTuning Tuning, ESavaWeaponTuning Slider, float Value)
+{
+	Tuning.SetValue(Slider, Value);
+	return Tuning;
+}

@@ -34,7 +34,23 @@ void USavaLoadoutSubsystem::SetWeapon(ESavaWeaponSlot Slot, USavaWeaponData* Wea
 {
 	FSavaLoadout NewLoadout = Loadout;
 	(Slot == ESavaWeaponSlot::Primary ? NewLoadout.PrimaryWeapon : NewLoadout.SecondaryWeapon) = Weapon;
+	//その武器で前に決めたカスタマイズに戻す(初めての武器なら変化なし)
+	(Slot == ESavaWeaponSlot::Primary ? NewLoadout.PrimaryTuning : NewLoadout.SecondaryTuning) = WeaponTunings.FindRef(FSoftObjectPath(Weapon));
 	ApplyChange(NewLoadout);
+}
+
+void USavaLoadoutSubsystem::SetWeaponTuning(ESavaWeaponSlot Slot, const FSavaWeaponTuning& Tuning)
+{
+	FSavaLoadout NewLoadout = Loadout;
+	(Slot == ESavaWeaponSlot::Primary ? NewLoadout.PrimaryTuning : NewLoadout.SecondaryTuning) = Tuning;
+	ApplyChange(NewLoadout);
+}
+
+void USavaLoadoutSubsystem::SetWeaponTuningValue(ESavaWeaponSlot Slot, ESavaWeaponTuning Slider, float Value)
+{
+	FSavaWeaponTuning Tuning = GetWeaponTuning(Slot);
+	Tuning.SetValue(Slider, Value);
+	SetWeaponTuning(Slot, Tuning);
 }
 
 void USavaLoadoutSubsystem::SetSkill(USavaSkillData* Skill)
@@ -138,6 +154,7 @@ void USavaLoadoutSubsystem::ApplyChange(const FSavaLoadout& NewLoadout)
 	}
 
 	Loadout = Sanitized;
+	RememberWeaponTunings();
 	SaveToDisk();
 	OnLoadoutChanged.Broadcast(Loadout);
 }
@@ -147,6 +164,17 @@ void USavaLoadoutSubsystem::ApplyChange(const FSavaLoadout& NewLoadout)
 USavaWeaponData* USavaLoadoutSubsystem::GetWeapon(ESavaWeaponSlot Slot) const
 {
 	return (Slot == ESavaWeaponSlot::Primary ? Loadout.PrimaryWeapon : Loadout.SecondaryWeapon).LoadSynchronous();
+}
+
+FSavaWeaponTuning USavaLoadoutSubsystem::GetWeaponTuning(ESavaWeaponSlot Slot) const
+{
+	return Slot == ESavaWeaponSlot::Primary ? Loadout.PrimaryTuning : Loadout.SecondaryTuning;
+}
+
+FSavaWeaponStats USavaLoadoutSubsystem::GetTunedWeaponStats(ESavaWeaponSlot Slot) const
+{
+	const USavaWeaponData* Weapon = GetWeapon(Slot);
+	return Weapon ? Weapon->GetTunedStats(GetWeaponTuning(Slot)) : FSavaWeaponStats();
 }
 
 USavaSkillData* USavaLoadoutSubsystem::GetSkill() const
@@ -194,16 +222,33 @@ TArray<USavaGadgetData*> USavaLoadoutSubsystem::GetSelectableGadgets() const
 
 //--------------------------------保存
 
+void USavaLoadoutSubsystem::RememberWeaponTunings()
+{
+	if (!Loadout.PrimaryWeapon.IsNull())
+	{
+		WeaponTunings.Add(Loadout.PrimaryWeapon.ToSoftObjectPath(), Loadout.PrimaryTuning);
+	}
+	if (!Loadout.SecondaryWeapon.IsNull())
+	{
+		WeaponTunings.Add(Loadout.SecondaryWeapon.ToSoftObjectPath(), Loadout.SecondaryTuning);
+	}
+}
+
 void USavaLoadoutSubsystem::LoadFromDisk()
 {
 	FSavaLoadout Saved;
 	if (const USavaLoadoutSaveGame* SaveGame = Cast<USavaLoadoutSaveGame>(UGameplayStatics::LoadGameFromSlot(SavaLoadout::SaveSlotName, 0)))
 	{
 		Saved = SaveGame->Loadout;
+		for (const TPair<FSoftObjectPath, FSavaWeaponTuning>& Pair : SaveGame->WeaponTunings)
+		{
+			WeaponTunings.Add(Pair.Key, Pair.Value.GetSanitized());
+		}
 	}
 
 	//初めての起動(保存がない)や、保存した武器がもう選べない場合は、各リストの最初のものになる
 	Loadout = USavaLoadoutSettings::Sanitize(Saved);
+	RememberWeaponTunings();
 	UE_LOG(LogSavaLoadout, Log, TEXT("ロードアウトを読み込みました: %s / %s / %s / %s / %s"),
 		*Loadout.Character.ToString(), *Loadout.PrimaryWeapon.GetAssetName(), *Loadout.SecondaryWeapon.GetAssetName(),
 		*Loadout.Skill.GetAssetName(), *Loadout.Gadget.GetAssetName());
@@ -213,6 +258,7 @@ void USavaLoadoutSubsystem::SaveToDisk() const
 {
 	USavaLoadoutSaveGame* SaveGame = Cast<USavaLoadoutSaveGame>(UGameplayStatics::CreateSaveGameObject(USavaLoadoutSaveGame::StaticClass()));
 	SaveGame->Loadout = Loadout;
+	SaveGame->WeaponTunings = WeaponTunings;
 	if (!UGameplayStatics::SaveGameToSlot(SaveGame, SavaLoadout::SaveSlotName, 0))
 	{
 		UE_LOG(LogSavaLoadout, Warning, TEXT("ロードアウトを保存できませんでした"));
@@ -286,5 +332,31 @@ namespace SavaLoadout
 			UE_LOG(LogSavaLoadout, Log, TEXT("ロードアウト: %s / %s / %s / %s / %s"),
 				*Loadout.Character.ToString(), *Loadout.PrimaryWeapon.GetAssetName(), *Loadout.SecondaryWeapon.GetAssetName(),
 				*Loadout.Skill.GetAssetName(), *Loadout.Gadget.GetAssetName());
+		}));
+
+	static FAutoConsoleCommandWithWorldAndArgs SetTuningCommand(
+		TEXT("Sava.SetTuning"), TEXT("武器のカスタマイズを変える。例: Sava.SetTuning Primary Barrel 0.5(スライダーは Ammo / Magazine / Muzzle / Stock / Barrel / Frame、値は -1 〜 1)"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+			USavaLoadoutSubsystem* Subsystem = GameInstance ? GameInstance->GetSubsystem<USavaLoadoutSubsystem>() : nullptr;
+			if (!Subsystem || Args.Num() < 3)
+			{
+				return;
+			}
+
+			const ESavaWeaponSlot Slot = Args[0] == TEXT("Secondary") ? ESavaWeaponSlot::Secondary : ESavaWeaponSlot::Primary;
+			const int64 SliderValue = StaticEnum<ESavaWeaponTuning>()->GetValueByNameString(Args[1]);
+			if (SliderValue == INDEX_NONE)
+			{
+				UE_LOG(LogSavaLoadout, Warning, TEXT("%s というスライダーはありません"), *Args[1]);
+				return;
+			}
+
+			const ESavaWeaponTuning Slider = static_cast<ESavaWeaponTuning>(SliderValue);
+			Subsystem->SetWeaponTuningValue(Slot, Slider, FCString::Atof(*Args[2]));
+			const FSavaWeaponTuning Tuning = Subsystem->GetWeaponTuning(Slot);
+			UE_LOG(LogSavaLoadout, Log, TEXT("%s のカスタマイズ: Ammo %.2f / Magazine %.2f / Muzzle %.2f / Stock %.2f / Barrel %.2f / Frame %.2f"),
+				*Args[0], Tuning.Ammo, Tuning.Magazine, Tuning.Muzzle, Tuning.Stock, Tuning.Barrel, Tuning.Frame);
 		}));
 }

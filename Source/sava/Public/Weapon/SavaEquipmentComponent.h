@@ -53,7 +53,7 @@ public:
 
 	//--------------------------------装備(サーバーのみ)
 
-	//枠に武器を装備する(ロードアウト画面から呼ぶ想定)。弾は満タンになる
+	//枠に武器を装備する(ロードアウト画面から呼ぶ想定)。弾は満タンになる(武器もカスタムも同じなら何もしない)
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Sava|Weapon")
 	void SetLoadout(ESavaWeaponSlot Slot, USavaWeaponData* Weapon, const TArray<FSavaWeaponModifier>& Modifiers);
 

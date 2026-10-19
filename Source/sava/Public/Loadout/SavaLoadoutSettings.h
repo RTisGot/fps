@@ -50,6 +50,6 @@ public:
 	static TArray<USavaSkillData*> GetSelectableSkills();
 	static TArray<USavaGadgetData*> GetSelectableGadgets();
 
-	//選べないもの・空の枠を、各リストの最初のものに置き換えたロードアウトを返す
+	//選べないもの・空の枠を、各リストの最初のものに置き換えたロードアウトを返す(カスタマイズの値も範囲内に収める)
 	static FSavaLoadout Sanitize(const FSavaLoadout& Loadout);
 };

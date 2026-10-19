@@ -40,6 +40,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
 	void SetWeapon(ESavaWeaponSlot Slot, USavaWeaponData* Weapon);
 
+	//武器のカスタマイズ(スライダーの値)を変える。武器ごとに覚えておき、武器を選び直すと前の値に戻る
+	//変えるたびに保存してサーバーへ送るので、スライダーを動かしている最中ではなく離したときに呼ぶ
+	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
+	void SetWeaponTuning(ESavaWeaponSlot Slot, const FSavaWeaponTuning& Tuning);
+
+	//スライダー 1 本分だけ変える
+	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
+	void SetWeaponTuningValue(ESavaWeaponSlot Slot, ESavaWeaponTuning Slider, float Value);
+
 	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
 	void SetSkill(USavaSkillData* Skill);
 
@@ -70,6 +79,13 @@ public:
 	USavaWeaponData* GetWeapon(ESavaWeaponSlot Slot) const;
 
 	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	FSavaWeaponTuning GetWeaponTuning(ESavaWeaponSlot Slot) const;
+
+	//カスタマイズを適用した武器の数値(画面で数値を見せる用。武器がなければ初期値)
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	FSavaWeaponStats GetTunedWeaponStats(ESavaWeaponSlot Slot) const;
+
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
 	USavaSkillData* GetSkill() const;
 
 	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
@@ -98,10 +114,16 @@ private:
 	//選べないものを直して持ち、保存して知らせる
 	void ApplyChange(const FSavaLoadout& NewLoadout);
 
+	//今の武器のカスタマイズを、武器ごとの記録に入れる
+	void RememberWeaponTunings();
+
 	void LoadFromDisk();
 	void SaveToDisk() const;
 
 	FSavaLoadout Loadout;
+
+	//武器ごとのカスタマイズ(武器を選び直したときに戻す用。ロードアウトと一緒に保存する)
+	TMap<FSoftObjectPath, FSavaWeaponTuning> WeaponTunings;
 
 	//一覧の項目(画面を開き直しても同じものを返す)
 	UPROPERTY(Transient)

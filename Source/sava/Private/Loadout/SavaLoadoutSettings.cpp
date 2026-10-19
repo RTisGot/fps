@@ -82,6 +82,9 @@ FSavaLoadout USavaLoadoutSettings::Sanitize(const FSavaLoadout& Loadout)
 	Result.Character = Characters.Contains(Loadout.Character) ? Loadout.Character : (Characters.Num() > 0 ? Characters[0] : NAME_None);
 	Result.PrimaryWeapon = SavaLoadout::PickSelectable(Loadout.PrimaryWeapon, GetSelectableWeapons(ESavaWeaponSlot::Primary));
 	Result.SecondaryWeapon = SavaLoadout::PickSelectable(Loadout.SecondaryWeapon, GetSelectableWeapons(ESavaWeaponSlot::Secondary));
+	//武器が置き換わったら、前の武器向けのカスタマイズは使わない
+	Result.PrimaryTuning = Result.PrimaryWeapon == Loadout.PrimaryWeapon ? Loadout.PrimaryTuning.GetSanitized() : FSavaWeaponTuning();
+	Result.SecondaryTuning = Result.SecondaryWeapon == Loadout.SecondaryWeapon ? Loadout.SecondaryTuning.GetSanitized() : FSavaWeaponTuning();
 	Result.Skill = SavaLoadout::PickSelectable(Loadout.Skill, GetSelectableSkills());
 	Result.Gadget = SavaLoadout::PickSelectable(Loadout.Gadget, GetSelectableGadgets());
 	return Result;

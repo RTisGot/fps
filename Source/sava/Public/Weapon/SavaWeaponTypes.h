@@ -225,6 +225,86 @@ struct SAVA_API FSavaWeaponModifier
 	float HitScanRadiusMultiplier = 1.0f;
 };
 
+//カスタマイズのスライダー(1 本ごとに、何かを強くする代わりに何かが弱くなる。- / + はスライダーを左右に振った側)
+UENUM(BlueprintType)
+enum class ESavaWeaponTuning : uint8
+{
+	//- 連射重視 / + 威力重視(ダメージと連射速度を逆に動かすので、DPS は変わらない)
+	Ammo,
+	//- 早いリロード / + 大容量(弾数とリロード時間)
+	Magazine,
+	//- 横ブレ抑制 / + 跳ね上がり抑制
+	Muzzle,
+	//- 素早い構え / + 安定した構え(ADS 中の移動ブレ・反動の戻り)
+	Stock,
+	//- 取り回し(腰撃ちの拡散) / + 射程(減衰の距離)
+	Barrel,
+	//- 軽量(移動・空中の拡散が小さい) / + 重量(ADS の拡散が小さい)
+	Frame,
+};
+
+//カスタマイズのスライダーの値(-1 〜 +1。0 で変化なし)
+USTRUCT(BlueprintType)
+struct SAVA_API FSavaWeaponTuning
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
+	float Ammo = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
+	float Magazine = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
+	float Muzzle = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
+	float Stock = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
+	float Barrel = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
+	float Frame = 0.0f;
+
+	float GetValue(ESavaWeaponTuning Tuning) const;
+	void SetValue(ESavaWeaponTuning Tuning, float Value);
+
+	//-1 〜 +1 に収め、0.01 刻みに丸めた値(クライアントから届いた値・保存した値に使う)
+	FSavaWeaponTuning GetSanitized() const;
+
+	bool operator==(const FSavaWeaponTuning& Other) const;
+	bool operator!=(const FSavaWeaponTuning& Other) const { return !(*this == Other); }
+};
+
+//武器ごとの、カスタマイズの効きの強さ(1 で標準。0 にするとそのスライダーは効かない)
+//スライダーを端まで振ったときの倍率が「標準の倍率 ^ この値」になる(2 なら効きが 2 倍)
+USTRUCT(BlueprintType)
+struct SAVA_API FSavaWeaponTuningStrength
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
+	float Ammo = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
+	float Magazine = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
+	float Muzzle = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
+	float Stock = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
+	float Barrel = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
+	float Frame = 1.0f;
+
+	float GetValue(ESavaWeaponTuning Tuning) const;
+};
+
 //武器の数値の計算(Blueprint からも呼べる)
 UCLASS()
 class SAVA_API USavaWeaponLibrary : public UBlueprintFunctionLibrary
@@ -235,6 +315,17 @@ public:
 	//元の数値にカスタムを適用した数値を返す
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
 	static FSavaWeaponStats ApplyWeaponModifiers(const FSavaWeaponStats& BaseStats, const TArray<FSavaWeaponModifier>& Modifiers);
+
+	//カスタマイズのスライダーの値を、1 つのカスタムにする(弾数の増減は BaseStats のマガジンの弾数から決める)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	static FSavaWeaponModifier MakeTuningModifier(const FSavaWeaponStats& BaseStats, const FSavaWeaponTuning& Tuning, const FSavaWeaponTuningStrength& Strength);
+
+	//スライダー 1 本分の値を読み書きする(スライダーの Widget を 1 つ作って使い回す用)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	static float GetTuningValue(const FSavaWeaponTuning& Tuning, ESavaWeaponTuning Slider) { return Tuning.GetValue(Slider); }
+
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	static FSavaWeaponTuning SetTuningValue(FSavaWeaponTuning Tuning, ESavaWeaponTuning Slider, float Value);
 
 	//1 発ごとの間隔(秒)
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")

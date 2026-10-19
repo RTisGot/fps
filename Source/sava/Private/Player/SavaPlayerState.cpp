@@ -200,19 +200,17 @@ void ASavaPlayerState::ApplyLoadoutTo(APawn* TargetPawn)
 		}
 	}
 
-	//同じものを入れ直すと弾が満タンに戻ったりするので、変わった枠だけ入れ替える
+	//武器とカスタマイズ(スライダーの値から作ったカスタム)を渡す。変わっていない枠は SetLoadout が何もしないので、弾は満タンに戻らない
 	if (USavaEquipmentComponent* Equipment = USavaEquipmentComponent::FindEquipmentComponent(TargetPawn))
 	{
-		USavaWeaponData* Primary = Loadout.PrimaryWeapon.LoadSynchronous();
-		if (Primary && Equipment->GetWeaponData(ESavaWeaponSlot::Primary) != Primary)
+		if (USavaWeaponData* Primary = Loadout.PrimaryWeapon.LoadSynchronous())
 		{
-			Equipment->SetLoadout(ESavaWeaponSlot::Primary, Primary, {});
+			Equipment->SetLoadout(ESavaWeaponSlot::Primary, Primary, { Primary->MakeTuningModifier(Loadout.PrimaryTuning) });
 		}
 
-		USavaWeaponData* Secondary = Loadout.SecondaryWeapon.LoadSynchronous();
-		if (Secondary && Equipment->GetWeaponData(ESavaWeaponSlot::Secondary) != Secondary)
+		if (USavaWeaponData* Secondary = Loadout.SecondaryWeapon.LoadSynchronous())
 		{
-			Equipment->SetLoadout(ESavaWeaponSlot::Secondary, Secondary, {});
+			Equipment->SetLoadout(ESavaWeaponSlot::Secondary, Secondary, { Secondary->MakeTuningModifier(Loadout.SecondaryTuning) });
 		}
 	}
 
