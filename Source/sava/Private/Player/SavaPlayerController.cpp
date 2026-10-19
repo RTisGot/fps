@@ -33,6 +33,11 @@ ASavaPlayerController::ASavaPlayerController()
 		static ConstructorHelpers::FClassFinder<USavaScoreboardWidget> ScoreboardView(TEXT("/Game/UI/WBP_Scoreboard"));
 		ScoreboardWidgetClass = ScoreboardView.Class;
 	}
+	if (FPackageName::DoesPackageExist(TEXT("/Game/Deathmatch/WBP_DeathmatchResult")))
+	{
+		static ConstructorHelpers::FClassFinder<UUserWidget> DeathmatchResultView(TEXT("/Game/Deathmatch/WBP_DeathmatchResult"));
+		DeathmatchResultWidgetClass = DeathmatchResultView.Class;
+	}
 }
 
 void ASavaPlayerController::BeginPlay()

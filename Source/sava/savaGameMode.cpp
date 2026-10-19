@@ -5,6 +5,8 @@
 #include "Player/SavaPlayerController.h"
 #include "Player/SavaPlayerState.h"
 #include "Online/SavaSessionSubsystem.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystem/SavaGameplayEffects.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/GameStateBase.h"
 #include "TimerManager.h"
@@ -69,7 +71,7 @@ void AsavaGameMode::InitSeamlessTravelPlayer(AController* NewController)
 
 	//体をスポーンする前(この後の HandleStartingNewPlayer)に決める
 	const ASavaPlayerState* SavaPlayerState = NewController ? NewController->GetPlayerState<ASavaPlayerState>() : nullptr;
-	if (SavaPlayerState && SavaPlayerState->GetTeamId() >= NumTeams)
+	if (SavaPlayerState && (!bUseTeams || SavaPlayerState->GetTeamId() >= NumTeams))
 	{
 		AssignTeam(NewController);
 	}
@@ -80,6 +82,12 @@ void AsavaGameMode::AssignTeam(AController* NewPlayer)
 	ASavaPlayerState* NewPlayerState = NewPlayer ? NewPlayer->GetPlayerState<ASavaPlayerState>() : nullptr;
 	if (!NewPlayerState || !GameState)
 	{
+		return;
+	}
+
+	if (!bUseTeams)
+	{
+		NewPlayerState->SetTeamId(ASavaPlayerState::NoTeam);
 		return;
 	}
 
@@ -104,6 +112,24 @@ void AsavaGameMode::AssignTeam(AController* NewPlayer)
 		}
 	}
 	NewPlayerState->SetTeamId(static_cast<uint8>(SmallestTeam));
+}
+
+void AsavaGameMode::SetRoundFrozen(AController* Controller, bool bFrozen)
+{
+	ASavaPlayerState* SavaPlayerState = Controller ? Controller->GetPlayerState<ASavaPlayerState>() : nullptr;
+	UAbilitySystemComponent* AbilitySystem = SavaPlayerState ? SavaPlayerState->GetAbilitySystemComponent() : nullptr;
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	//二重に付かないように、いったん外してから付ける
+	AbilitySystem->RemoveActiveGameplayEffectBySourceEffect(USavaGE_RoundFrozen::StaticClass(), nullptr);
+	if (bFrozen)
+	{
+		//発動中の能力は止めない(パッシブ能力まで止まって、再発動されなくなるため)
+		AbilitySystem->ApplyGameplayEffectToSelf(GetDefault<USavaGE_RoundFrozen>(), 1.0f, AbilitySystem->MakeEffectContext());
+	}
 }
 
 void AsavaGameMode::NotifyPlayerDied(AController* DeadController)

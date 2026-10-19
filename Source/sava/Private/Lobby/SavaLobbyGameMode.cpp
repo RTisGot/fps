@@ -269,6 +269,14 @@ FString ASavaLobbyGameMode::BuildMatchTravelURL(const FSavaRoomSettings& RoomSet
 	{
 		URL += FString::Printf(TEXT("?%s=%d"), SavaMatchOptions::RoundsToWin, RoomSettings.RoundsToWin);
 	}
+	if (Mode->bUsesKillLimit)
+	{
+		URL += FString::Printf(TEXT("?%s=%d"), SavaMatchOptions::KillLimit, RoomSettings.KillLimit);
+	}
+	if (Mode->bCanChooseTeamMatch)
+	{
+		URL += FString::Printf(TEXT("?%s=%d"), SavaMatchOptions::TeamMatch, RoomSettings.bTeamMatch ? 1 : 0);
+	}
 	URL += FString::Printf(TEXT("?%s=%d"), SavaMatchOptions::TimeLimit, RoomSettings.RoundTimeLimit);
 	URL += FString::Printf(TEXT("?%s=%d"), SavaMatchOptions::ExpectedPlayers, NumPlayers);
 	return URL;

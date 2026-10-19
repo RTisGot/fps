@@ -62,12 +62,14 @@
 
 ## ルーム設定
 
-`FSavaRoomSettings`(モード番号・マップ番号・勝利ラウンド数・制限時間)。候補は **Project Settings → Game → Sava Lobby**:
+`FSavaRoomSettings`(モード番号・マップ番号・勝利ラウンド数・制限時間・勝利キル数・チーム戦か)。候補は **Project Settings → Game → Sava Lobby**:
 
-- **Modes**: モードごとに表示名・GameMode・開始に必要な人数・ラウンド制か・遊べるマップ
-  - CTF: `SavaCTFGameMode`、4 人以上
-  - Deathmatch: GameMode が空(制作中)。できたら GameModeClass に入れるだけで選べる
-- 勝利ラウンド数・制限時間の範囲と最初の値
+- **Modes**: モードごとに表示名・GameMode・開始に必要な人数・ラウンド制か・キル数で勝敗が決まるか・個人戦/チーム戦を選べるか・遊べるマップ
+  - CTF: `SavaCTFGameMode`、4 人以上、ラウンド制
+  - Deathmatch: `SavaDeathmatchGameMode`、2 人以上、勝利キル数あり、個人戦/チーム戦を選べる
+- 勝利ラウンド数・勝利キル数・制限時間の範囲と最初の値
+
+モードが使わない項目は試合へ渡さない(画面でも隠す)。
 
 開始の条件: ホスト以外の全員が準備 OK、かつ人数がモードの MinPlayers 以上(ホストは準備 OK 不要)。
 `SavaLobbyGameState` の `Can Start Match` で、開始ボタンの横に理由を出せる。
@@ -83,11 +85,14 @@
 | オプション | 内容 |
 |---|---|
 | `Rounds` | 勝利ラウンド数(ラウンド制のモードだけ付く) |
+| `Kills` | 勝利キル数(`bUsesKillLimit` のモードだけ付く。チーム戦ならチームの合計) |
+| `Teams` | 1 = チーム戦、0 = 個人戦(`bCanChooseTeamMatch` のモードだけ付く) |
 | `TimeLimit` | 制限時間(秒) |
 | `Players` | ロビーから移ってくる人数 |
 
-デスマッチの GameMode を作る人へ: `InitGame` の `Options` から `UGameplayStatics::GetIntOption(Options, TEXT("TimeLimit"), 既定値)` で読む。
+GameMode は `InitGame` の `Options` から `UGameplayStatics::GetIntOption(Options, SavaMatchOptions::TimeLimit, 既定値)` のように読む。
 チームは `ASavaPlayerState` ごと引き継がれる(`AsavaGameMode` を親にすれば、決まっていない人だけ自動で振り分ける)。
+`AsavaGameMode::bUseTeams` を false にすると全員チームなし(全員が敵)になる。デスマッチの個人戦はこれを使う。
 Seamless Travel で来た人には `PostLogin` が呼ばれないので、人数を数えるなら `HandleSeamlessTravelPlayer` も見る(`ASavaCTFGameMode` を参照)。
 
 ## エディタでの組み立て

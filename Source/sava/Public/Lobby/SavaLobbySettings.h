@@ -46,6 +46,14 @@ struct FSavaMatchModeOption
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sava|Lobby")
 	bool bUsesRounds = false;
 
+	//キル数で勝敗が決まるか(違えばルーム設定の「勝利キル数」は使わない)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sava|Lobby")
+	bool bUsesKillLimit = false;
+
+	//個人戦・チーム戦を選べるか(違えばルーム設定の「チーム戦」は使わない)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sava|Lobby")
+	bool bCanChooseTeamMatch = false;
+
 	//このモードで遊べるマップ(CTF なら旗の台がある、など)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Sava|Lobby")
 	TArray<FSavaMatchMapOption> Maps;
@@ -71,6 +79,16 @@ public:
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Rules", meta = (ClampMin = "1"))
 	int32 DefaultRoundsToWin = 2;
+
+	//勝利キル数の範囲と最初の値
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Rules", meta = (ClampMin = "1"))
+	int32 MinKillLimit = 5;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Rules", meta = (ClampMin = "1"))
+	int32 MaxKillLimit = 100;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Rules", meta = (ClampMin = "1"))
+	int32 DefaultKillLimit = 30;
 
 	//制限時間(秒)の範囲と最初の値
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Rules", meta = (ClampMin = "10", ForceUnits = "s"))

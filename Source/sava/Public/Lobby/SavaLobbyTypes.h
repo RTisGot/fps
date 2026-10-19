@@ -28,10 +28,19 @@ struct FSavaRoomSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sava|Lobby", meta = (ForceUnits = "s"))
 	int32 RoundTimeLimit = 180;
 
+	//何キルで勝ちか(キル数で勝敗が決まるモードだけ使う。チーム戦ならチームの合計)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sava|Lobby")
+	int32 KillLimit = 30;
+
+	//チーム戦か(個人戦・チーム戦を選べるモードだけ使う)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sava|Lobby")
+	bool bTeamMatch = false;
+
 	bool operator==(const FSavaRoomSettings& Other) const
 	{
 		return ModeIndex == Other.ModeIndex && MapIndex == Other.MapIndex
-			&& RoundsToWin == Other.RoundsToWin && RoundTimeLimit == Other.RoundTimeLimit;
+			&& RoundsToWin == Other.RoundsToWin && RoundTimeLimit == Other.RoundTimeLimit
+			&& KillLimit == Other.KillLimit && bTeamMatch == Other.bTeamMatch;
 	}
 };
 
@@ -42,6 +51,10 @@ namespace SavaMatchOptions
 	inline const TCHAR* RoundsToWin = TEXT("Rounds");
 	//制限時間(秒)
 	inline const TCHAR* TimeLimit = TEXT("TimeLimit");
+	//勝利キル数
+	inline const TCHAR* KillLimit = TEXT("Kills");
+	//チーム戦か(1 = チーム戦、0 = 個人戦)
+	inline const TCHAR* TeamMatch = TEXT("Teams");
 	//ロビーから移ってくる人数(全員そろうまで試合を始めないのに使う)
 	inline const TCHAR* ExpectedPlayers = TEXT("Players");
 }

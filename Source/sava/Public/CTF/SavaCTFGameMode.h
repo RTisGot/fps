@@ -106,7 +106,6 @@ private:
 	void CleanUpWorldForNewRound();
 	void RespawnAllPlayersForNewRound();
 
-	void SetRoundFrozen(AController* Controller, bool bFrozen);
 	void ClearRespawnTimers();
 
 	//リスポーン待ちのタイマー(ラウンドのやり直しで取り消す)
