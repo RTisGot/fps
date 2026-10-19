@@ -61,7 +61,7 @@ namespace SavaLobbyCommand
 		}));
 
 	static FAutoConsoleCommandWithWorldAndArgs RoomSettingsCommand(
-		TEXT("Sava.RoomSettings"), TEXT("ホストだけ: ルーム設定を変える。例: Sava.RoomSettings <モード番号> <マップ番号> <勝利ラウンド数> <制限時間(秒)>"),
+		TEXT("Sava.RoomSettings"), TEXT("ホストだけ: ルーム設定を変える。例: Sava.RoomSettings <モード番号> <マップ番号> <勝利ラウンド数> <制限時間(秒)> <勝利キル数> <チーム戦なら 1>"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
 			ASavaPlayerController* Controller = GetLocalController(World);
@@ -77,6 +77,8 @@ namespace SavaLobbyCommand
 			if (Args.Num() > 1) Settings.MapIndex = FCString::Atoi(*Args[1]);
 			if (Args.Num() > 2) Settings.RoundsToWin = FCString::Atoi(*Args[2]);
 			if (Args.Num() > 3) Settings.RoundTimeLimit = FCString::Atoi(*Args[3]);
+			if (Args.Num() > 4) Settings.KillLimit = FCString::Atoi(*Args[4]);
+			if (Args.Num() > 5) Settings.bTeamMatch = FCString::Atoi(*Args[5]) != 0;
 			Controller->ServerUpdateRoomSettings(Settings);
 		}));
 
@@ -128,8 +130,9 @@ namespace SavaLobbyCommand
 			const FSavaRoomSettings& Settings = LobbyGameState->GetRoomSettings();
 			FText ModeName, MapName;
 			USavaLobbySettings::GetRoomSettingsDisplayNames(Settings, ModeName, MapName);
-			UE_LOG(LogSavaLobbyCommand, Log, TEXT("ルーム設定: %s / %s / %d ラウンド先取 / %d 秒"),
-				*ModeName.ToString(), *MapName.ToString(), Settings.RoundsToWin, Settings.RoundTimeLimit);
+			UE_LOG(LogSavaLobbyCommand, Log, TEXT("ルーム設定: %s / %s / %d ラウンド先取 / %d 秒 / %d キル / %s"),
+				*ModeName.ToString(), *MapName.ToString(), Settings.RoundsToWin, Settings.RoundTimeLimit,
+				Settings.KillLimit, Settings.bTeamMatch ? TEXT("チーム戦") : TEXT("個人戦"));
 
 			for (const ASavaPlayerState* PlayerState : LobbyGameState->GetLobbyPlayers())
 			{

@@ -544,24 +544,6 @@ void ASavaCTFGameMode::RespawnAllPlayersForNewRound()
 	}
 }
 
-void ASavaCTFGameMode::SetRoundFrozen(AController* Controller, bool bFrozen)
-{
-	ASavaPlayerState* SavaPlayerState = Controller ? Controller->GetPlayerState<ASavaPlayerState>() : nullptr;
-	UAbilitySystemComponent* AbilitySystem = SavaPlayerState ? SavaPlayerState->GetAbilitySystemComponent() : nullptr;
-	if (!AbilitySystem)
-	{
-		return;
-	}
-
-	//二重に付かないように、いったん外してから付ける
-	AbilitySystem->RemoveActiveGameplayEffectBySourceEffect(USavaGE_RoundFrozen::StaticClass(), nullptr);
-	if (bFrozen)
-	{
-		//発動中の能力は止めない(パッシブ能力まで止まって、再発動されなくなるため)
-		AbilitySystem->ApplyGameplayEffectToSelf(GetDefault<USavaGE_RoundFrozen>(), 1.0f, AbilitySystem->MakeEffectContext());
-	}
-}
-
 void ASavaCTFGameMode::ClearRespawnTimers()
 {
 	for (TPair<TWeakObjectPtr<AController>, FTimerHandle>& Pair : RespawnTimers)

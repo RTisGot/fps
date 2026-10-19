@@ -162,6 +162,8 @@ Canvas Panel
     ├ Horizontal Box: Text「モード」 + Combo Box (String)  … 名前 ModeCombo
     ├ Horizontal Box: Text「マップ」 + Combo Box (String)  … 名前 MapCombo
     ├ Horizontal Box(名前 RoundsRow): Text「勝利ラウンド数」 + Spin Box … 名前 RoundsSpin
+    ├ Horizontal Box(名前 KillsRow): Text「勝利キル数」 + Spin Box … 名前 KillsSpin
+    ├ Horizontal Box(名前 TeamRow): Text「チーム戦」 + Check Box … 名前 TeamCheck
     ├ Horizontal Box: Text「制限時間(秒)」 + Spin Box  … 名前 TimeSpin
     ├ Text「メンバー」
     ├ Scroll Box  … 名前 MemberList
@@ -171,6 +173,7 @@ Canvas Panel
 Spin Box の Details:
 
 - RoundsSpin: **Delta** 1、**Min Fractional Digits** 0、**Max Fractional Digits** 0、**Always Uses Delta Snap** にチェック
+- KillsSpin: **Delta** 1、Fractional Digits は両方 0、**Always Uses Delta Snap** にチェック
 - TimeSpin: **Delta** 10、Fractional Digits は両方 0、**Always Uses Delta Snap** にチェック
 - 最小・最大は Graph で Project Settings の値を入れる(4-3 の手順 2)
 
@@ -181,7 +184,7 @@ Spin Box の Details:
 **① 開いたとき(Event Construct)**
 
 1. **Event Construct** から:
-2. 範囲を入れる: `Get Sava Lobby Settings` → ピンから `Min Rounds To Win` / `Max Rounds To Win` を取り出し、RoundsSpin の **Set Min Value** / **Set Max Value**(と **Set Min Slider Value** / **Set Max Slider Value**)へ。TimeSpin も `Min Round Time Limit` / `Max Round Time Limit` で同じようにする
+2. 範囲を入れる: `Get Sava Lobby Settings` → ピンから `Min Rounds To Win` / `Max Rounds To Win` を取り出し、RoundsSpin の **Set Min Value** / **Set Max Value**(と **Set Min Slider Value** / **Set Max Slider Value**)へ。TimeSpin も `Min Round Time Limit` / `Max Round Time Limit`、KillsSpin も `Min Kill Limit` / `Max Kill Limit` で同じようにする
 3. モードの一覧を入れる: ModeCombo → **Clear Options**。`Get Mode Options` → **For Each Loop** → Array Element から **Break SavaMatchModeOption** → `Display Name` を **To String (Text)** で文字列にして → ModeCombo の **Add Option**
 4. GameState を覚える: **Get Game State** → **Cast To SavaLobbyGameState** → 成功したら **Set LobbyState**
 5. 変わったら描き直すように登録する: LobbyState から **Bind Event to On Lobby Changed** を置く。赤い Event ピンをドラッグ → **Add Custom Event** → 名前 `Refresh`
@@ -191,14 +194,15 @@ Spin Box の Details:
 
 ここで画面を「今の状態」に合わせる。
 
-1. `LobbyState` → **Get Room Settings** → **Break SavaRoomSettings**(Mode Index・Map Index・Rounds To Win・Round Time Limit が出る)
+1. `LobbyState` → **Get Room Settings** → **Break SavaRoomSettings**(Mode Index・Map Index・Rounds To Win・Round Time Limit・Kill Limit・Team Match が出る)
 2. ModeCombo → **Set Selected Index** ← Mode Index
 3. マップの一覧を、選んでいるモードのものに入れ直す:
    - `Get Mode Option`(Mode Index を入れる)→ 出力の Out Mode を **Break SavaMatchModeOption**
    - MapCombo → **Clear Options** → `Maps` を **For Each Loop** → **Break SavaMatchMapOption** → Display Name → To String → MapCombo **Add Option**
    - ループの **Completed** から MapCombo **Set Selected Index** ← Map Index
 4. ラウンド制のモードだけ、ラウンド数の行を出す: Break したモードの `Uses Rounds` → **Select**(Visible / Collapsed)→ RoundsRow の **Set Visibility**
-5. RoundsSpin **Set Value** ← Rounds To Win、TimeSpin **Set Value** ← Round Time Limit
+   - 同じように `Uses Kill Limit` → KillsRow、`Can Choose Team Match` → TeamRow の **Set Visibility**
+5. RoundsSpin **Set Value** ← Rounds To Win、TimeSpin **Set Value** ← Round Time Limit、KillsSpin **Set Value** ← Kill Limit、TeamCheck **Set Is Checked** ← Team Match
 6. メンバー一覧: MemberList → **Clear Children** → `LobbyState` → **Get Lobby Players** → **For Each Loop** → **Create Widget**(Class = `WBP_MemberRow`、Owning Player = **Get Owning Player**、Player ピン = Array Element)→ MemberList の **Add Child**
    - `WBP_MemberRow` は 4-4 で作る。作ると Create Widget に Player ピンが出る
 
@@ -207,13 +211,16 @@ Spin Box の Details:
 ホストが値を変えたら、すぐサーバーへ送る。送った結果は On Lobby Changed で全員の画面に戻ってくる(自分の画面も Refresh で描き直される)。
 
 1. 関数を 1 つ作る: My Blueprint → Functions の **+** → 名前 `SendSettings`
-   - 中身: **Make SavaRoomSettings** に Mode Index ← ModeCombo **Get Selected Index**、Map Index ← MapCombo **Get Selected Index**、Rounds To Win ← RoundsSpin **Get Value** を **Round**、Round Time Limit ← TimeSpin **Get Value** を **Round**
+   - 中身: **Make SavaRoomSettings** に Mode Index ← ModeCombo **Get Selected Index**、Map Index ← MapCombo **Get Selected Index**、Rounds To Win ← RoundsSpin **Get Value** を **Round**、Round Time Limit ← TimeSpin **Get Value** を **Round**、Kill Limit ← KillsSpin **Get Value** を **Round**、Team Match ← TeamCheck **Is Checked**
+   - Make に入れなかった項目は 0 / false で送られてしまうので、**全部の項目をつなぐ**こと
    - **Get Owning Player** → **Cast To SavaPlayerController** → **Server Update Room Settings**(New Settings ← Make の結果)
 2. ModeCombo を選び、Details の一番下の **Events** → **On Selection Changed** の **+** を押す
    - 出てきたイベントの **Selection Type** を **==**(Equal)で **Direct** と比べ、**Branch** の **False** の時だけ `SendSettings` を呼ぶ
    - 理由: Refresh の中で Set Selected Index したときも、このイベントが Direct で来る。それで送り返すと、送信が止まらなくなる
 3. MapCombo も同じようにする
-4. RoundsSpin・TimeSpin は **On Value Committed**(値を確定したとき)の **+** → `SendSettings` を呼ぶ
+4. RoundsSpin・TimeSpin・KillsSpin は **On Value Committed**(値を確定したとき)の **+** → `SendSettings` を呼ぶ
+5. TeamCheck は **On Check State Changed** の **+** → `SendSettings` を呼ぶ
+   - Refresh の Set Is Checked ではこのイベントは来ない(ユーザーがクリックしたときだけ)ので、ModeCombo のような判定は要らない
 
 **④ 閉じる**
 

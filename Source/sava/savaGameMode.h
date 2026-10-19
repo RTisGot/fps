@@ -35,6 +35,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Team", meta = (ClampMin = "1"))
 	int32 MaxPlayersPerTeam = 3;
 
+	//チームに分けるか。false なら全員チームなし(全員が敵)になる。待合室で決めたチームも外す
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Team")
+	bool bUseTeams = true;
+
 	//死んでからリスポーンするまでの秒数
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Respawn", meta = (ClampMin = "0", ForceUnits = "s"))
 	float RespawnDelay = 4.0f;
@@ -42,8 +46,11 @@ protected:
 	//タイマー満了で呼ばれる。古い Pawn を片付けて新しい Pawn を出す
 	virtual void RespawnPlayer(TWeakObjectPtr<AController> Controller);
 
-	//人数の少ないチームに入れる
+	//人数の少ないチームに入れる(bUseTeams が false ならチームなしにする)
 	void AssignTeam(AController* NewPlayer);
+
+	//動けなくする / 戻す(カウントダウン中・試合終了後)。移動・ジャンプ・全能力が止まる
+	void SetRoundFrozen(AController* Controller, bool bFrozen);
 
 	//試合が終わってから部屋のロビーへ戻るまでの秒数(結果を見る間)
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Match", meta = (ClampMin = "0", ForceUnits = "s"))

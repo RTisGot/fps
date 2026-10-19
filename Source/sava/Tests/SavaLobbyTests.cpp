@@ -89,12 +89,16 @@ bool FSavaLobbySanitizeRoomSettingsTest::RunTest(const FString&)
 	Settings->MaxRoundsToWin = 5;
 	Settings->MinRoundTimeLimit = 60;
 	Settings->MaxRoundTimeLimit = 600;
+	Settings->MinKillLimit = 5;
+	Settings->MaxKillLimit = 100;
 
 	FSavaRoomSettings Valid;
 	Valid.ModeIndex = 0;
 	Valid.MapIndex = 1;
 	Valid.RoundsToWin = 3;
 	Valid.RoundTimeLimit = 120;
+	Valid.KillLimit = 20;
+	Valid.bTeamMatch = true;
 	TestTrue(TEXT("Valid settings are kept"), Settings->Sanitize(Valid) == Valid);
 
 	FSavaRoomSettings Broken;
@@ -102,7 +106,9 @@ bool FSavaLobbySanitizeRoomSettingsTest::RunTest(const FString&)
 	Broken.MapIndex = 9;
 	Broken.RoundsToWin = 99;
 	Broken.RoundTimeLimit = 5;
+	Broken.KillLimit = 999;
 	const FSavaRoomSettings Fixed = Settings->Sanitize(Broken);
+	TestEqual(TEXT("Kill limit is clamped"), Fixed.KillLimit, 100);
 	TestEqual(TEXT("Unknown mode falls back to the first"), Fixed.ModeIndex, 0);
 	TestEqual(TEXT("Unknown map falls back to the first"), Fixed.MapIndex, 0);
 	TestEqual(TEXT("Rounds are clamped"), Fixed.RoundsToWin, 5);
@@ -188,9 +194,37 @@ bool FSavaLobbyTravelURLTest::RunTest(const FString&)
 	TestTrue(TEXT("Has the rounds"), URL.Contains(TEXT("?Rounds=3")));
 	TestTrue(TEXT("Has the time limit"), URL.Contains(TEXT("?TimeLimit=120")));
 	TestTrue(TEXT("Has the player count"), URL.Contains(TEXT("?Players=6")));
+	TestFalse(TEXT("No kill limit for a mode that does not use it"), URL.Contains(TEXT("?Kills=")));
+	TestFalse(TEXT("No team option for a mode that cannot choose it"), URL.Contains(TEXT("?Teams=")));
 
 	RoomSettings.ModeIndex = 1;
 	TestTrue(TEXT("No URL for a mode without a GameMode"), ASavaLobbyGameMode::BuildMatchTravelURL(RoomSettings, 6).IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaLobbyKillLimitURLTest, "Sava.Lobby.MatchTravelURLKillsAndTeams",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaLobbyKillLimitURLTest::RunTest(const FString&)
+{
+	FSavaMatchModeOption Deathmatch = MakeMode(2, true);
+	Deathmatch.bUsesRounds = false;
+	Deathmatch.bUsesKillLimit = true;
+	Deathmatch.bCanChooseTeamMatch = true;
+	FScopedLobbyModes Modes({ Deathmatch });
+
+	FSavaRoomSettings RoomSettings;
+	RoomSettings.KillLimit = 15;
+	RoomSettings.bTeamMatch = true;
+	FString URL = ASavaLobbyGameMode::BuildMatchTravelURL(RoomSettings, 4);
+	TestFalse(TEXT("No rounds for a mode without rounds"), URL.Contains(TEXT("?Rounds=")));
+	TestTrue(TEXT("Has the kill limit"), URL.Contains(TEXT("?Kills=15")));
+	TestTrue(TEXT("Has team match"), URL.Contains(TEXT("?Teams=1")));
+
+	RoomSettings.bTeamMatch = false;
+	URL = ASavaLobbyGameMode::BuildMatchTravelURL(RoomSettings, 4);
+	TestTrue(TEXT("Has free-for-all"), URL.Contains(TEXT("?Teams=0")));
 
 	return true;
 }

@@ -19,6 +19,7 @@ FSavaRoomSettings USavaLobbySettings::MakeDefaultRoomSettings() const
 	RoomSettings.MapIndex = 0;
 	RoomSettings.RoundsToWin = DefaultRoundsToWin;
 	RoomSettings.RoundTimeLimit = DefaultRoundTimeLimit;
+	RoomSettings.KillLimit = DefaultKillLimit;
 	return Sanitize(RoomSettings);
 }
 
@@ -32,6 +33,7 @@ FSavaRoomSettings USavaLobbySettings::Sanitize(const FSavaRoomSettings& InSettin
 
 	Result.RoundsToWin = FMath::Clamp(Result.RoundsToWin, MinRoundsToWin, FMath::Max(MinRoundsToWin, MaxRoundsToWin));
 	Result.RoundTimeLimit = FMath::Clamp(Result.RoundTimeLimit, MinRoundTimeLimit, FMath::Max(MinRoundTimeLimit, MaxRoundTimeLimit));
+	Result.KillLimit = FMath::Clamp(Result.KillLimit, MinKillLimit, FMath::Max(MinKillLimit, MaxKillLimit));
 	return Result;
 }
 
