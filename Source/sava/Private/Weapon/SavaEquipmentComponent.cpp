@@ -15,7 +15,8 @@
 #include "savaCharacter.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
-
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
 namespace
 {
 	int32 ToIndex(ESavaWeaponSlot Slot)
@@ -531,22 +532,71 @@ void USavaEquipmentComponent::SpawnMuzzleFlash(const FVector& MuzzleLocation)
 {
 	const AActor* OwnerActor = GetOwner();
 
+	UE_LOG(LogTemp, Warning,
+		TEXT("[MuzzleFlash] SpawnMuzzleFlash called"));
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[MuzzleFlash] System: %s"),
+		MuzzleFlashSystem
+		? *MuzzleFlashSystem->GetName()
+		: TEXT("NULL"));
+
 	if (!OwnerActor || OwnerActor->GetNetMode() == NM_DedicatedServer)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] Owner invalid or DedicatedServer"));
 		return;
 	}
 
 	if (!MuzzleFlashSystem)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] System is NULL"));
 		return;
 	}
 
-	UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+	//腕のソケットにアタッチして生成し、動きながら撃っても銃口に追従させる
+	const USavaWeaponData* Weapon = GetCurrentWeaponData();
+	USkeletalMeshComponent* FirstPersonMesh = GetFirstPersonMesh();
+	if (Weapon && FirstPersonMesh && FirstPersonMesh->DoesSocketExist(Weapon->AttachSocketName))
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAttached(
+			MuzzleFlashSystem,
+			FirstPersonMesh,
+			Weapon->AttachSocketName,
+			Weapon->MuzzleOffset,
+			FRotator::ZeroRotator,
+			EAttachLocation::KeepRelativeOffset,
+			true
+		);
+		return;
+	}
+
+	//ソケットが無い場合は、受け取った位置にその場で生成する
+	UNiagaraComponent* NiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 		GetWorld(),
 		MuzzleFlashSystem,
 		MuzzleLocation,
-		FRotator::ZeroRotator
+		FRotator::ZeroRotator,
+		FVector(1.0f),
+		true,   // bAutoDestroy
+		false,  // bAutoActivate
+		ENCPoolMethod::None
 	);
+
+	if (!NiagaraComponent)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[MuzzleFlash] NiagaraComponent creation FAILED"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] NiagaraComponent created: %s"), *NiagaraComponent->GetName());
+
+	NiagaraComponent->SetVariableBool(FName(TEXT("User.Trigger")), true);
+
+	UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] Trigger set to true"));
+
+	NiagaraComponent->Activate(true);
+
+	UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] Activate called. Active=%d"), NiagaraComponent->IsActive() ? 1 : 0);
 }
 
 void USavaEquipmentComponent::DrawMuzzleDebug() const
