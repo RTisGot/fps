@@ -570,6 +570,24 @@ void USavaEquipmentComponent::SpawnMuzzleFlash(const FVector& MuzzleLocation)
 		return;
 	}
 
+	//腕のソケットにアタッチして生成し、動きながら撃っても銃口に追従させる
+	const USavaWeaponData* Weapon = GetCurrentWeaponData();
+	USkeletalMeshComponent* FirstPersonMesh = GetFirstPersonMesh();
+	if (Weapon && FirstPersonMesh && FirstPersonMesh->DoesSocketExist(Weapon->AttachSocketName))
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAttached(
+			MuzzleFlashSystem,
+			FirstPersonMesh,
+			Weapon->AttachSocketName,
+			Weapon->MuzzleOffset,
+			FRotator::ZeroRotator,
+			EAttachLocation::KeepRelativeOffset,
+			true
+		);
+		return;
+	}
+
+	//ソケットが無い場合は、受け取った位置にその場で生成する
 	//ソケットが無い場合は、受け取った位置にその場で生成する
 	UNiagaraComponent* NiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 		GetWorld(),
