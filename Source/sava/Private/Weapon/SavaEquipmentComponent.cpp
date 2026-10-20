@@ -515,21 +515,48 @@ bool USavaEquipmentComponent::GetCurrentMuzzleLocation(FVector& OutLocation) con
 		return false;
 	}
 
-
-
-	// MuzzleOffset 方式：アタッチソケット位置 + 回転後のオフセット
-
-	UE_LOG(LogTemp, Warning, TEXT("[GetCurrentMuzzleLocation] Using MuzzleOffset: AttachSocket=%s, Offset=%s"), *Weapon->AttachSocketName.ToString(), *Weapon->MuzzleOffset.ToString());
-	const FTransform AttachSocketTransform = FirstPersonMesh->GetSocketTransform(Weapon->AttachSocketName);
-	if (AttachSocketTransform.Equals(FTransform::Identity))
+	//武器メッシュにMuzzleSocketが存在する場合はその位置を優先する
+	if (WeaponMeshComponent &&
+		WeaponMeshComponent->GetStaticMesh() &&
+		WeaponMeshComponent->DoesSocketExist(TEXT("MuzzleSocket")))
 	{
-		// ソケットが存在しない・アタッチ未完了
+		OutLocation = WeaponMeshComponent->GetSocketLocation(TEXT("MuzzleSocket"));
+
+		UE_LOG(
+			LogTemp,
+			Verbose,
+			TEXT("[GetCurrentMuzzleLocation] Using MuzzleSocket: %s"),
+			*OutLocation.ToString()
+		);
+
+		return true;
+	}
+
+	//MuzzleSocketが存在しない場合はMuzzleOffsetを使用する
+	if (!FirstPersonMesh->DoesSocketExist(Weapon->AttachSocketName))
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[GetCurrentMuzzleLocation] MuzzleSocket and AttachSocket are unavailable.")
+		);
+
 		return false;
 	}
 
-	// マズル位置 = アタッチソケットWorld位置 + (回転後のMuzzleOffset)
-	OutLocation = AttachSocketTransform.GetLocation() + AttachSocketTransform.GetRotation().RotateVector(Weapon->MuzzleOffset);
-	UE_LOG(LogTemp, Warning, TEXT("[GetCurrentMuzzleLocation] Using MuzzleOffset, Location: %s"), *OutLocation.ToString());
+	const FTransform AttachSocketTransform =
+		FirstPersonMesh->GetSocketTransform(Weapon->AttachSocketName);
+
+	OutLocation =
+		AttachSocketTransform.GetLocation() +
+		AttachSocketTransform.GetRotation().RotateVector(Weapon->MuzzleOffset);
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[GetCurrentMuzzleLocation] Using MuzzleOffset fallback: %s"),
+		*OutLocation.ToString()
+	);
 
 	return true;
 }
@@ -538,74 +565,57 @@ void USavaEquipmentComponent::SpawnMuzzleFlash(const FVector& MuzzleLocation)
 {
 	const AActor* OwnerActor = GetOwner();
 
-	//武器データにエフェクトがあればそれを、無ければこのコンポーネントのものを使う
 	const USavaWeaponData* Weapon = GetCurrentWeaponData();
+
 	UNiagaraSystem* MuzzleFlash = Weapon && Weapon->MuzzleFlashEffect ? Weapon->MuzzleFlashEffect.Get() : MuzzleFlashSystem.Get();
-
-	UE_LOG(LogTemp, Warning,
-		TEXT("[MuzzleFlash] SpawnMuzzleFlash called"));
-
-	UE_LOG(LogTemp, Warning,
-		TEXT("[MuzzleFlash] System: %s"),
-		MuzzleFlash
-		? *MuzzleFlash->GetName()
-		: TEXT("NULL"));
 
 	if (!OwnerActor || OwnerActor->GetNetMode() == NM_DedicatedServer)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] Owner invalid or DedicatedServer"));
 		return;
 	}
 
 	if (!MuzzleFlash)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] System is NULL"));
 		return;
 	}
 
-	//腕のソケットにアタッチして生成し、動きながら撃っても銃口に追従させる
-	USkeletalMeshComponent* FirstPersonMesh = GetFirstPersonMesh();
-	if (Weapon && FirstPersonMesh && FirstPersonMesh->DoesSocketExist(Weapon->AttachSocketName))
+	// 武器メッシュのMuzzleSocketにアタッチする
+	if (WeaponMeshComponent && WeaponMeshComponent->GetStaticMesh() && WeaponMeshComponent->DoesSocketExist(TEXT("MuzzleSocket")))
 	{
 		UNiagaraFunctionLibrary::SpawnSystemAttached(
 			MuzzleFlash,
-			FirstPersonMesh,
-			Weapon->AttachSocketName,
-			Weapon->MuzzleOffset,
+			WeaponMeshComponent,
+			TEXT("MuzzleSocket"),
+			FVector::ZeroVector,
 			FRotator::ZeroRotator,
-			EAttachLocation::KeepRelativeOffset,
+			EAttachLocation::SnapToTarget,
 			true
 		);
+
 		return;
 	}
 
-	//ソケットが無い場合は、受け取った位置にその場で生成する
-	UNiagaraComponent* NiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-		GetWorld(),
-		MuzzleFlash,
-		MuzzleLocation,
-		FRotator::ZeroRotator,
-		FVector(1.0f),
-		true,   // bAutoDestroy
-		false,  // bAutoActivate
-		ENCPoolMethod::None
-	);
+	// MuzzleSocketがない場合は座標計算による位置を使用する
+	UNiagaraComponent* NiagaraComponent =
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(),
+			MuzzleFlash,
+			MuzzleLocation,
+			FRotator::ZeroRotator,
+			FVector(1.0f),
+			true,
+			true,
+			ENCPoolMethod::None
+		);
 
 	if (!NiagaraComponent)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[MuzzleFlash] NiagaraComponent creation FAILED"));
-		return;
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("[MuzzleFlash] NiagaraComponent creation failed.")
+		);
 	}
-
-	UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] NiagaraComponent created: %s"), *NiagaraComponent->GetName());
-
-	NiagaraComponent->SetVariableBool(FName(TEXT("User.Trigger")), true);
-
-	UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] Trigger set to true"));
-
-	NiagaraComponent->Activate(true);
-
-	UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] Activate called. Active=%d"), NiagaraComponent->IsActive() ? 1 : 0);
 }
 
 void USavaEquipmentComponent::DrawMuzzleDebug() const
