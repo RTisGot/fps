@@ -1,6 +1,6 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
-#include "Weapon/SavaWeaponTypes.h"
+#include "Weapon/SavaWeaponData.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponDamageFalloffTest, "Sava.Weapon.DamageFalloff",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -75,69 +75,82 @@ bool FSavaWeaponModifierTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponSliderTest, "Sava.Weapon.TuningSlider",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaWeaponSliderTest::RunTest(const FString&)
+{
+	FSavaWeaponTuningSlider Slider;
+	Slider.MaxModifier.DamageMultiplier = 1.21f;
+	Slider.MaxModifier.MagazineSizeAdd = 8;
+	Slider.MinModifier.DamageMultiplier = 0.5f;
+	Slider.MinModifier.MagazineSizeAdd = -5;
+
+	TestEqual(TEXT("0 changes nothing"), USavaWeaponLibrary::MakeSliderModifier(Slider, 0.0f).DamageMultiplier, 1.0f);
+	TestEqual(TEXT("0 adds nothing"), USavaWeaponLibrary::MakeSliderModifier(Slider, 0.0f).MagazineSizeAdd, 0);
+	TestEqual(TEXT("+1 uses the max end"), USavaWeaponLibrary::MakeSliderModifier(Slider, 1.0f).DamageMultiplier, 1.21f, 0.0001f);
+	TestEqual(TEXT("-1 uses the min end"), USavaWeaponLibrary::MakeSliderModifier(Slider, -1.0f).DamageMultiplier, 0.5f, 0.0001f);
+	TestEqual(TEXT("+0.5 is the square root of the max end"), USavaWeaponLibrary::MakeSliderModifier(Slider, 0.5f).DamageMultiplier, 1.1f, 0.0001f);
+	TestEqual(TEXT("+0.5 adds half"), USavaWeaponLibrary::MakeSliderModifier(Slider, 0.5f).MagazineSizeAdd, 4);
+	TestEqual(TEXT("-0.5 rounds away from zero"), USavaWeaponLibrary::MakeSliderModifier(Slider, -0.5f).MagazineSizeAdd, -3);
+	TestEqual(TEXT("Out of range is clamped"), USavaWeaponLibrary::MakeSliderModifier(Slider, 3.0f).DamageMultiplier, 1.21f, 0.0001f);
+
+	TestEqual(TEXT("Rounded to 0.01"), USavaWeaponLibrary::SanitizeSliderValue(-0.123456f), -0.12f);
+	TestEqual(TEXT("NaN becomes 0"), USavaWeaponLibrary::SanitizeSliderValue(std::numeric_limits<float>::quiet_NaN()), 0.0f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponTuningTest, "Sava.Weapon.Tuning",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FSavaWeaponTuningTest::RunTest(const FString&)
 {
-	const FSavaWeaponStats Base;
-	const FSavaWeaponTuningStrength Strength;
-	auto Tune = [&Base](const FSavaWeaponTuning& Tuning, const FSavaWeaponTuningStrength& InStrength)
-	{
-		return USavaWeaponLibrary::ApplyWeaponModifiers(Base, { USavaWeaponLibrary::MakeTuningModifier(Base, Tuning, InStrength) });
-	};
+	USavaWeaponData* Weapon = NewObject<USavaWeaponData>();
+	const FSavaWeaponStats& Base = Weapon->Stats;
+	TestEqual(TEXT("New weapons start with the recommended 6 sliders"), Weapon->TuningSliders.Num(), 6);
 
 	//スライダーが全部 0 なら何も変わらない
-	const FSavaWeaponStats Neutral = Tune(FSavaWeaponTuning(), Strength);
+	const FSavaWeaponStats Neutral = Weapon->GetTunedStats(FSavaWeaponTuning());
 	TestTrue(TEXT("Neutral tuning changes nothing"), FSavaWeaponStats::StaticStruct()->CompareScriptStruct(&Neutral, &Base, PPF_None));
 
 	//弾薬: 威力を上げた分だけ連射が遅くなり、DPS は変わらない
 	FSavaWeaponTuning HeavyAmmo;
-	HeavyAmmo.Ammo = 1.0f;
-	const FSavaWeaponStats Heavy = Tune(HeavyAmmo, Strength);
+	HeavyAmmo.SetSliderValue(TEXT("Ammo"), 1.0f);
+	const FSavaWeaponStats Heavy = Weapon->GetTunedStats(HeavyAmmo);
 	TestEqual(TEXT("Heavy ammo raises damage"), Heavy.BaseDamage, Base.BaseDamage * 1.15f, 0.01f);
-	TestEqual(TEXT("Heavy ammo raises head damage too"), Heavy.HeadDamage, Base.HeadDamage * 1.15f, 0.01f);
 	TestEqual(TEXT("Heavy ammo keeps DPS"), Heavy.BaseDamage / Heavy.GetFireInterval(), Base.BaseDamage / Base.GetFireInterval(), 0.01f);
 
-	//- 側は + 側の逆数
-	FSavaWeaponTuning LightAmmo;
-	LightAmmo.Ammo = -1.0f;
-	TestEqual(TEXT("Light ammo is the inverse"), Tune(LightAmmo, Strength).RateOfFire, Base.RateOfFire * 1.15f, 0.01f);
-
-	//マガジン: 弾数は元の弾数の 25% を丸めて増減
+	//マガジン: - 側は + 側の逆
 	FSavaWeaponTuning SmallMag;
-	SmallMag.Magazine = -1.0f;
-	const FSavaWeaponStats Small = Tune(SmallMag, Strength);
+	SmallMag.SetSliderValue(TEXT("Magazine"), -1.0f);
+	const FSavaWeaponStats Small = Weapon->GetTunedStats(SmallMag);
 	TestEqual(TEXT("Small magazine: 30 -> 22"), Small.MagazineSize, 22);
 	TestEqual(TEXT("Small magazine reloads faster"), Small.ReloadTime, Base.ReloadTime / 1.25f, 0.001f);
 
-	//バレル: 途中の値は倍率の途中になる(+0.5 で 1.25 ^ 0.5)
-	FSavaWeaponTuning HalfLongBarrel;
-	HalfLongBarrel.Barrel = 0.5f;
-	const FSavaWeaponStats HalfLong = Tune(HalfLongBarrel, Strength);
-	TestEqual(TEXT("Half long barrel: falloff"), HalfLong.FalloffStartDistance, Base.FalloffStartDistance * FMath::Sqrt(1.25f), 0.1f);
-	TestEqual(TEXT("Half long barrel: hip spread"), HalfLong.HipSpread, Base.HipSpread * FMath::Sqrt(1.3f), 0.001f);
+	//切り替え: 選んだ選択肢の効果が付く。選べないものは最初の選択肢になる
+	FSavaWeaponTuningToggle& Sight = Weapon->TuningToggles.AddDefaulted_GetRef();
+	Sight.Id = TEXT("Sight");
+	Sight.Options.AddDefaulted_GetRef().Id = TEXT("Iron");
+	FSavaWeaponTuningOption& Scope = Sight.Options.AddDefaulted_GetRef();
+	Scope.Id = TEXT("Scope");
+	Scope.Modifier.ADSZoomMultiplier = 0.5f;
 
-	//武器ごとの強さ: 0 なら効かない、2 なら倍率が 2 乗
-	FSavaWeaponTuningStrength NoBarrel;
-	NoBarrel.Barrel = 0.0f;
-	TestEqual(TEXT("Strength 0 disables the slider"), Tune(HalfLongBarrel, NoBarrel).HipSpread, Base.HipSpread);
-	FSavaWeaponTuningStrength DoubleMuzzle;
-	DoubleMuzzle.Muzzle = 2.0f;
-	FSavaWeaponTuning Compensator;
-	Compensator.Muzzle = 1.0f;
-	TestEqual(TEXT("Strength 2 squares the multiplier"), Tune(Compensator, DoubleMuzzle).VerticalRecoil, Base.VerticalRecoil * 0.64f, 0.001f);
+	FSavaWeaponTuning WithScope;
+	WithScope.SetToggleOption(TEXT("Sight"), TEXT("Scope"));
+	TestEqual(TEXT("Scope zooms in"), Weapon->GetTunedStats(WithScope).ADSZoom, Base.ADSZoom * 0.5f, 0.0001f);
+	TestEqual(TEXT("No choice means the first option"), Weapon->SanitizeTuning(FSavaWeaponTuning()).GetToggleOption(TEXT("Sight")), FName(TEXT("Iron")));
 
-	//範囲外・細かすぎる値は直す
+	//この武器に無いもの・範囲外の値は直す
 	FSavaWeaponTuning Broken;
-	Broken.Ammo = 5.0f;
-	Broken.Frame = -0.123456f;
-	Broken.Stock = std::numeric_limits<float>::quiet_NaN();
-	const FSavaWeaponTuning Fixed = Broken.GetSanitized();
-	TestEqual(TEXT("Clamped to 1"), Fixed.Ammo, 1.0f);
-	TestEqual(TEXT("Rounded to 0.01"), Fixed.Frame, -0.12f);
-	TestEqual(TEXT("NaN becomes 0"), Fixed.Stock, 0.0f);
-	TestEqual(TEXT("Out-of-range input is clamped before use"), Tune(Broken, Strength).BaseDamage, Base.BaseDamage * 1.15f, 0.01f);
+	Broken.SetSliderValue(TEXT("Unknown"), 1.0f);
+	Broken.SetSliderValue(TEXT("Barrel"), 5.0f);
+	Broken.SetToggleOption(TEXT("Sight"), TEXT("Unknown"));
+	const FSavaWeaponTuning Fixed = Weapon->SanitizeTuning(Broken);
+	TestFalse(TEXT("Unknown slider is removed"), Fixed.Sliders.ContainsByPredicate([](const FSavaWeaponTuningSliderValue& Value) { return Value.Slider == TEXT("Unknown"); }));
+	TestEqual(TEXT("Slider is clamped to 1"), Fixed.GetSliderValue(TEXT("Barrel")), 1.0f);
+	TestEqual(TEXT("Unknown option falls back to the first"), Fixed.GetToggleOption(TEXT("Sight")), FName(TEXT("Iron")));
+	TestEqual(TEXT("Order follows the weapon data"), Fixed.Sliders[0].Slider, FName(TEXT("Ammo")));
+	TestTrue(TEXT("Sanitized tuning is stable"), Weapon->SanitizeTuning(Fixed) == Fixed);
 	return true;
 }
 

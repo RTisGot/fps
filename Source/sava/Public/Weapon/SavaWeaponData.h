@@ -8,6 +8,7 @@
 #include "SavaWeaponData.generated.h"
 
 class UAnimMontage;
+class UNiagaraSystem;
 class USkeletalMesh;
 class UStaticMesh;
 class USoundBase;
@@ -21,6 +22,8 @@ class SAVA_API USavaWeaponData : public UPrimaryDataAsset
 	GENERATED_BODY()
 
 public:
+	USavaWeaponData();
+
 	//--------------------------------基本
 
 	//画面に出す名前
@@ -45,23 +48,32 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon", meta = (ShowOnlyInnerProperties))
 	FSavaWeaponStats Stats;
 
-	//カスタマイズのスライダーの効きの強さ(1 で標準、0 でそのスライダーは効かない)
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	FSavaWeaponTuningStrength TuningStrength;
+	//--------------------------------カスタマイズ(ロードアウト画面にはここに並べた順で出る)
 
-	//カスタマイズのスライダーの値を、この武器のカスタムにする
+	//スライダー(何かを強くする代わりに何かが弱くなる。新しく作った武器には、おすすめの 6 本が入っている)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tuning", meta = (TitleProperty = "Id"))
+	TArray<FSavaWeaponTuningSlider> TuningSliders;
+
+	//切り替え式(サイトなど。選択肢から 1 つ選ぶ)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tuning", meta = (TitleProperty = "Id"))
+	TArray<FSavaWeaponTuningToggle> TuningToggles;
+
+	//この武器に無い Id を消し、スライダーの値を範囲内に収め、選べない選択肢を最初の選択肢にしたものを返す
+	//(並びはこの武器のスライダー・切り替えの順にそろう)
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
-	FSavaWeaponModifier MakeTuningModifier(const FSavaWeaponTuning& Tuning) const
-	{
-		return USavaWeaponLibrary::MakeTuningModifier(Stats, Tuning, TuningStrength);
-	}
+	FSavaWeaponTuning SanitizeTuning(const FSavaWeaponTuning& Tuning) const;
+
+	//カスタマイズを、この武器のカスタムにする(スライダー 1 本・切り替え 1 つごとに 1 つ)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	TArray<FSavaWeaponModifier> MakeTuningModifiers(const FSavaWeaponTuning& Tuning) const;
 
 	//カスタマイズを適用した数値(ロードアウト画面で数値を見せる用)
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
-	FSavaWeaponStats GetTunedStats(const FSavaWeaponTuning& Tuning) const
-	{
-		return USavaWeaponLibrary::ApplyWeaponModifiers(Stats, { MakeTuningModifier(Tuning) });
-	}
+	FSavaWeaponStats GetTunedStats(const FSavaWeaponTuning& Tuning) const;
+
+	//Id でスライダー・切り替えを探す(無ければ nullptr。重なっていれば最初のもの)
+	const FSavaWeaponTuningSlider* FindTuningSlider(FName Id) const;
+	const FSavaWeaponTuningToggle* FindTuningToggle(FName Id) const;
 
 	//--------------------------------見た目・音(自分の画面だけ)
 
@@ -86,7 +98,11 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	FName MuzzleSocketName = NAME_None;
 
-	//マズルフラッシュの色
+	//撃つたびに銃口に出すエフェクト。空なら、キャラクターの Equipment Component の Muzzle Flash System を使う
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TObjectPtr<UNiagaraSystem> MuzzleFlashEffect;
+
+	//マズル位置のデバッグ描画の色
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	FColor MuzzleFlashColor = FColor::Red;
 

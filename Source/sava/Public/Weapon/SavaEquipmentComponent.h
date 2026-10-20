@@ -142,7 +142,7 @@ public:
 
 	//--------------------------------武器演出
 
-	// 発砲時に銃口へ生成するマズルフラッシュ
+	// 発砲時に銃口へ生成するマズルフラッシュ(武器データの Muzzle Flash Effect が空の武器だけ、これを使う)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon|Visual")
 	TObjectPtr<UNiagaraSystem> MuzzleFlashSystem;
 

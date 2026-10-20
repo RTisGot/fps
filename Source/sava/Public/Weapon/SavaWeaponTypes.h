@@ -6,6 +6,8 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "SavaWeaponTypes.generated.h"
 
+class UTexture2D;
+
 //撃ち方(BP の E_FireMode を移したもの)
 UENUM(BlueprintType)
 enum class ESavaFireMode : uint8
@@ -225,84 +227,134 @@ struct SAVA_API FSavaWeaponModifier
 	float HitScanRadiusMultiplier = 1.0f;
 };
 
-//カスタマイズのスライダー(1 本ごとに、何かを強くする代わりに何かが弱くなる。- / + はスライダーを左右に振った側)
-UENUM(BlueprintType)
-enum class ESavaWeaponTuning : uint8
+//--------------------------------カスタマイズ(武器データに並べて、武器ごとに中身を変えられる)
+
+//スライダー 1 本の定義
+//スライダーの値は -1 〜 +1。+1 で Max Modifier、-1 で Min Modifier がそのまま効き、途中の値はその間になる(0 で変化なし)
+//Max と Min に逆向きの効果を入れると「何かを強くする代わりに何かが弱くなる」スライダーになる
+USTRUCT(BlueprintType)
+struct SAVA_API FSavaWeaponTuningSlider
 {
-	//- 連射重視 / + 威力重視(ダメージと連射速度を逆に動かすので、DPS は変わらない)
-	Ammo,
-	//- 早いリロード / + 大容量(弾数とリロード時間)
-	Magazine,
-	//- 横ブレ抑制 / + 跳ね上がり抑制
-	Muzzle,
-	//- 素早い構え / + 安定した構え(ADS 中の移動ブレ・反動の戻り)
-	Stock,
-	//- 取り回し(腰撃ちの拡散) / + 射程(減衰の距離)
-	Barrel,
-	//- 軽量(移動・空中の拡散が小さい) / + 重量(ADS の拡散が小さい)
-	Frame,
+	GENERATED_BODY()
+
+	//保存・通信に使う名前(同じ武器の中で重ならないようにする。変えると、プレイヤーが決めた値は 0 に戻る)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FName Id;
+
+	//画面に出す名前(例: バレル)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FText DisplayName;
+
+	//左端(-1)・右端(+1)に出す説明(例: 取り回し / 射程)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FText MinLabel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FText MaxLabel;
+
+	//左端(-1)まで振ったときの効果
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FSavaWeaponModifier MinModifier;
+
+	//右端(+1)まで振ったときの効果
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FSavaWeaponModifier MaxModifier;
 };
 
-//カスタマイズのスライダーの値(-1 〜 +1。0 で変化なし)
+//切り替え式のカスタマイズの選択肢 1 つ(例: ホロサイト)
+USTRUCT(BlueprintType)
+struct SAVA_API FSavaWeaponTuningOption
+{
+	GENERATED_BODY()
+
+	//保存・通信に使う名前(同じ切り替えの中で重ならないようにする)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FName Id;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FText DisplayName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	TObjectPtr<UTexture2D> Icon;
+
+	//これを選んだときの効果(サイトなら ADS Zoom Multiplier・ADS Time Multiplier など)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FSavaWeaponModifier Modifier;
+};
+
+//切り替え式のカスタマイズ 1 つ(例: サイト)。選択肢からどれか 1 つを選ぶ。最初の選択肢が初期値
+USTRUCT(BlueprintType)
+struct SAVA_API FSavaWeaponTuningToggle
+{
+	GENERATED_BODY()
+
+	//保存・通信に使う名前(同じ武器の中で重ならないようにする)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FName Id;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning")
+	FText DisplayName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Tuning", meta = (TitleProperty = "Id"))
+	TArray<FSavaWeaponTuningOption> Options;
+};
+
+//プレイヤーが決めたスライダー 1 本の値
+USTRUCT(BlueprintType)
+struct SAVA_API FSavaWeaponTuningSliderValue
+{
+	GENERATED_BODY()
+
+	//FSavaWeaponTuningSlider の Id
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning")
+	FName Slider;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
+	float Value = 0.0f;
+
+	bool operator==(const FSavaWeaponTuningSliderValue& Other) const { return Slider == Other.Slider && Value == Other.Value; }
+};
+
+//プレイヤーが切り替えで選んだもの
+USTRUCT(BlueprintType)
+struct SAVA_API FSavaWeaponTuningToggleValue
+{
+	GENERATED_BODY()
+
+	//FSavaWeaponTuningToggle の Id
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning")
+	FName Toggle;
+
+	//FSavaWeaponTuningOption の Id
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning")
+	FName Option;
+
+	bool operator==(const FSavaWeaponTuningToggleValue& Other) const { return Toggle == Other.Toggle && Option == Other.Option; }
+};
+
+//プレイヤーが決めた 1 つの武器のカスタマイズ(Id で持つので、武器データで並べ替えても保存した値は残る)
+//値の範囲や、その武器にある Id かどうかは USavaWeaponData::SanitizeTuning で直す
 USTRUCT(BlueprintType)
 struct SAVA_API FSavaWeaponTuning
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
-	float Ammo = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning")
+	TArray<FSavaWeaponTuningSliderValue> Sliders;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
-	float Magazine = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning")
+	TArray<FSavaWeaponTuningToggleValue> Toggles;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
-	float Muzzle = 0.0f;
+	//無ければ 0
+	float GetSliderValue(FName Slider) const;
+	void SetSliderValue(FName Slider, float Value);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
-	float Stock = 0.0f;
+	//無ければ None
+	FName GetToggleOption(FName Toggle) const;
+	void SetToggleOption(FName Toggle, FName Option);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
-	float Barrel = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "-1", ClampMax = "1"))
-	float Frame = 0.0f;
-
-	float GetValue(ESavaWeaponTuning Tuning) const;
-	void SetValue(ESavaWeaponTuning Tuning, float Value);
-
-	//-1 〜 +1 に収め、0.01 刻みに丸めた値(クライアントから届いた値・保存した値に使う)
-	FSavaWeaponTuning GetSanitized() const;
-
-	bool operator==(const FSavaWeaponTuning& Other) const;
+	bool operator==(const FSavaWeaponTuning& Other) const { return Sliders == Other.Sliders && Toggles == Other.Toggles; }
 	bool operator!=(const FSavaWeaponTuning& Other) const { return !(*this == Other); }
-};
-
-//武器ごとの、カスタマイズの効きの強さ(1 で標準。0 にするとそのスライダーは効かない)
-//スライダーを端まで振ったときの倍率が「標準の倍率 ^ この値」になる(2 なら効きが 2 倍)
-USTRUCT(BlueprintType)
-struct SAVA_API FSavaWeaponTuningStrength
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
-	float Ammo = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
-	float Magazine = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
-	float Muzzle = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
-	float Stock = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
-	float Barrel = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tuning", meta = (ClampMin = "0", ClampMax = "3"))
-	float Frame = 1.0f;
-
-	float GetValue(ESavaWeaponTuning Tuning) const;
 };
 
 //武器の数値の計算(Blueprint からも呼べる)
@@ -316,16 +368,27 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
 	static FSavaWeaponStats ApplyWeaponModifiers(const FSavaWeaponStats& BaseStats, const TArray<FSavaWeaponModifier>& Modifiers);
 
-	//カスタマイズのスライダーの値を、1 つのカスタムにする(弾数の増減は BaseStats のマガジンの弾数から決める)
+	//スライダーの値(-1 〜 +1)を、1 つのカスタムにする
+	//掛け算は「端の倍率 ^ 振った量」、足し算は「端の値 × 振った量」を丸めたもの
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
-	static FSavaWeaponModifier MakeTuningModifier(const FSavaWeaponStats& BaseStats, const FSavaWeaponTuning& Tuning, const FSavaWeaponTuningStrength& Strength);
+	static FSavaWeaponModifier MakeSliderModifier(const FSavaWeaponTuningSlider& Slider, float Value);
 
-	//スライダー 1 本分の値を読み書きする(スライダーの Widget を 1 つ作って使い回す用)
+	//-1 〜 +1 に収め、0.01 刻みに丸めた値(クライアントから届いた値・保存した値に使う)
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
-	static float GetTuningValue(const FSavaWeaponTuning& Tuning, ESavaWeaponTuning Slider) { return Tuning.GetValue(Slider); }
+	static float SanitizeSliderValue(float Value);
+
+	//カスタマイズの値を読み書きする(スライダー・切り替えの Widget から使う)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	static float GetTuningSliderValue(const FSavaWeaponTuning& Tuning, FName Slider) { return Tuning.GetSliderValue(Slider); }
 
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
-	static FSavaWeaponTuning SetTuningValue(FSavaWeaponTuning Tuning, ESavaWeaponTuning Slider, float Value);
+	static FSavaWeaponTuning SetTuningSliderValue(FSavaWeaponTuning Tuning, FName Slider, float Value);
+
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	static FName GetTuningToggleOption(const FSavaWeaponTuning& Tuning, FName Toggle) { return Tuning.GetToggleOption(Toggle); }
+
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	static FSavaWeaponTuning SetTuningToggleOption(FSavaWeaponTuning Tuning, FName Toggle, FName Option);
 
 	//1 発ごとの間隔(秒)
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")

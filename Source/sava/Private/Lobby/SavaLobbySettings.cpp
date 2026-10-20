@@ -116,6 +116,12 @@ bool USavaLobbySettings::GetModeOption(int32 ModeIndex, FSavaMatchModeOption& Ou
 	return false;
 }
 
+bool USavaLobbySettings::UsesTeams(const FSavaRoomSettings& RoomSettings)
+{
+	const FSavaMatchModeOption* Mode = GetDefault<USavaLobbySettings>()->FindMode(RoomSettings.ModeIndex);
+	return !Mode || !Mode->bCanChooseTeamMatch || RoomSettings.bTeamMatch;
+}
+
 void USavaLobbySettings::GetRoomSettingsDisplayNames(const FSavaRoomSettings& RoomSettings, FText& OutModeName, FText& OutMapName)
 {
 	OutModeName = FText::GetEmpty();

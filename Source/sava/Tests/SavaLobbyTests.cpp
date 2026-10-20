@@ -203,6 +203,28 @@ bool FSavaLobbyTravelURLTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaLobbyUsesTeamsTest, "Sava.Lobby.UsesTeams",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaLobbyUsesTeamsTest::RunTest(const FString&)
+{
+	FSavaMatchModeOption Deathmatch = MakeMode(2, true);
+	Deathmatch.bCanChooseTeamMatch = true;
+	FScopedLobbyModes Modes({ MakeMode(4, true), Deathmatch });
+
+	FSavaRoomSettings RoomSettings;
+	RoomSettings.ModeIndex = 0;
+	RoomSettings.bTeamMatch = false;
+	TestTrue(TEXT("A mode that cannot choose is always a team match"), USavaLobbySettings::UsesTeams(RoomSettings));
+
+	RoomSettings.ModeIndex = 1;
+	TestFalse(TEXT("Free-for-all has no teams"), USavaLobbySettings::UsesTeams(RoomSettings));
+	RoomSettings.bTeamMatch = true;
+	TestTrue(TEXT("Team match has teams"), USavaLobbySettings::UsesTeams(RoomSettings));
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaLobbyKillLimitURLTest, "Sava.Lobby.MatchTravelURLKillsAndTeams",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 

@@ -40,14 +40,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
 	void SetWeapon(ESavaWeaponSlot Slot, USavaWeaponData* Weapon);
 
-	//武器のカスタマイズ(スライダーの値)を変える。武器ごとに覚えておき、武器を選び直すと前の値に戻る
+	//武器のカスタマイズ(スライダーの値・切り替えの選択)を変える。武器ごとに覚えておき、武器を選び直すと前の値に戻る
 	//変えるたびに保存してサーバーへ送るので、スライダーを動かしている最中ではなく離したときに呼ぶ
 	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
 	void SetWeaponTuning(ESavaWeaponSlot Slot, const FSavaWeaponTuning& Tuning);
 
-	//スライダー 1 本分だけ変える
+	//スライダー 1 本分だけ変える(Slider は武器データの Tuning Sliders の Id)
 	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
-	void SetWeaponTuningValue(ESavaWeaponSlot Slot, ESavaWeaponTuning Slider, float Value);
+	void SetWeaponTuningSliderValue(ESavaWeaponSlot Slot, FName Slider, float Value);
+
+	//切り替え 1 つ分だけ変える(Toggle・Option は武器データの Tuning Toggles の Id)
+	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
+	void SetWeaponTuningOption(ESavaWeaponSlot Slot, FName Toggle, FName Option);
 
 	UFUNCTION(BlueprintCallable, Category = "Sava|Loadout")
 	void SetSkill(USavaSkillData* Skill);

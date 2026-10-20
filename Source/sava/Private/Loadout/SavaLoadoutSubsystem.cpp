@@ -46,10 +46,17 @@ void USavaLoadoutSubsystem::SetWeaponTuning(ESavaWeaponSlot Slot, const FSavaWea
 	ApplyChange(NewLoadout);
 }
 
-void USavaLoadoutSubsystem::SetWeaponTuningValue(ESavaWeaponSlot Slot, ESavaWeaponTuning Slider, float Value)
+void USavaLoadoutSubsystem::SetWeaponTuningSliderValue(ESavaWeaponSlot Slot, FName Slider, float Value)
 {
 	FSavaWeaponTuning Tuning = GetWeaponTuning(Slot);
-	Tuning.SetValue(Slider, Value);
+	Tuning.SetSliderValue(Slider, Value);
+	SetWeaponTuning(Slot, Tuning);
+}
+
+void USavaLoadoutSubsystem::SetWeaponTuningOption(ESavaWeaponSlot Slot, FName Toggle, FName Option)
+{
+	FSavaWeaponTuning Tuning = GetWeaponTuning(Slot);
+	Tuning.SetToggleOption(Toggle, Option);
 	SetWeaponTuning(Slot, Tuning);
 }
 
@@ -240,10 +247,8 @@ void USavaLoadoutSubsystem::LoadFromDisk()
 	if (const USavaLoadoutSaveGame* SaveGame = Cast<USavaLoadoutSaveGame>(UGameplayStatics::LoadGameFromSlot(SavaLoadout::SaveSlotName, 0)))
 	{
 		Saved = SaveGame->Loadout;
-		for (const TPair<FSoftObjectPath, FSavaWeaponTuning>& Pair : SaveGame->WeaponTunings)
-		{
-			WeaponTunings.Add(Pair.Key, Pair.Value.GetSanitized());
-		}
+		//武器ごとのカスタマイズは、その武器を選んだときに Sanitize で直る
+		WeaponTunings = SaveGame->WeaponTunings;
 	}
 
 	//初めての起動(保存がない)や、保存した武器がもう選べない場合は、各リストの最初のものになる
@@ -334,8 +339,23 @@ namespace SavaLoadout
 				*Loadout.Skill.GetAssetName(), *Loadout.Gadget.GetAssetName());
 		}));
 
+	void LogTuning(const USavaLoadoutSubsystem* Subsystem, ESavaWeaponSlot Slot)
+	{
+		const FSavaWeaponTuning Tuning = Subsystem->GetWeaponTuning(Slot);
+		TArray<FString> Parts;
+		for (const FSavaWeaponTuningSliderValue& Value : Tuning.Sliders)
+		{
+			Parts.Add(FString::Printf(TEXT("%s %.2f"), *Value.Slider.ToString(), Value.Value));
+		}
+		for (const FSavaWeaponTuningToggleValue& Value : Tuning.Toggles)
+		{
+			Parts.Add(FString::Printf(TEXT("%s %s"), *Value.Toggle.ToString(), *Value.Option.ToString()));
+		}
+		UE_LOG(LogSavaLoadout, Log, TEXT("%s のカスタマイズ: %s"), Slot == ESavaWeaponSlot::Primary ? TEXT("Primary") : TEXT("Secondary"), *FString::Join(Parts, TEXT(" / ")));
+	}
+
 	static FAutoConsoleCommandWithWorldAndArgs SetTuningCommand(
-		TEXT("Sava.SetTuning"), TEXT("武器のカスタマイズを変える。例: Sava.SetTuning Primary Barrel 0.5(スライダーは Ammo / Magazine / Muzzle / Stock / Barrel / Frame、値は -1 〜 1)"),
+		TEXT("Sava.SetTuning"), TEXT("武器のスライダーを変える。例: Sava.SetTuning Primary Barrel 0.5(スライダーは武器データの Tuning Sliders の Id、値は -1 〜 1)"),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
 		{
 			UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
@@ -346,17 +366,39 @@ namespace SavaLoadout
 			}
 
 			const ESavaWeaponSlot Slot = Args[0] == TEXT("Secondary") ? ESavaWeaponSlot::Secondary : ESavaWeaponSlot::Primary;
-			const int64 SliderValue = StaticEnum<ESavaWeaponTuning>()->GetValueByNameString(Args[1]);
-			if (SliderValue == INDEX_NONE)
+			const USavaWeaponData* Weapon = Subsystem->GetWeapon(Slot);
+			if (!Weapon || !Weapon->FindTuningSlider(FName(*Args[1])))
 			{
-				UE_LOG(LogSavaLoadout, Warning, TEXT("%s というスライダーはありません"), *Args[1]);
+				UE_LOG(LogSavaLoadout, Warning, TEXT("%s に %s というスライダーはありません"), Weapon ? *Weapon->GetName() : TEXT("武器"), *Args[1]);
 				return;
 			}
 
-			const ESavaWeaponTuning Slider = static_cast<ESavaWeaponTuning>(SliderValue);
-			Subsystem->SetWeaponTuningValue(Slot, Slider, FCString::Atof(*Args[2]));
-			const FSavaWeaponTuning Tuning = Subsystem->GetWeaponTuning(Slot);
-			UE_LOG(LogSavaLoadout, Log, TEXT("%s のカスタマイズ: Ammo %.2f / Magazine %.2f / Muzzle %.2f / Stock %.2f / Barrel %.2f / Frame %.2f"),
-				*Args[0], Tuning.Ammo, Tuning.Magazine, Tuning.Muzzle, Tuning.Stock, Tuning.Barrel, Tuning.Frame);
+			Subsystem->SetWeaponTuningSliderValue(Slot, FName(*Args[1]), FCString::Atof(*Args[2]));
+			LogTuning(Subsystem, Slot);
+		}));
+
+	static FAutoConsoleCommandWithWorldAndArgs SetTuningOptionCommand(
+		TEXT("Sava.SetTuningOption"), TEXT("武器の切り替え式のカスタマイズを変える。例: Sava.SetTuningOption Primary Sight Holo(武器データの Tuning Toggles の Id と、その Options の Id)"),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+			USavaLoadoutSubsystem* Subsystem = GameInstance ? GameInstance->GetSubsystem<USavaLoadoutSubsystem>() : nullptr;
+			if (!Subsystem || Args.Num() < 3)
+			{
+				return;
+			}
+
+			const ESavaWeaponSlot Slot = Args[0] == TEXT("Secondary") ? ESavaWeaponSlot::Secondary : ESavaWeaponSlot::Primary;
+			const USavaWeaponData* Weapon = Subsystem->GetWeapon(Slot);
+			const FSavaWeaponTuningToggle* Toggle = Weapon ? Weapon->FindTuningToggle(FName(*Args[1])) : nullptr;
+			const FName OptionId(*Args[2]);
+			if (!Toggle || !Toggle->Options.ContainsByPredicate([OptionId](const FSavaWeaponTuningOption& Option) { return Option.Id == OptionId; }))
+			{
+				UE_LOG(LogSavaLoadout, Warning, TEXT("%s に %s / %s という切り替えはありません"), Weapon ? *Weapon->GetName() : TEXT("武器"), *Args[1], *Args[2]);
+				return;
+			}
+
+			Subsystem->SetWeaponTuningOption(Slot, Toggle->Id, OptionId);
+			LogTuning(Subsystem, Slot);
 		}));
 }
