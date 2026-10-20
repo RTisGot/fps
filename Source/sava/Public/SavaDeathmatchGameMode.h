@@ -6,10 +6,12 @@
 #include "savaGameMode.h"
 #include "SavaDeathmatchGameMode.generated.h"
 
+class APlayerState;
 class ASavaGameState;
 class ASavaPlayerState;
 
-//デスマッチ。倒されても RespawnDelay 秒後にリスポーンする。個人戦とチーム戦はルーム設定で選ぶ(URL の Teams)
+//デスマッチ。仕様は Docs/Deathmatch.md
+//倒されても RespawnDelay 秒後にリスポーンする。個人戦とチーム戦はルーム設定で選ぶ(URL の Teams)
 //個人戦: 全員チームなし(全員が敵)。KillLimit キルに最初に届いた人の勝ち
 //チーム戦: 待合室のチームのまま。チームの合計キルが KillLimit に最初に届いたチームの勝ち
 //・時間切れならキル数(チーム戦ならチームの合計)が一番多い方の勝ち(同数なら引き分けで全員を勝者として記録する)
@@ -30,12 +32,23 @@ public:
 	virtual void HandleSeamlessTravelPlayer(AController*& C) override;
 	virtual void Logout(AController* Exiting) override;
 	virtual void RestartPlayer(AController* NewPlayer) override;
+	virtual bool ShouldSpawnAtStartSpot(AController* Player) override;
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 
 	//試合中はロードアウトを変えられない。最初の 1 回(待合室を通らずに入ったときの分)だけ受け付ける
 	virtual bool CanChangeLoadout(const ASavaPlayerState* PlayerState) const override;
 
 	//キル数が増えたときに ASavaPlayerState が呼ぶ。KillLimit に届いたら試合を終える
 	void CheckKillLimit(ASavaPlayerState* Killer);
+
+	//勝者を決める(時間切れのとき)。個人戦: キル数が一番多い人(同数なら全員)
+	//チーム戦: 合計キルが一番多いチームの全員(同数なら並んだチームの全員で、OutWinnerTeamId は NoTeam)
+	static void DecideWinners(const TArray<APlayerState*>& Players, bool bTeamMatch, int32 NumTeams,
+		TArray<ASavaPlayerState*>& OutWinners, int32& OutWinningKills, uint8& OutWinnerTeamId);
+
+	//スポーン地点の候補を選ぶ。使用中(Occupied の近く)を除き、一番近い敵が一番遠い地点と、それに近いくらい安全な地点の番号を返す
+	//敵がいなければ空いている地点すべて。全部使用中なら全部
+	static TArray<int32> FindSafestStarts(const TArray<FVector>& StartLocations, const TArray<FVector>& EnemyLocations, const TArray<FVector>& OccupiedLocations);
 
 protected:
 	virtual void RespawnPlayer(TWeakObjectPtr<AController> Controller) override;
@@ -73,12 +86,10 @@ private:
 	void BeginMatchPlay();
 	void OnMatchTimeUp();
 	//WinnerTeamId はチーム戦で勝ったチーム(個人戦・引き分けなら NoTeam)
-	void FinishMatch(const TArray<FString>& WinnerNames, int32 WinningKills, uint8 WinnerTeamId);
+	void FinishMatch(const TArray<ASavaPlayerState*>& Winners, int32 WinningKills, uint8 WinnerTeamId);
 
-	//チームの合計キル数
-	int32 GetTeamKills(uint8 TeamId) const;
-	//チームの全員の名前
-	TArray<FString> GetTeamPlayerNames(uint8 TeamId) const;
+	//チームの全員
+	TArray<ASavaPlayerState*> GetTeamPlayers(uint8 TeamId) const;
 
 	//待合室から移ってくる人数(URL の Players。直接このマップを開いたときは 0)
 	int32 ExpectedPlayers = 0;

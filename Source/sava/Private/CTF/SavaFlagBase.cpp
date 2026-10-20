@@ -2,6 +2,7 @@
 
 #include "CTF/SavaFlagBase.h"
 #include "CTF/SavaFlag.h"
+#include "CTF/SavaCTFGameMode.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
@@ -39,6 +40,13 @@ ASavaFlagBase::ASavaFlagBase()
 void ASavaFlagBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	//CTF 以外(デスマッチなど)では旗台ごと消す。サーバーで消せば、レベルに置いた物でもクライアントから消える
+	if (HasAuthority() && !GetWorld()->GetAuthGameMode<ASavaCTFGameMode>())
+	{
+		Destroy();
+		return;
+	}
 
 	//旗はサーバーだけがスポーンする(クライアントへは複製で届く)
 	if (HasAuthority() && FlagClass)

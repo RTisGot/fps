@@ -6,6 +6,8 @@
 #include "GameFramework/GameStateBase.h"
 #include "SavaGameState.generated.h"
 
+class ASavaPlayerState;
+
 //ラウンドの段階
 UENUM(BlueprintType)
 enum class ESavaRoundPhase : uint8
@@ -100,10 +102,41 @@ public:
 		return DeathmatchWinningKills;
 	}
 
-	// サーバーからデスマッチの結果を設定
-	void SetDeathmatchResults(
-		const TArray<FString>& WinnerNames,
-		int32 WinningKills);
+	//---- デスマッチ(ASavaDeathmatchGameMode が値を入れる。CTF では使わない)
+
+	//デスマッチの試合か
+	UFUNCTION(BlueprintPure, Category = "Sava|Deathmatch")
+	bool IsDeathmatch() const { return bIsDeathmatch; }
+
+	//デスマッチのチーム戦か(個人戦なら false)
+	UFUNCTION(BlueprintPure, Category = "Sava|Deathmatch")
+	bool IsDeathmatchTeamMatch() const { return bDeathmatchTeamMatch; }
+
+	//勝利に必要なキル数(チーム戦ならチームの合計)
+	UFUNCTION(BlueprintPure, Category = "Sava|Deathmatch")
+	int32 GetDeathmatchKillLimit() const { return DeathmatchKillLimit; }
+
+	//チームの合計キル数(全員の PlayerState から数えるので、クライアントでも使える)
+	UFUNCTION(BlueprintPure, Category = "Sava|Deathmatch")
+	int32 GetTeamKills(uint8 TeamId) const;
+
+	//全員をキル数の多い順に並べたもの(同じならデスの少ない順)。リザルト・スコア表示用
+	UFUNCTION(BlueprintPure, Category = "Sava|Deathmatch")
+	TArray<ASavaPlayerState*> GetPlayersByKills() const;
+
+	//勝者(個人戦: 1 位の人。同率なら全員 / チーム戦: 勝ったチームの全員。引き分けなら並んだチームの全員)
+	//チーム戦で勝ったチームの番号は GetMatchWinner(引き分けなら 255)
+	UFUNCTION(BlueprintPure, Category = "Sava|Deathmatch")
+	TArray<ASavaPlayerState*> GetDeathmatchWinners() const;
+
+	//引き分けか(個人戦: 1 位が複数 / チーム戦: 勝ったチームがない)。試合が終わってから使う
+	UFUNCTION(BlueprintPure, Category = "Sava|Deathmatch")
+	bool IsDeathmatchDraw() const;
+
+	//以下はサーバー(ASavaDeathmatchGameMode)だけが呼ぶ
+	void SetDeathmatchRules(bool bTeamMatch, int32 KillLimit);
+	//WinnerTeamId はチーム戦で勝ったチーム(個人戦・引き分けなら NoTeam)
+	void SetDeathmatchResults(const TArray<ASavaPlayerState*>& Winners, int32 WinningKills, uint8 WinnerTeamId);
 
 	//以下はサーバー(ASavaCTFGameMode)だけが呼ぶ
 	void InitTeams(int32 NumTeams);
@@ -146,5 +179,19 @@ private:
 	UPROPERTY(Replicated)
 	int32 DeathmatchWinningKills = 0;
 
+	//勝者(GetDeathmatchWinners を参照)
+	UPROPERTY(Replicated)
+	TArray<TObjectPtr<ASavaPlayerState>> DeathmatchWinners;
+
+	UPROPERTY(Replicated)
+	bool bIsDeathmatch = false;
+
+	UPROPERTY(Replicated)
+	bool bDeathmatchTeamMatch = false;
+
+	UPROPERTY(Replicated)
+	int32 DeathmatchKillLimit = 0;
+
 	void DrawDebugText() const;
+	void DrawDeathmatchDebugText() const;
 };

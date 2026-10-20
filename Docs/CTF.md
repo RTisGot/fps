@@ -77,6 +77,8 @@ WaitingToStart → PreRound(カウントダウン・移動不可) → InRound �
 旗の見た目を変えたいときは `SavaFlag` を親に BP を作り、メッシュを差し替えて `SavaFlagBase` の `Flag Class` に入れる。
 布のマテリアルにベクターパラメーター `Color` があると、チームの色（`Team Colors`）が入る。
 
+`SavaFlagBase` は CTF 以外のモード(デスマッチなど)ではプレイ開始時に自分を消すので、同じマップを他のモードでも使える。
+
 ## 実装メモ
 - 奈落（KillZ）に落ちたキャラクターは死亡扱いになる（`AsavaCharacter::FellOutOfWorld`）。以前は体が消えるだけでリスポーンされなかった
 - 運び手の判定（死亡・切断・持ち帰り）と拾う判定は、サーバーで旗の Tick ごとに行う
