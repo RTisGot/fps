@@ -46,15 +46,20 @@ void ASavaDeathmatchGameMode::InitGame(const FString& MapName, const FString& Op
 	bUseTeams = UGameplayStatics::GetIntOption(Options, SavaMatchOptions::TeamMatch, bUseTeams ? 1 : 0) != 0;
 	ExpectedPlayers = FMath::Max(0, UGameplayStatics::GetIntOption(Options, SavaMatchOptions::ExpectedPlayers, 0));
 
-	//GameState は InitGame より先に作られているので、ここで試合のルールを入れる(UI・デバッグ表示が読む)
+	UE_LOG(LogSavaDeathmatch, Log, TEXT("Match settings: %s, %.0f s, %d kills to win, waiting for %d players."),
+		bUseTeams ? TEXT("team") : TEXT("free-for-all"), MatchDuration, KillLimit, ExpectedPlayers);
+}
+
+void ASavaDeathmatchGameMode::InitGameState()
+{
+	Super::InitGameState();
+
+	//GameState は InitGame の後に作られるので、試合のルールはここで入れる(UI・デバッグ表示が読む)
 	if (ASavaGameState* SavaGameState = GetSavaGameState())
 	{
 		SavaGameState->InitTeams(bUseTeams ? NumTeams : 0);
 		SavaGameState->SetDeathmatchRules(bUseTeams, KillLimit);
 	}
-
-	UE_LOG(LogSavaDeathmatch, Log, TEXT("Match settings: %s, %.0f s, %d kills to win, waiting for %d players."),
-		bUseTeams ? TEXT("team") : TEXT("free-for-all"), MatchDuration, KillLimit, ExpectedPlayers);
 }
 
 TArray<ASavaPlayerState*> ASavaDeathmatchGameMode::GetTeamPlayers(uint8 TeamId) const

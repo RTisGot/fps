@@ -27,6 +27,8 @@ public:
 
 	//ロビーのルーム設定を URL のオプションから読む(TimeLimit・Kills・Teams・Players。SavaMatchOptions を参照)
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
+	//InitGame で読んだルールを GameState に入れる(GameState は InitGame の後に作られる)
+	virtual void InitGameState() override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
 	//待合室から Seamless Travel で移ってきた人(PostLogin は呼ばれない)
 	virtual void HandleSeamlessTravelPlayer(AController*& C) override;
