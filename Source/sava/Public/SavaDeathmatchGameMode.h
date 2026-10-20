@@ -46,7 +46,7 @@ protected:
 
 	//勝利に必要なキル数(チーム戦ならチームの合計。ルーム設定の Kills があればそちらを使う)
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Deathmatch", meta = (ClampMin = "1"))
-	int32 KillLimit = 30;
+	int32 KillLimit = 10;
 
 	//何人集まったら試合を始めるか(待合室を通らずにこのマップを開いたとき)
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Deathmatch", meta = (ClampMin = "1"))

@@ -110,10 +110,10 @@ private:
 
 	void ToggleSettingsMenu();
 
-	/** スコアボードを表示する */
+	// スコアボードを表示する
 	void ShowScoreboard();
 
-	/** スコアボードを非表示にする */
+	// スコアボードを非表示にする
 	void HideScoreboard();
 
 	//今操作しているキャラクターの操作を受け付けるか(キャラクターがいなければ何もしない)

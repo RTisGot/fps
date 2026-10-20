@@ -325,6 +325,8 @@ void ASavaDeathmatchGameMode::OnMatchTimeUp()
 
 void ASavaDeathmatchGameMode::FinishMatch(const TArray<FString>& WinnerNames, int32 WinningKills, uint8 WinnerTeamId)
 {
+
+	UE_LOG(LogTemp, Warning, TEXT("FinishMatch called"));
 	ASavaGameState* SavaGameState = GetSavaGameState();
 	if (!SavaGameState || SavaGameState->GetRoundPhase() == ESavaRoundPhase::MatchEnd)
 	{
