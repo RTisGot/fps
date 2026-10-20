@@ -131,4 +131,9 @@ public:
 	//ルーム設定のモード名・マップ名(画面に出す用)
 	UFUNCTION(BlueprintPure, Category = "Sava|Lobby")
 	static void GetRoomSettingsDisplayNames(const FSavaRoomSettings& RoomSettings, FText& OutModeName, FText& OutMapName);
+
+	//このルーム設定がチームに分かれて戦うか(個人戦・チーム戦を選べるモードは Team Match、それ以外はチーム戦)
+	//個人戦なら、ロビーの画面でチームの表示を隠すのに使う
+	UFUNCTION(BlueprintPure, Category = "Sava|Lobby")
+	static bool UsesTeams(const FSavaRoomSettings& RoomSettings);
 };

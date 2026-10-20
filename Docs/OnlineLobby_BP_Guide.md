@@ -250,6 +250,11 @@ Horizontal Box
      - **Get Owning Player** → Cast To SavaPlayerController → **Server Move Player To Team**(Target ← `Player`、Team Id ← 計算した値)
    - KickButton **On Clicked**: Get Owning Player → Cast To SavaPlayerController → **Server Kick Player**(Target ← `Player`)
 
+   - **個人戦ではチームを隠す**: Event Construct で **Get Game State** → Cast To SavaLobbyGameState → **Is Team Match** → Select(Visible / Collapsed)→ TeamText と MoveButton の **Set Visibility**
+     - MoveButton はホストの行でも隠すので、「ホストではない」**AND**「Is Team Match」のときだけ Visible にする
+     - 行は Refresh のたびに作り直されるので、ルーム設定を切り替えればすぐ反映される
+     - 個人戦でチームを移そうとしても、サーバーが「個人戦ではチームを選べません」で断る
+
 この画面はホストしか開けない(端末が Host Only)ので、ボタンが参加者に見えることはない。
 仮に参加者が押せたとしても、サーバー側で断られる。
 
@@ -265,9 +270,9 @@ Horizontal Box
 Canvas Panel
 ├ Vertical Box(画面左上)
 │ ├ Text … 名前 SettingsText(「CTF / FPSMap / 2 ラウンド先取 / 180 秒」)
-│ ├ Text「チーム 1」
+│ ├ Text「チーム 1」 … 名前 Team1Header
 │ ├ Vertical Box … 名前 Team1List
-│ ├ Text「チーム 2」
+│ ├ Text「チーム 2」 … 名前 Team2Header
 │ ├ Vertical Box … 名前 Team2List
 │ └ Text … 名前 StartText(「開始できます」/ 開始できない理由)
 └ Text … 名前 MessageText(画面中央上。最初は Visibility を Hidden)
@@ -297,6 +302,10 @@ Event Construct で、名前 + 印を出す:
    - ルーム設定: LobbyState → Get Room Settings → **Get Room Settings Display Names**(Mode Name・Map Name が出る)。Break SavaRoomSettings で Rounds To Win・Round Time Limit も取り、Format Text `{mode} / {map} / {rounds} ラウンド先取 / {time} 秒` → SettingsText **Set Text**
    - チーム 1: Team1List **Clear Children** → LobbyState **Get Team Players**(Team Id 0)→ For Each Loop → Create Widget `WBP_LobbyPlayerRow`(Player ← Array Element)→ Team1List **Add Child**
    - チーム 2: 同じく Team Id 1 で Team2List へ
+   - **個人戦のとき**: LobbyState → **Is Team Match** で **Branch**
+     - True: 上の 2 つ(チームごとの一覧)をそのまま行う。見出し「チーム 1」「チーム 2」と Team2List は Visible
+     - False: Team1List に **Get Lobby Players**(全員)を入れ、Team2List は Clear Children だけ。見出し「チーム 1」を「メンバー」に Set Text し、「チーム 2」の見出しと Team2List は Collapsed
+     - 見出しの Text も Is Variable にして名前を付けておく(例: Team1Header・Team2Header)
    - 開始できるか: LobbyState → **Can Start Match** → 戻り値で **Branch**
      - True: StartText に「開始できます」
      - False: StartText に Out Reason

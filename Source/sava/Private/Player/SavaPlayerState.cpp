@@ -205,12 +205,12 @@ void ASavaPlayerState::ApplyLoadoutTo(APawn* TargetPawn)
 	{
 		if (USavaWeaponData* Primary = Loadout.PrimaryWeapon.LoadSynchronous())
 		{
-			Equipment->SetLoadout(ESavaWeaponSlot::Primary, Primary, { Primary->MakeTuningModifier(Loadout.PrimaryTuning) });
+			Equipment->SetLoadout(ESavaWeaponSlot::Primary, Primary, Primary->MakeTuningModifiers(Loadout.PrimaryTuning));
 		}
 
 		if (USavaWeaponData* Secondary = Loadout.SecondaryWeapon.LoadSynchronous())
 		{
-			Equipment->SetLoadout(ESavaWeaponSlot::Secondary, Secondary, { Secondary->MakeTuningModifier(Loadout.SecondaryTuning) });
+			Equipment->SetLoadout(ESavaWeaponSlot::Secondary, Secondary, Secondary->MakeTuningModifiers(Loadout.SecondaryTuning));
 		}
 	}
 

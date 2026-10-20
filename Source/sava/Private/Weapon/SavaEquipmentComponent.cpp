@@ -538,13 +538,17 @@ void USavaEquipmentComponent::SpawnMuzzleFlash(const FVector& MuzzleLocation)
 {
 	const AActor* OwnerActor = GetOwner();
 
+	//武器データにエフェクトがあればそれを、無ければこのコンポーネントのものを使う
+	const USavaWeaponData* Weapon = GetCurrentWeaponData();
+	UNiagaraSystem* MuzzleFlash = Weapon && Weapon->MuzzleFlashEffect ? Weapon->MuzzleFlashEffect.Get() : MuzzleFlashSystem.Get();
+
 	UE_LOG(LogTemp, Warning,
 		TEXT("[MuzzleFlash] SpawnMuzzleFlash called"));
 
 	UE_LOG(LogTemp, Warning,
 		TEXT("[MuzzleFlash] System: %s"),
-		MuzzleFlashSystem
-		? *MuzzleFlashSystem->GetName()
+		MuzzleFlash
+		? *MuzzleFlash->GetName()
 		: TEXT("NULL"));
 
 	if (!OwnerActor || OwnerActor->GetNetMode() == NM_DedicatedServer)
@@ -553,19 +557,18 @@ void USavaEquipmentComponent::SpawnMuzzleFlash(const FVector& MuzzleLocation)
 		return;
 	}
 
-	if (!MuzzleFlashSystem)
+	if (!MuzzleFlash)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[MuzzleFlash] System is NULL"));
 		return;
 	}
 
 	//腕のソケットにアタッチして生成し、動きながら撃っても銃口に追従させる
-	const USavaWeaponData* Weapon = GetCurrentWeaponData();
 	USkeletalMeshComponent* FirstPersonMesh = GetFirstPersonMesh();
 	if (Weapon && FirstPersonMesh && FirstPersonMesh->DoesSocketExist(Weapon->AttachSocketName))
 	{
 		UNiagaraFunctionLibrary::SpawnSystemAttached(
-			MuzzleFlashSystem,
+			MuzzleFlash,
 			FirstPersonMesh,
 			Weapon->AttachSocketName,
 			Weapon->MuzzleOffset,
@@ -579,7 +582,7 @@ void USavaEquipmentComponent::SpawnMuzzleFlash(const FVector& MuzzleLocation)
 	//ソケットが無い場合は、受け取った位置にその場で生成する
 	UNiagaraComponent* NiagaraComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 		GetWorld(),
-		MuzzleFlashSystem,
+		MuzzleFlash,
 		MuzzleLocation,
 		FRotator::ZeroRotator,
 		FVector(1.0f),

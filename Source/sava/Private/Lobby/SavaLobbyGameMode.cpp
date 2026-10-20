@@ -142,6 +142,11 @@ bool ASavaLobbyGameMode::ChangeTeam(ASavaPlayerState* Player, uint8 TeamId, FTex
 		OutError = FText::FromString(TEXT("今は変えられません"));
 		return false;
 	}
+	if (!LobbyGameState->IsTeamMatch())
+	{
+		OutError = FText::FromString(TEXT("個人戦ではチームを選べません"));
+		return false;
+	}
 	if (!CanJoinTeam(LobbyGameState->PlayerArray, Player, TeamId, NumTeams, MaxPlayersPerTeam, OutError))
 	{
 		return false;

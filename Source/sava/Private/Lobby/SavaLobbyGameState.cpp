@@ -47,6 +47,11 @@ TArray<ASavaPlayerState*> ASavaLobbyGameState::GetTeamPlayers(uint8 TeamId) cons
 	return Players;
 }
 
+bool ASavaLobbyGameState::IsTeamMatch() const
+{
+	return USavaLobbySettings::UsesTeams(RoomSettings);
+}
+
 bool ASavaLobbyGameState::CanStartMatch(FText& OutReason) const
 {
 	if (bMatchStarting)

@@ -82,9 +82,14 @@ FSavaLoadout USavaLoadoutSettings::Sanitize(const FSavaLoadout& Loadout)
 	Result.Character = Characters.Contains(Loadout.Character) ? Loadout.Character : (Characters.Num() > 0 ? Characters[0] : NAME_None);
 	Result.PrimaryWeapon = SavaLoadout::PickSelectable(Loadout.PrimaryWeapon, GetSelectableWeapons(ESavaWeaponSlot::Primary));
 	Result.SecondaryWeapon = SavaLoadout::PickSelectable(Loadout.SecondaryWeapon, GetSelectableWeapons(ESavaWeaponSlot::Secondary));
-	//武器が置き換わったら、前の武器向けのカスタマイズは使わない
-	Result.PrimaryTuning = Result.PrimaryWeapon == Loadout.PrimaryWeapon ? Loadout.PrimaryTuning.GetSanitized() : FSavaWeaponTuning();
-	Result.SecondaryTuning = Result.SecondaryWeapon == Loadout.SecondaryWeapon ? Loadout.SecondaryTuning.GetSanitized() : FSavaWeaponTuning();
+	//カスタマイズはその武器にあるものだけにする。武器が置き換わったら、前の武器向けのカスタマイズは使わない
+	auto SanitizeTuning = [](const TSoftObjectPtr<USavaWeaponData>& Weapon, const FSavaWeaponTuning& Tuning, bool bSameWeapon)
+	{
+		const USavaWeaponData* WeaponData = Weapon.LoadSynchronous();
+		return WeaponData ? WeaponData->SanitizeTuning(bSameWeapon ? Tuning : FSavaWeaponTuning()) : FSavaWeaponTuning();
+	};
+	Result.PrimaryTuning = SanitizeTuning(Result.PrimaryWeapon, Loadout.PrimaryTuning, Result.PrimaryWeapon == Loadout.PrimaryWeapon);
+	Result.SecondaryTuning = SanitizeTuning(Result.SecondaryWeapon, Loadout.SecondaryTuning, Result.SecondaryWeapon == Loadout.SecondaryWeapon);
 	Result.Skill = SavaLoadout::PickSelectable(Loadout.Skill, GetSelectableSkills());
 	Result.Gadget = SavaLoadout::PickSelectable(Loadout.Gadget, GetSelectableGadgets());
 	return Result;

@@ -35,6 +35,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Lobby")
 	int32 GetNumTeams() const { return NumTeams; }
 
+	//今のルーム設定がチームに分かれて戦うか(個人戦なら false。チームの表示を隠すのに使う)
+	UFUNCTION(BlueprintPure, Category = "Sava|Lobby")
+	bool IsTeamMatch() const;
+
 	UFUNCTION(BlueprintPure, Category = "Sava|Lobby")
 	int32 GetMaxPlayersPerTeam() const { return MaxPlayersPerTeam; }
 
