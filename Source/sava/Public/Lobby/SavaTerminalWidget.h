@@ -10,6 +10,7 @@ class ASavaInteractTerminal;
 
 //端末(ASavaInteractTerminal)で開く画面の親クラス
 //Widget Blueprint の親をこれにすると、「閉じる」ボタンから Close Terminal を呼ぶだけで閉じられる。Esc キーでも閉じる
+//中にページがある画面は Handle Back を上書きすると、Esc で 1 ページ戻れる
 UCLASS(Abstract)
 class SAVA_API USavaTerminalWidget : public UUserWidget
 {
@@ -27,6 +28,11 @@ public:
 	void SetTerminal(ASavaInteractTerminal* InTerminal);
 
 protected:
+	//Esc が押された。前のページに戻したら true を返す(false なら画面を閉じる)。何もしなければ false
+	UFUNCTION(BlueprintNativeEvent, Category = "Sava|Terminal")
+	bool HandleBack();
+
+
 	virtual void NativeOnInitialized() override;
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 

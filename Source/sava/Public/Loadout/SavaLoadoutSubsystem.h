@@ -110,6 +110,29 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
 	TArray<USavaGadgetData*> GetSelectableGadgets() const;
 
+	//--------------------------------枠の種類で扱う(ロードアウト画面の 1 つの部品で、どの枠でも扱えるようにする)
+
+	//その枠で選べるもの。1 項目ずつ SelectItem / IsSelected / GetItemDisplayInfo に渡せる
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	TArray<UObject*> GetSelectableItems(ESavaLoadoutCategory Category);
+
+	//その枠で今選んでいるもの(GetSelectableItems の中の 1 つ。無ければ nullptr)
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	UObject* GetSelectedItem(ESavaLoadoutCategory Category);
+
+	//枠の表示名(キャラクター・メイン武器など)
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	static FText GetCategoryDisplayName(ESavaLoadoutCategory Category);
+
+	//武器の枠なら true と、その武器の枠を返す(カスタマイズのボタンを出すかどうかに使う)
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	static bool GetCategoryWeaponSlot(ESavaLoadoutCategory Category, ESavaWeaponSlot& Slot);
+
+	//その武器を選んだときの数値(選んでいる武器なら今のカスタマイズ、そうでなければ前に決めたカスタマイズを適用する)
+	//選択画面で、カーソルを乗せた武器と今の武器を比べる用
+	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
+	FSavaWeaponStats GetWeaponStatsWithSavedTuning(const USavaWeaponData* Weapon) const;
+
 	//ロードアウトが変わった
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Loadout")
 	FSavaOnLocalLoadoutChanged OnLoadoutChanged;

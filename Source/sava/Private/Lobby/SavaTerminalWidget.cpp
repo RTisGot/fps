@@ -39,9 +39,17 @@ FReply USavaTerminalWidget::NativeOnKeyDown(const FGeometry& InGeometry, const F
 	//ここで受け取ると、設定画面(Esc)は開かない
 	if (InKeyEvent.GetKey() == EKeys::Escape)
 	{
-		CloseTerminal();
+		if (!HandleBack())
+		{
+			CloseTerminal();
+		}
 		return FReply::Handled();
 	}
 
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
+bool USavaTerminalWidget::HandleBack_Implementation()
+{
+	return false;
 }

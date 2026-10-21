@@ -10,6 +10,17 @@ class USavaGadgetData;
 class USavaSkillData;
 class USavaWeaponData;
 
+//ロードアウトの枠の種類(ロードアウト画面で、どの枠を選んでいるかを 1 つの値で渡す用)
+UENUM(BlueprintType)
+enum class ESavaLoadoutCategory : uint8
+{
+	Character,
+	PrimaryWeapon,
+	SecondaryWeapon,
+	Skill,
+	Gadget,
+};
+
 //プレイヤーが選んだ装備の組(キャラクター・メイン武器・サブ武器とそのカスタマイズ・スキル・ガジェット)
 //・自分の PC では USavaLoadoutSubsystem が持ち、ディスクに保存する
 //・サーバーへは ASavaPlayerController::ServerSetLoadout で送り、ASavaPlayerState が持つ

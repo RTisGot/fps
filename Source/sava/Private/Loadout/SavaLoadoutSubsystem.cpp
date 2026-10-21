@@ -227,6 +227,111 @@ TArray<USavaGadgetData*> USavaLoadoutSubsystem::GetSelectableGadgets() const
 	return USavaLoadoutSettings::GetSelectableGadgets();
 }
 
+//--------------------------------枠の種類で扱う
+
+TArray<UObject*> USavaLoadoutSubsystem::GetSelectableItems(ESavaLoadoutCategory Category)
+{
+	TArray<UObject*> Items;
+	switch (Category)
+	{
+	case ESavaLoadoutCategory::Character:
+		Items.Append(GetSelectableCharacters());
+		break;
+	case ESavaLoadoutCategory::PrimaryWeapon:
+		Items.Append(GetSelectableWeapons(ESavaWeaponSlot::Primary));
+		break;
+	case ESavaLoadoutCategory::SecondaryWeapon:
+		Items.Append(GetSelectableWeapons(ESavaWeaponSlot::Secondary));
+		break;
+	case ESavaLoadoutCategory::Skill:
+		Items.Append(GetSelectableSkills());
+		break;
+	case ESavaLoadoutCategory::Gadget:
+		Items.Append(GetSelectableGadgets());
+		break;
+	}
+	return Items;
+}
+
+UObject* USavaLoadoutSubsystem::GetSelectedItem(ESavaLoadoutCategory Category)
+{
+	switch (Category)
+	{
+	case ESavaLoadoutCategory::Character:
+		//キャラクターは一覧の項目(USavaCharacterOption)を返す
+		for (USavaCharacterOption* Option : GetSelectableCharacters())
+		{
+			if (Option->CharacterId == Loadout.Character)
+			{
+				return Option;
+			}
+		}
+		return nullptr;
+	case ESavaLoadoutCategory::PrimaryWeapon:
+		return GetWeapon(ESavaWeaponSlot::Primary);
+	case ESavaLoadoutCategory::SecondaryWeapon:
+		return GetWeapon(ESavaWeaponSlot::Secondary);
+	case ESavaLoadoutCategory::Skill:
+		return GetSkill();
+	case ESavaLoadoutCategory::Gadget:
+		return GetGadget();
+	}
+	return nullptr;
+}
+
+FText USavaLoadoutSubsystem::GetCategoryDisplayName(ESavaLoadoutCategory Category)
+{
+	switch (Category)
+	{
+	case ESavaLoadoutCategory::Character:
+		return NSLOCTEXT("SavaLoadout", "CategoryCharacter", "キャラクター");
+	case ESavaLoadoutCategory::PrimaryWeapon:
+		return NSLOCTEXT("SavaLoadout", "CategoryPrimaryWeapon", "メイン武器");
+	case ESavaLoadoutCategory::SecondaryWeapon:
+		return NSLOCTEXT("SavaLoadout", "CategorySecondaryWeapon", "サブ武器");
+	case ESavaLoadoutCategory::Skill:
+		return NSLOCTEXT("SavaLoadout", "CategorySkill", "スキル");
+	case ESavaLoadoutCategory::Gadget:
+		return NSLOCTEXT("SavaLoadout", "CategoryGadget", "ガジェット");
+	}
+	return FText::GetEmpty();
+}
+
+bool USavaLoadoutSubsystem::GetCategoryWeaponSlot(ESavaLoadoutCategory Category, ESavaWeaponSlot& Slot)
+{
+	Slot = ESavaWeaponSlot::Primary;
+	if (Category == ESavaLoadoutCategory::PrimaryWeapon)
+	{
+		return true;
+	}
+	if (Category == ESavaLoadoutCategory::SecondaryWeapon)
+	{
+		Slot = ESavaWeaponSlot::Secondary;
+		return true;
+	}
+	return false;
+}
+
+FSavaWeaponStats USavaLoadoutSubsystem::GetWeaponStatsWithSavedTuning(const USavaWeaponData* Weapon) const
+{
+	if (!Weapon)
+	{
+		return FSavaWeaponStats();
+	}
+
+	const FSoftObjectPath WeaponPath(Weapon);
+	if (Loadout.PrimaryWeapon.ToSoftObjectPath() == WeaponPath)
+	{
+		return Weapon->GetTunedStats(Loadout.PrimaryTuning);
+	}
+	if (Loadout.SecondaryWeapon.ToSoftObjectPath() == WeaponPath)
+	{
+		return Weapon->GetTunedStats(Loadout.SecondaryTuning);
+	}
+	//保存した値は武器データが変わっているかもしれないので直してから使う
+	return Weapon->GetTunedStats(Weapon->SanitizeTuning(WeaponTunings.FindRef(WeaponPath)));
+}
+
 //--------------------------------保存
 
 void USavaLoadoutSubsystem::RememberWeaponTunings()
