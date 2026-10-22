@@ -9,6 +9,7 @@
 #include "SavaWeaponData.generated.h"
 
 class UAnimMontage;
+class UMaterialInterface;
 class UNiagaraSystem;
 class USkeletalMesh;
 class UStaticMesh;
@@ -106,6 +107,18 @@ public:
 	// 発砲時に使用する弾道エフェクト。未設定の場合は弾道を生成しない
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<UNiagaraSystem> TracerEffect;
+
+	// 壁に当たった位置に貼る弾痕(Material Domain = Deferred Decal)。未設定の場合は貼らない
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TObjectPtr<UMaterialInterface> ImpactDecal;
+
+	// 弾痕の大きさ(直径)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float ImpactDecalSize = 8.0f;
+
+	// 弾痕が消えるまでの時間
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (ClampMin = "0", ForceUnits = "s"))
+	float ImpactDecalLifeSpan = 10.0f;
 
 	//マズル位置のデバッグ描画の色
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")

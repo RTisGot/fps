@@ -173,7 +173,8 @@ public:
 	bool GetCurrentMuzzleLocation(FVector& OutLocation) const;
 
 	//武器の発砲演出をサーバーへ通知する。
-	void NotifyWeaponFireVisual(const FVector& MuzzleLocation, const TArray<FVector>& TraceEnds);
+	//ImpactNormals は弾ごとの壁の向き(ゼロ = 弾痕を貼らない)
+	void NotifyWeaponFireVisual(const FVector& MuzzleLocation, const TArray<FVector>& TraceEnds, const TArray<FVector>& ImpactNormals);
 
 protected:
 	//装備を用意するまでの仮の武器(ロードアウト画面ができるまで、キャラクターの Blueprint で設定する)
@@ -240,6 +241,9 @@ private:
 	// 発砲時の弾道エフェクトを生成
 	void SpawnTracerEffect(const FVector& MuzzleLocation, const TArray<FVector>& TraceEnds);
 
+	// 壁に弾痕を貼る(法線がゼロの弾は貼らない)
+	void SpawnImpactDecals(const TArray<FVector>& TraceEnds, const TArray<FVector>& ImpactNormals);
+
 	//見た目だけの揺れを動かし、カメラと腕に反映する
 	void UpdateVisualKick(float DeltaTime);
 	//反動の分だけ視点を動かす(X = 横、Y = 縦)
@@ -275,13 +279,15 @@ private:
 	UFUNCTION(Server, Unreliable)
 	void ServerNotifyWeaponFireVisual(
 		FVector_NetQuantize MuzzleLocation,
-		const TArray<FVector_NetQuantize>& TraceEnds);
+		const TArray<FVector_NetQuantize>& TraceEnds,
+		const TArray<FVector_NetQuantizeNormal>& ImpactNormals);
 
 	//全クライアントへ発砲演出を通知する
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastWeaponFireVisual(
 		FVector_NetQuantize MuzzleLocation,
-		const TArray<FVector_NetQuantize>& TraceEnds);
+		const TArray<FVector_NetQuantize>& TraceEnds,
+		const TArray<FVector_NetQuantizeNormal>& ImpactNormals);
 
 	//最後に持ち替えた時刻(自分の画面とサーバーがそれぞれ持つ)
 	double EquipStartTime = -1.0e9;

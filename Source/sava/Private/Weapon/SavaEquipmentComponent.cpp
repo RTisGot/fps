@@ -5,11 +5,13 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Camera/CameraComponent.h"
+#include "Components/DecalComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 #include "SavaCharacterMovementComponent.h"
 #include "SavaGameplayTags.h"
@@ -882,6 +884,49 @@ void USavaEquipmentComponent::SpawnTracerEffect(const FVector& MuzzleLocation, c
 	NiagaraComponent->Activate(true);
 }
 
+void USavaEquipmentComponent::SpawnImpactDecals(const TArray<FVector>& TraceEnds, const TArray<FVector>& ImpactNormals)
+{
+	const AActor* OwnerActor = GetOwner();
+	const USavaWeaponData* Weapon = GetCurrentWeaponData();
+
+	// サーバー専用環境・弾痕が未設定の武器では生成しない
+	if (!OwnerActor || OwnerActor->GetNetMode() == NM_DedicatedServer || !Weapon || !Weapon->ImpactDecal)
+	{
+		return;
+	}
+
+	const float HalfSize = Weapon->ImpactDecalSize * 0.5f;
+	const int32 Num = FMath::Min(TraceEnds.Num(), ImpactNormals.Num());
+	for (int32 Index = 0; Index < Num; ++Index)
+	{
+		const FVector& Normal = ImpactNormals[Index];
+		if (Normal.IsNearlyZero())
+		{
+			continue;
+		}
+
+		// デカールは X 軸の向きに投影されるので、壁の中へ向ける。回転(Roll)をランダムにして同じ見た目が並ばないようにする
+		FRotator Rotation = (-Normal).Rotation();
+		Rotation.Roll = FMath::FRandRange(0.0f, 360.0f);
+
+		// X = 投影の深さ(薄くして裏側の物に貼られないようにする)、Y・Z = 大きさ(半径)
+		UDecalComponent* Decal = UGameplayStatics::SpawnDecalAtLocation(
+			GetWorld(),
+			Weapon->ImpactDecal,
+			FVector(2.0f, HalfSize, HalfSize),
+			TraceEnds[Index],
+			Rotation,
+			Weapon->ImpactDecalLifeSpan
+		);
+
+		if (Decal)
+		{
+			// 遠くて小さく見えるときは描かない(数が増えたときの負荷対策)
+			Decal->SetFadeScreenSize(0.001f);
+		}
+	}
+}
+
 void USavaEquipmentComponent::DrawMuzzleDebug() const
 {
 	if (!bDrawMuzzleDebug)
@@ -910,7 +955,8 @@ void USavaEquipmentComponent::DrawMuzzleDebug() const
 
 void USavaEquipmentComponent::NotifyWeaponFireVisual(
 	const FVector& MuzzleLocation,
-	const TArray<FVector>& TraceEnds)
+	const TArray<FVector>& TraceEnds,
+	const TArray<FVector>& ImpactNormals)
 {
 	//発砲者自身にはネットワークを待たず、即座に演出を表示する。
 	OnWeaponMuzzleFlashEvent.Broadcast(MuzzleLocation);
@@ -918,6 +964,7 @@ void USavaEquipmentComponent::NotifyWeaponFireVisual(
 
 	SpawnMuzzleFlash(MuzzleLocation);
 	SpawnTracerEffect(MuzzleLocation, TraceEnds);
+	SpawnImpactDecals(TraceEnds, ImpactNormals);
 
 	TArray<FVector_NetQuantize> QuantizedTraceEnds;
 	QuantizedTraceEnds.Reserve(TraceEnds.Num());
@@ -927,33 +974,45 @@ void USavaEquipmentComponent::NotifyWeaponFireVisual(
 		QuantizedTraceEnds.Add(TraceEnd);
 	}
 
+	TArray<FVector_NetQuantizeNormal> QuantizedImpactNormals;
+	QuantizedImpactNormals.Reserve(ImpactNormals.Num());
+
+	for (const FVector& ImpactNormal : ImpactNormals)
+	{
+		QuantizedImpactNormals.Add(ImpactNormal);
+	}
+
 	if (GetOwner()->HasAuthority())
 	{
 		//Listen Serverの場合は、そのまま全クライアントへ通知する。
 		MulticastWeaponFireVisual(
 			FVector_NetQuantize(MuzzleLocation),
-			QuantizedTraceEnds);
+			QuantizedTraceEnds,
+			QuantizedImpactNormals);
 	}
 	else
 	{
 		//クライアントの場合は、サーバーへ発砲演出を通知する。
 		ServerNotifyWeaponFireVisual(
 			FVector_NetQuantize(MuzzleLocation),
-			QuantizedTraceEnds);
+			QuantizedTraceEnds,
+			QuantizedImpactNormals);
 	}
 }
 
 void USavaEquipmentComponent::ServerNotifyWeaponFireVisual_Implementation(
 	FVector_NetQuantize MuzzleLocation,
-	const TArray<FVector_NetQuantize>& TraceEnds)
+	const TArray<FVector_NetQuantize>& TraceEnds,
+	const TArray<FVector_NetQuantizeNormal>& ImpactNormals)
 {
 	//視覚演出だけを全クライアントへ通知する。
-	MulticastWeaponFireVisual(MuzzleLocation, TraceEnds);
+	MulticastWeaponFireVisual(MuzzleLocation, TraceEnds, ImpactNormals);
 }
 
 void USavaEquipmentComponent::MulticastWeaponFireVisual_Implementation(
 	FVector_NetQuantize MuzzleLocation,
-	const TArray<FVector_NetQuantize>& TraceEnds)
+	const TArray<FVector_NetQuantize>& TraceEnds,
+	const TArray<FVector_NetQuantizeNormal>& ImpactNormals)
 {
 	const APawn* Pawn = Cast<APawn>(GetOwner());
 
@@ -972,11 +1031,20 @@ void USavaEquipmentComponent::MulticastWeaponFireVisual_Implementation(
 		ConvertedTraceEnds.Add(FVector(TraceEnd));
 	}
 
+	TArray<FVector> ConvertedImpactNormals;
+	ConvertedImpactNormals.Reserve(ImpactNormals.Num());
+
+	for (const FVector_NetQuantizeNormal& ImpactNormal : ImpactNormals)
+	{
+		ConvertedImpactNormals.Add(FVector(ImpactNormal));
+	}
+
 	OnWeaponMuzzleFlashEvent.Broadcast(FVector(MuzzleLocation));
 	OnWeaponTracerEvent.Broadcast(FVector(MuzzleLocation), ConvertedTraceEnds);
 
 	SpawnMuzzleFlash(MuzzleLocation);
 	SpawnTracerEffect(FVector(MuzzleLocation), ConvertedTraceEnds);
+	SpawnImpactDecals(ConvertedTraceEnds, ConvertedImpactNormals);
 }
 
 //--------------------------------Helpers

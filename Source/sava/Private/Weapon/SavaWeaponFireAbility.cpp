@@ -174,14 +174,22 @@ void USavaWeaponFireAbility::FireShot()
 	if (bMuzzleValid)
 	{
 		TArray<FVector> TraceEnds;
+		TArray<FVector> ImpactNormals;
 		TraceEnds.Reserve(Hits.Num());
+		ImpactNormals.Reserve(Hits.Num());
 
 		for (const FHitResult& Hit : Hits)
 		{
 			TraceEnds.Add(Hit.ImpactPoint);
+
+			//弾痕は壁などだけに貼る(外れ・キャラクター・シールドはゼロ = 貼らない)
+			const AActor* HitActor = Hit.GetActor();
+			const bool bLeaveDecal = Hit.bBlockingHit && HitActor
+				&& !HitActor->IsA<APawn>() && !HitActor->IsA<ASavaDomeShield>();
+			ImpactNormals.Add(bLeaveDecal ? FVector(Hit.ImpactNormal) : FVector::ZeroVector);
 		}
 
-		Equipment->NotifyWeaponFireVisual(MuzzleLocation, TraceEnds);
+		Equipment->NotifyWeaponFireVisual(MuzzleLocation, TraceEnds, ImpactNormals);
 	}
 
 	//既存のローカル演出
