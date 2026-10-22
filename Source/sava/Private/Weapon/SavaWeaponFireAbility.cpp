@@ -13,6 +13,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
 #include "GameFramework/Character.h"
@@ -190,6 +191,10 @@ void USavaWeaponFireAbility::FireShot()
 		}
 
 		Equipment->NotifyWeaponFireVisual(MuzzleLocation, TraceEnds, ImpactNormals);
+	}
+	else if (IsWeaponDebugEnabled() && GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("[WeaponFire] Muzzle location not found: no tracer / impact decal"));
 	}
 
 	//既存のローカル演出

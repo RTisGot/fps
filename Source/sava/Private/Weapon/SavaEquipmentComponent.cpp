@@ -6,6 +6,9 @@
 #include "AbilitySystemGlobals.h"
 #include "Camera/CameraComponent.h"
 #include "Components/DecalComponent.h"
+#include "DrawDebugHelpers.h"
+#include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
@@ -27,6 +30,13 @@ namespace
 	int32 ToIndex(ESavaWeaponSlot Slot)
 	{
 		return static_cast<int32>(Slot);
+	}
+
+	//武器の当たり判定の確認用の表示(SavaWeaponFireAbility.cpp で定義している sava.Weapon.Debug を使う)
+	bool IsWeaponDebugEnabled()
+	{
+		static const IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("sava.Weapon.Debug"));
+		return CVar && CVar->GetBool();
 	}
 
 	ESavaWeaponSlot GetOtherSlot(ESavaWeaponSlot Slot)
@@ -889,19 +899,37 @@ void USavaEquipmentComponent::SpawnImpactDecals(const TArray<FVector>& TraceEnds
 	const AActor* OwnerActor = GetOwner();
 	const USavaWeaponData* Weapon = GetCurrentWeaponData();
 
-	// サーバー専用環境・弾痕が未設定の武器では生成しない
-	if (!OwnerActor || OwnerActor->GetNetMode() == NM_DedicatedServer || !Weapon || !Weapon->ImpactDecal)
+	// サーバー専用環境では生成しない
+	if (!OwnerActor || OwnerActor->GetNetMode() == NM_DedicatedServer || !Weapon)
 	{
 		return;
 	}
 
+	const bool bDebug = IsWeaponDebugEnabled();
+
+	// 弾痕が未設定の武器では生成しない
+	if (!Weapon->ImpactDecal)
+	{
+		if (bDebug && GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red,
+				FString::Printf(TEXT("[ImpactDecal] %s: Impact Decal is not set"), *GetNameSafe(Weapon)));
+		}
+		return;
+	}
+
 	const float HalfSize = Weapon->ImpactDecalSize * 0.5f;
+	const FVector DecalExtent(2.0f, HalfSize, HalfSize);
+	int32 NumSpawned = 0;
+	int32 NumSkipped = 0;
+
 	const int32 Num = FMath::Min(TraceEnds.Num(), ImpactNormals.Num());
 	for (int32 Index = 0; Index < Num; ++Index)
 	{
 		const FVector& Normal = ImpactNormals[Index];
 		if (Normal.IsNearlyZero())
 		{
+			++NumSkipped;
 			continue;
 		}
 
@@ -913,7 +941,7 @@ void USavaEquipmentComponent::SpawnImpactDecals(const TArray<FVector>& TraceEnds
 		UDecalComponent* Decal = UGameplayStatics::SpawnDecalAtLocation(
 			GetWorld(),
 			Weapon->ImpactDecal,
-			FVector(2.0f, HalfSize, HalfSize),
+			DecalExtent,
 			TraceEnds[Index],
 			Rotation,
 			Weapon->ImpactDecalLifeSpan
@@ -923,7 +951,22 @@ void USavaEquipmentComponent::SpawnImpactDecals(const TArray<FVector>& TraceEnds
 		{
 			// 遠くて小さく見えるときは描かない(数が増えたときの負荷対策)
 			Decal->SetFadeScreenSize(0.001f);
+			++NumSpawned;
 		}
+
+		// デカールの範囲(橙の箱)と壁の向き(水色の矢印)
+		if (bDebug)
+		{
+			DrawDebugBox(GetWorld(), TraceEnds[Index], DecalExtent, Rotation.Quaternion(), FColor::Orange, false, 3.0f);
+			DrawDebugDirectionalArrow(GetWorld(), TraceEnds[Index], TraceEnds[Index] + Normal * 20.0f, 5.0f, FColor::Cyan, false, 3.0f);
+		}
+	}
+
+	if (bDebug && GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange,
+			FString::Printf(TEXT("[ImpactDecal] %s: spawned %d, skipped %d (miss / character / shield), material %s"),
+				*GetNameSafe(Weapon), NumSpawned, NumSkipped, *GetNameSafe(Weapon->ImpactDecal)));
 	}
 }
 
