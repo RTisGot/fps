@@ -204,8 +204,11 @@ private:
 	void UpdateADS(float DeltaTime);
 	void UpdateRecoilRecovery(float DeltaTime);
 
-	//発砲時に銃口位置へマズルフラッシュを生成
+	// 発砲時に銃口位置へマズルフラッシュを生成
 	void SpawnMuzzleFlash(const FVector& MuzzleLocation);
+
+	// 発砲時の弾道エフェクトを生成
+	void SpawnTracerEffect(const FVector& MuzzleLocation, const TArray<FVector>& TraceEnds);
 
 	//プレイヤーが自分で視点を下げた分は、反動で戻す量から引く(戻しすぎないように)
 	void AbsorbPlayerPitchInput(float CurrentPitch);

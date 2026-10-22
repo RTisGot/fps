@@ -164,20 +164,6 @@ void USavaWeaponFireAbility::FireShot()
 	// 命中判定はカメラ位置から行う
 	TraceShot(Stats, Equipment->GetCurrentSpreadAngle(), Hits);
 
-	//デバッグ用の弾道表示
-	for (const FHitResult& Hit : Hits)
-	{
-		DrawDebugLine(
-			GetWorld(),
-			Hit.TraceStart,
-			Hit.ImpactPoint,
-			FColor::Red,
-			false,
-			1.0f,
-			0,
-			1.0f);
-	}
-
 	//武器の視覚演出を全プレイヤーへ通知する(マズル位置が有効な場合のみ)
 	if (bMuzzleValid)
 	{

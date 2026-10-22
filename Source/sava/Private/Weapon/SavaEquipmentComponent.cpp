@@ -16,7 +16,8 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "NiagaraComponent.h"
-#include "NiagaraFunctionLibrary.h"
+#include "NiagaraDataInterfaceArrayFunctionLibrary.h"
+
 namespace
 {
 	int32 ToIndex(ESavaWeaponSlot Slot)
@@ -515,12 +516,14 @@ bool USavaEquipmentComponent::GetCurrentMuzzleLocation(FVector& OutLocation) con
 		return false;
 	}
 
-	//武器メッシュにMuzzleSocketが存在する場合はその位置を優先する
+	// 武器メッシュにMuzzleSocketが存在する場合はその位置を優先する
 	if (WeaponMeshComponent &&
 		WeaponMeshComponent->GetStaticMesh() &&
-		WeaponMeshComponent->DoesSocketExist(TEXT("MuzzleSocket")))
+		!Weapon->MuzzleSocketName.IsNone() &&
+		WeaponMeshComponent->DoesSocketExist(Weapon->MuzzleSocketName))
 	{
-		OutLocation = WeaponMeshComponent->GetSocketLocation(TEXT("MuzzleSocket"));
+		OutLocation = WeaponMeshComponent->GetSocketLocation(
+			Weapon->MuzzleSocketName);
 
 		UE_LOG(
 			LogTemp,
@@ -532,7 +535,7 @@ bool USavaEquipmentComponent::GetCurrentMuzzleLocation(FVector& OutLocation) con
 		return true;
 	}
 
-	//MuzzleSocketが存在しない場合はMuzzleOffsetを使用する
+	// MuzzleSocketが存在しない場合はMuzzleOffsetを使用する
 	if (!FirstPersonMesh->DoesSocketExist(Weapon->AttachSocketName))
 	{
 		UE_LOG(
@@ -618,6 +621,66 @@ void USavaEquipmentComponent::SpawnMuzzleFlash(const FVector& MuzzleLocation)
 	}
 }
 
+void USavaEquipmentComponent::SpawnTracerEffect(const FVector& MuzzleLocation, const TArray<FVector>& TraceEnds)
+{
+	const AActor* OwnerActor = GetOwner();
+	const USavaWeaponData* Weapon = GetCurrentWeaponData();
+
+	// サーバー専用環境では視覚エフェクトを生成しない
+	if (!OwnerActor || OwnerActor->GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
+	// 武器ごとに設定された弾道エフェクトを取得する
+	if (!Weapon || !Weapon->TracerEffect)
+	{
+		return;
+	}
+
+	// 終点が存在しない場合は生成しない
+	if (TraceEnds.IsEmpty())
+	{
+		return;
+	}
+
+	// Niagaraのユーザーパラメータを設定するため自動再生を無効にして生成する
+	UNiagaraComponent* NiagaraComponent =
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(),
+			Weapon->TracerEffect.Get(),
+			MuzzleLocation,
+			FRotator::ZeroRotator,
+			FVector(1.0f),
+			true,
+			false,
+			ENCPoolMethod::None
+		);
+
+	if (!NiagaraComponent)
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[Tracer] Failed to create NiagaraComponent.")
+		);
+
+		return;
+	}
+
+	// NiagaraのUserパラメータに銃口位置を渡す
+	NiagaraComponent->SetVariableVec3(FName(TEXT("User.MuzzlePosition")), MuzzleLocation);
+
+	// NiagaraのImpactPositions配列に弾道の終点を渡す
+	UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(NiagaraComponent, FName(TEXT("User.ImpactPositions")), TraceEnds);
+
+	// 発砲トリガーを有効にする
+	NiagaraComponent->SetVariableBool(FName(TEXT("User.Trigger")), true);
+
+	// パラメータを設定してから再生する
+	NiagaraComponent->Activate(true);
+}
+
 void USavaEquipmentComponent::DrawMuzzleDebug() const
 {
 	if (!bDrawMuzzleDebug)
@@ -640,7 +703,6 @@ void USavaEquipmentComponent::DrawMuzzleDebug() const
 		{
 			const FRotator ViewRotation = GetFirstPersonMesh()->GetSocketTransform(WeaponData->AttachSocketName).GetRotation().Rotator();
 			const FVector Forward = ViewRotation.Vector();
-			DrawDebugLine(GetWorld(), MuzzleLocation, MuzzleLocation + Forward * 50.0f, FColor::Green, false, -1.0f, 0, 2.0f);
 		}
 	}
 }
@@ -652,7 +714,9 @@ void USavaEquipmentComponent::NotifyWeaponFireVisual(
 	//発砲者自身にはネットワークを待たず、即座に演出を表示する。
 	OnWeaponMuzzleFlashEvent.Broadcast(MuzzleLocation);
 	OnWeaponTracerEvent.Broadcast(MuzzleLocation, TraceEnds);
+
 	SpawnMuzzleFlash(MuzzleLocation);
+	SpawnTracerEffect(MuzzleLocation, TraceEnds);
 
 	TArray<FVector_NetQuantize> QuantizedTraceEnds;
 	QuantizedTraceEnds.Reserve(TraceEnds.Num());
@@ -709,7 +773,9 @@ void USavaEquipmentComponent::MulticastWeaponFireVisual_Implementation(
 
 	OnWeaponMuzzleFlashEvent.Broadcast(FVector(MuzzleLocation));
 	OnWeaponTracerEvent.Broadcast(FVector(MuzzleLocation), ConvertedTraceEnds);
+
 	SpawnMuzzleFlash(MuzzleLocation);
+	SpawnTracerEffect(FVector(MuzzleLocation), ConvertedTraceEnds);
 }
 
 //--------------------------------Helpers
