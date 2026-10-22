@@ -60,6 +60,8 @@ USavaWeaponFireAbility::USavaWeaponFireAbility()
 
 	AddAssetTag(SavaGameplayTags::Ability_Weapon_Fire);
 	ActivationBlockedTags.AddTag(SavaGameplayTags::State_Weapon_Reloading);
+	//撃っている間(撃つのを待っている間も)はダッシュしない
+	ActivationOwnedTags.AddTag(SavaGameplayTags::State_SprintBlocked);
 }
 
 void USavaWeaponFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
@@ -92,13 +94,17 @@ void USavaWeaponFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Ha
 		case ESavaFireMode::FullAuto: ShotsRemaining = -1; break;
 		}
 
-		//単発・バーストで、前の 1 発から間隔が空いていない: このクリックは無視する
+		//単発・バーストで、前の 1 発から間隔が空いていない: このクリックは無視する(フルオートは押したままなら、間隔が空いた時点で撃ち始める)
 		const float RemainingInterval = Equipment->GetRemainingFireInterval(FiringSlot);
 		if (RemainingInterval > 0.0f && Weapon->FireMode != ESavaFireMode::FullAuto)
 		{
 			EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 			return;
 		}
+
+		//持ち替えで武器を出している途中・ダッシュをやめた直後: 撃ち方に関係なく、撃てるようになった時点で撃つ
+		//(この能力が動いている間はダッシュできないので、ダッシュ中に押すとダッシュが止まり、Sprint To Fire Time 後に撃つ)
+		const float FirstShotDelay = FMath::Max(RemainingInterval, Equipment->GetRemainingReadyTime());
 
 		//フルオート: 離したら終わる
 		if (Weapon->FireMode == ESavaFireMode::FullAuto)
@@ -108,7 +114,7 @@ void USavaWeaponFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Ha
 			WaitReleaseTask->ReadyForActivation();
 		}
 
-		if (RemainingInterval <= 0.0f)
+		if (FirstShotDelay <= 0.0f)
 		{
 			FireShot();
 			if (!IsActive())
@@ -117,10 +123,10 @@ void USavaWeaponFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Ha
 			}
 		}
 
-		//2 発目以降(バースト・フルオート)は間隔ごとに撃つ
+		//待ちがあれば 1 発目を、2 発目以降(バースト・フルオート)は間隔ごとに撃つ
 		const float Interval = Stats.GetFireInterval();
 		GetWorld()->GetTimerManager().SetTimer(FireTimerHandle, this, &USavaWeaponFireAbility::FireShot, Interval, true,
-			RemainingInterval > 0.0f ? RemainingInterval : Interval);
+			FirstShotDelay > 0.0f ? FirstShotDelay : Interval);
 	}
 	else if (ActorInfo->IsNetAuthority())
 	{
@@ -195,8 +201,9 @@ void USavaWeaponFireAbility::FireShot()
 	//既存のローカル演出
 	OnFired(Hits);
 
-	//反動はレイを飛ばした後に付ける(次の 1 発から影響する)
+	//反動・連射の拡散はレイを飛ばした後に付ける(次の 1 発から影響する)
 	Equipment->ApplyRecoil(FiringSlot);
+	Equipment->AddShotSpread(FiringSlot);
 
 	if (IsPredictingClient())
 	{
@@ -264,13 +271,13 @@ void USavaWeaponFireAbility::ProcessShotOnServer(const TArray<FHitResult>& Hits,
 		return;
 	}
 
-	//クライアントの弾: サーバーでも弾数を数え、弾切れ・撃つ間隔が短すぎる場合はダメージを与えない
+	//クライアントの弾: サーバーでも弾数を数え、弾切れ・撃つ間隔が短すぎる・持ち替えた直後・ダッシュをやめた直後の場合はダメージを与えない
 	//(ホストは自分の画面で弾を使ったので、ここでは数えない)
 	if (bFromRemoteClient && !Equipment->TryConsumeServerShot(FiringSlot, ServerFireIntervalTolerance))
 	{
 		for (const FHitResult& Hit : Hits)
 		{
-			DrawServerResult(GetWorld(), Hit, FColor::Red, TEXT("Rejected: out of ammo / firing too fast"));
+			DrawServerResult(GetWorld(), Hit, FColor::Red, TEXT("Rejected: out of ammo / firing too fast / still equipping / just sprinted"));
 		}
 		return;
 	}
@@ -451,6 +458,9 @@ bool USavaWeaponFireAbility::GetViewPoint(FVector& OutLocation, FRotator& OutRot
 		return false;
 	}
 	Controller->GetPlayerViewPoint(OutLocation, OutRotation);
+
+	//向きは画面ではなく狙っている向きにする(反動の見た目だけの揺れで、画面だけが回っていることがあるため)
+	OutRotation = Controller->GetControlRotation();
 	return true;
 }
 

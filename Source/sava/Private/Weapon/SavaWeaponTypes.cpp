@@ -34,14 +34,49 @@ float FSavaWeaponStats::CalculateDamage(float Distance, bool bHeadshot) const
 	return HeadDamage * (BodyDamage / BaseDamage);
 }
 
-float FSavaWeaponStats::CalculateSpread(float ADSAlpha, float MoveAlpha, bool bInAir) const
+float FSavaWeaponStats::CalculateSpread(float ADSAlpha, float MoveAlpha, bool bInAir, float ShotSpread, ESavaSpreadMovement Movement) const
 {
 	const float BaseSpread = FMath::Lerp(HipSpread, ADSSpread, ADSAlpha);
-	const float MovementPart = MovementSpread * MoveAlpha + (bInAir ? JumpSpread : 0.0f);
 
-	//ADS に入るほど、移動中・空中の拡散を ADS Movement Spread Scale の割合へ減らす
+	float MovementPart = 0.0f;
+	switch (Movement)
+	{
+	case ESavaSpreadMovement::Walk:    MovementPart = MovementSpread * MoveAlpha + (bInAir ? JumpSpread : 0.0f); break;
+	case ESavaSpreadMovement::Sprint:  MovementPart = SprintSpread * MoveAlpha + (bInAir ? JumpSpread : 0.0f); break;
+	case ESavaSpreadMovement::Slide:   MovementPart = SlideSpread; break;
+	case ESavaSpreadMovement::Grapple: MovementPart = GrappleSpread; break;
+	}
+	MovementPart += ShotSpread;
+
+	//ADS に入るほど、移動中・空中・連射の拡散を ADS Movement Spread Scale の割合へ減らす
 	const float MovementScale = FMath::Lerp(1.0f, ADSMovementSpreadScale, ADSAlpha);
 	return BaseSpread + MovementPart * MovementScale;
+}
+
+float FSavaWeaponStats::CalculateShotSpread(float ShotSpreadAtLastShot, float TimeSinceLastShot) const
+{
+	//連射間隔が過ぎるまでは戻らない
+	const float RecoveryTime = FMath::Max(TimeSinceLastShot - GetFireInterval(), 0.0f);
+	return FMath::Max(ShotSpreadAtLastShot - ShotSpreadRecovery * RecoveryTime, 0.0f);
+}
+
+FVector2D FSavaWeaponStats::CalculateRecoilKick(int32 ShotIndex, const FVector2D& Noise) const
+{
+	FVector2D Pattern(0.0f, 1.0f);
+	if (RecoilPattern.Num() > 0)
+	{
+		//最後まで撃ったら Loop Start から繰り返す
+		int32 Index = FMath::Max(ShotIndex, 0);
+		if (Index >= RecoilPattern.Num())
+		{
+			const int32 LoopStart = FMath::Clamp(RecoilPatternLoopStart, 0, RecoilPattern.Num() - 1);
+			Index = LoopStart + (Index - LoopStart) % (RecoilPattern.Num() - LoopStart);
+		}
+		Pattern = RecoilPattern[Index];
+	}
+
+	const FVector2D Randomized = Pattern + Noise * RecoilRandomness;
+	return FVector2D(Randomized.X * HorizontalRecoil, Randomized.Y * VerticalRecoil);
 }
 
 FSavaWeaponStats USavaWeaponLibrary::ApplyWeaponModifiers(const FSavaWeaponStats& BaseStats, const TArray<FSavaWeaponModifier>& Modifiers)
@@ -55,9 +90,15 @@ FSavaWeaponStats USavaWeaponLibrary::ApplyWeaponModifiers(const FSavaWeaponStats
 		Stats.MaxReserveAmmo += Modifier.MaxReserveAmmoAdd;
 		Stats.RateOfFire *= Modifier.RateOfFireMultiplier;
 		Stats.ReloadTime *= Modifier.ReloadTimeMultiplier;
+		Stats.EquipTime *= Modifier.EquipTimeMultiplier;
+		Stats.SprintToFireTime *= Modifier.SprintToFireTimeMultiplier;
 		Stats.HipSpread *= Modifier.HipSpreadMultiplier;
 		Stats.ADSSpread *= Modifier.ADSSpreadMultiplier;
+		//Movement Spread Multiplier は、歩き・ダッシュ・スライディング・グラップルの拡散すべてに掛かる
 		Stats.MovementSpread *= Modifier.MovementSpreadMultiplier;
+		Stats.SprintSpread *= Modifier.MovementSpreadMultiplier;
+		Stats.SlideSpread *= Modifier.MovementSpreadMultiplier;
+		Stats.GrappleSpread *= Modifier.MovementSpreadMultiplier;
 		Stats.JumpSpread *= Modifier.JumpSpreadMultiplier;
 		Stats.ADSMovementSpreadScale *= Modifier.ADSMovementSpreadScaleMultiplier;
 		Stats.VerticalRecoil *= Modifier.VerticalRecoilMultiplier;
@@ -65,6 +106,7 @@ FSavaWeaponStats USavaWeaponLibrary::ApplyWeaponModifiers(const FSavaWeaponStats
 		Stats.RecoilRecovery *= Modifier.RecoilRecoveryMultiplier;
 		Stats.ADSTime *= Modifier.ADSTimeMultiplier;
 		Stats.ADSZoom *= Modifier.ADSZoomMultiplier;
+		Stats.ADSMoveSpeed *= Modifier.ADSMoveSpeedMultiplier;
 		Stats.FalloffStartDistance *= Modifier.FalloffStartMultiplier;
 		Stats.FalloffEndDistance *= Modifier.FalloffEndMultiplier;
 		Stats.MinimumDamage *= Modifier.MinimumDamageMultiplier;
@@ -76,6 +118,7 @@ FSavaWeaponStats USavaWeaponLibrary::ApplyWeaponModifiers(const FSavaWeaponStats
 	Stats.MaxReserveAmmo = FMath::Max(Stats.MaxReserveAmmo, 0);
 	Stats.RateOfFire = FMath::Max(Stats.RateOfFire, 1.0f);
 	Stats.ADSZoom = FMath::Clamp(Stats.ADSZoom, 0.05f, 1.0f);
+	Stats.ADSMoveSpeed = FMath::Clamp(Stats.ADSMoveSpeed, 0.1f, 1.0f);
 	Stats.ADSMovementSpreadScale = FMath::Clamp(Stats.ADSMovementSpreadScale, 0.0f, 1.0f);
 	return Stats;
 }
@@ -135,6 +178,8 @@ FSavaWeaponModifier USavaWeaponLibrary::MakeSliderModifier(const FSavaWeaponTuni
 	Modifier.MaxReserveAmmoAdd = Add(End.MaxReserveAmmoAdd);
 	Modifier.RateOfFireMultiplier = Multiply(End.RateOfFireMultiplier);
 	Modifier.ReloadTimeMultiplier = Multiply(End.ReloadTimeMultiplier);
+	Modifier.EquipTimeMultiplier = Multiply(End.EquipTimeMultiplier);
+	Modifier.SprintToFireTimeMultiplier = Multiply(End.SprintToFireTimeMultiplier);
 	Modifier.HipSpreadMultiplier = Multiply(End.HipSpreadMultiplier);
 	Modifier.ADSSpreadMultiplier = Multiply(End.ADSSpreadMultiplier);
 	Modifier.MovementSpreadMultiplier = Multiply(End.MovementSpreadMultiplier);
@@ -145,6 +190,7 @@ FSavaWeaponModifier USavaWeaponLibrary::MakeSliderModifier(const FSavaWeaponTuni
 	Modifier.RecoilRecoveryMultiplier = Multiply(End.RecoilRecoveryMultiplier);
 	Modifier.ADSTimeMultiplier = Multiply(End.ADSTimeMultiplier);
 	Modifier.ADSZoomMultiplier = Multiply(End.ADSZoomMultiplier);
+	Modifier.ADSMoveSpeedMultiplier = Multiply(End.ADSMoveSpeedMultiplier);
 	Modifier.FalloffStartMultiplier = Multiply(End.FalloffStartMultiplier);
 	Modifier.FalloffEndMultiplier = Multiply(End.FalloffEndMultiplier);
 	Modifier.MinimumDamageMultiplier = Multiply(End.MinimumDamageMultiplier);

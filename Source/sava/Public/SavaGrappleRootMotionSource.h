@@ -10,6 +10,9 @@ struct SAVA_API FSavaGrappleRootMotionSource : public FRootMotionSource_MoveToFo
 {
 	GENERATED_BODY()
 
+	//引っ張りの InstanceName(引っ張られている最中かを GetRootMotionSource で調べるのに使う)
+	static FName GetPullInstanceName() { return TEXT("GrapplePull"); }
+
 	UPROPERTY()
 	float PullSpeed = 2000.0f;
 	UPROPERTY()

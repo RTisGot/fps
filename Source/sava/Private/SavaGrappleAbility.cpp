@@ -266,7 +266,7 @@ void USavaGrappleAbility::StartPull(const FHitResult& Anchor)
 	Movement->SetMovementMode(MOVE_Flying);
 
 	TSharedPtr<FSavaGrappleRootMotionSource> Pull = MakeShared<FSavaGrappleRootMotionSource>();
-	Pull->InstanceName = TEXT("GrapplePull");
+	Pull->InstanceName = FSavaGrappleRootMotionSource::GetPullInstanceName();
 	Pull->Priority = 1000;
 	Pull->AccumulateMode = ERootMotionAccumulateMode::Override;
 	Pull->StartLocation = Character->GetActorLocation();

@@ -27,6 +27,11 @@ bool USavaWeaponReloadAbility::CanActivateAbility(const FGameplayAbilitySpecHand
 	}
 
 	const USavaEquipmentComponent* Equipment = GetEquipmentFromActorInfo(ActorInfo);
+	//武器を出している途中はリロードしない(自分の画面だけで止める。サーバーは持ち替えを知るのが遅れるので、そこで止めると食い違う)
+	if (Equipment && ActorInfo->IsLocallyControlled() && Equipment->IsEquipping())
+	{
+		return false;
+	}
 	return Equipment && Equipment->CanReload(Equipment->GetCurrentSlot());
 }
 

@@ -16,6 +16,8 @@ namespace SavaWeaponData
 		Result.MaxReserveAmmoAdd = -Modifier.MaxReserveAmmoAdd;
 		Result.RateOfFireMultiplier = Inverse(Modifier.RateOfFireMultiplier);
 		Result.ReloadTimeMultiplier = Inverse(Modifier.ReloadTimeMultiplier);
+		Result.EquipTimeMultiplier = Inverse(Modifier.EquipTimeMultiplier);
+		Result.SprintToFireTimeMultiplier = Inverse(Modifier.SprintToFireTimeMultiplier);
 		Result.HipSpreadMultiplier = Inverse(Modifier.HipSpreadMultiplier);
 		Result.ADSSpreadMultiplier = Inverse(Modifier.ADSSpreadMultiplier);
 		Result.MovementSpreadMultiplier = Inverse(Modifier.MovementSpreadMultiplier);
@@ -26,6 +28,7 @@ namespace SavaWeaponData
 		Result.RecoilRecoveryMultiplier = Inverse(Modifier.RecoilRecoveryMultiplier);
 		Result.ADSTimeMultiplier = Inverse(Modifier.ADSTimeMultiplier);
 		Result.ADSZoomMultiplier = Inverse(Modifier.ADSZoomMultiplier);
+		Result.ADSMoveSpeedMultiplier = Inverse(Modifier.ADSMoveSpeedMultiplier);
 		Result.FalloffStartMultiplier = Inverse(Modifier.FalloffStartMultiplier);
 		Result.FalloffEndMultiplier = Inverse(Modifier.FalloffEndMultiplier);
 		Result.MinimumDamageMultiplier = Inverse(Modifier.MinimumDamageMultiplier);

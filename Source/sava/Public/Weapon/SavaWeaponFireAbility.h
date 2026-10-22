@@ -74,6 +74,7 @@ protected:
 	float ServerHeadshotTolerance = 120.0f;
 
 	//撃つ間隔がこの割合より短ければダメージを与えない(0.5 = 本来の間隔の半分まで許す。通信で届く間隔がばらつくため)
+	//持ち替えた直後・ダッシュをやめた直後も同じで、Equip Time・Sprint To Fire Time のこの割合が過ぎるまでの弾はダメージを与えない
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon|Server", meta = (ClampMin = "0", ClampMax = "1"))
 	float ServerFireIntervalTolerance = 0.5f;
 

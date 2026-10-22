@@ -122,7 +122,10 @@ namespace SavaLoadoutStat
 			{ NSLOCTEXT("SavaLoadout", "StatRateOfFire", "連射速度"), [](const FSavaWeaponStats& S) { return S.RateOfFire; }, true, EUnit::Rpm, 0 },
 			{ NSLOCTEXT("SavaLoadout", "StatMagazine", "マガジン"), [](const FSavaWeaponStats& S) { return static_cast<float>(S.MagazineSize); }, true, EUnit::None, 0 },
 			{ NSLOCTEXT("SavaLoadout", "StatReload", "リロード"), [](const FSavaWeaponStats& S) { return S.ReloadTime; }, false, EUnit::Seconds, 1 },
+			{ NSLOCTEXT("SavaLoadout", "StatEquipTime", "持ち替え"), [](const FSavaWeaponStats& S) { return S.EquipTime; }, false, EUnit::Seconds, 2 },
+			{ NSLOCTEXT("SavaLoadout", "StatSprintToFireTime", "ダッシュ後の射撃"), [](const FSavaWeaponStats& S) { return S.SprintToFireTime; }, false, EUnit::Seconds, 2 },
 			{ NSLOCTEXT("SavaLoadout", "StatADSTime", "ADS 時間"), [](const FSavaWeaponStats& S) { return S.ADSTime; }, false, EUnit::Seconds, 2 },
+			{ NSLOCTEXT("SavaLoadout", "StatADSMoveSpeed", "ADS 移動速度"), [](const FSavaWeaponStats& S) { return S.ADSMoveSpeed; }, true, EUnit::Multiplier, 2 },
 			//減衰しきる距離(cm → m)
 			{ NSLOCTEXT("SavaLoadout", "StatRange", "射程"), [](const FSavaWeaponStats& S) { return S.FalloffEndDistance / 100.0f; }, true, EUnit::Meters, 0 },
 			{ NSLOCTEXT("SavaLoadout", "StatRecoil", "反動"), [](const FSavaWeaponStats& S) { return S.VerticalRecoil + S.HorizontalRecoil; }, false, EUnit::Degrees, 2 },

@@ -11,7 +11,9 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
+#include "SavaCharacterMovementComponent.h"
 #include "SavaGameplayTags.h"
+#include "SavaGrappleRootMotionSource.h"
 #include "savaCharacter.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
@@ -110,11 +112,18 @@ void USavaEquipmentComponent::TickComponent(float DeltaTime, ELevelTick TickType
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+	//ダッシュ後の射撃の待ち時間用に、最後にダッシュしていた時刻を覚える(自分の画面とサーバーの両方)
+	if (IsOwnerSprinting())
+	{
+		LastSprintTime = GetWorld()->GetTimeSeconds();
+	}
+
 	//ADS と反動は、操作している本人の画面だけで動かす
 	if (GetLocalPlayerController())
 	{
 		UpdateADS(DeltaTime);
-		UpdateRecoilRecovery(DeltaTime);
+		UpdateRecoil(DeltaTime);
+		UpdateVisualKick(DeltaTime);
 	}
 
 	//デバッグ描画(エディタ・ゲーム画面のすべてで可視)
@@ -254,6 +263,29 @@ bool USavaEquipmentComponent::CanSwapWeapon() const
 	return GetWeaponData(GetOtherSlot(CurrentSlot)) != nullptr;
 }
 
+float USavaEquipmentComponent::GetAimMoveSpeedMultiplier() const
+{
+	//見た目の ADS の進み具合(ADSAlpha)は自分の画面にしかないので、サーバーでも分かるタグで決める
+	const UAbilitySystemComponent* AbilitySystem = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner());
+	const FSlotState* State = FindSlotState(CurrentSlot);
+	if (!State || !State->AppliedWeapon || !AbilitySystem || !AbilitySystem->HasMatchingGameplayTag(SavaGameplayTags::State_Weapon_Aiming))
+	{
+		return 1.0f;
+	}
+	return State->Stats.ADSMoveSpeed;
+}
+
+float USavaEquipmentComponent::GetRemainingEquipTime() const
+{
+	const FSlotState* State = FindSlotState(CurrentSlot);
+	if (!State)
+	{
+		return 0.0f;
+	}
+	const double TimeSinceEquip = GetWorld()->GetTimeSeconds() - EquipStartTime;
+	return FMath::Max(State->Stats.EquipTime - static_cast<float>(TimeSinceEquip), 0.0f);
+}
+
 float USavaEquipmentComponent::GetCurrentSpreadAngle() const
 {
 	const FSlotState* State = FindSlotState(CurrentSlot);
@@ -264,17 +296,54 @@ float USavaEquipmentComponent::GetCurrentSpreadAngle() const
 
 	float MoveAlpha = 0.0f;
 	bool bInAir = false;
+	ESavaSpreadMovement SpreadMovement = ESavaSpreadMovement::Walk;
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	if (const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr)
 	{
-		//歩く速さで Movement Spread を全部足す
-		if (Movement->MaxWalkSpeed > 0.0f)
+		//スキル・ガジェットによる加速/減速も含めた歩く速さで、歩き(加速中はダッシュ)の拡散を全部足す
+		const USavaCharacterMovementComponent* SavaMovement = Cast<USavaCharacterMovementComponent>(Movement);
+		const float AbilitySpeedMultiplier = SavaMovement ? SavaMovement->GetAbilityMoveSpeedMultiplier() : 1.0f;
+		const float WalkSpeed = Movement->MaxWalkSpeed * AbilitySpeedMultiplier;
+		if (WalkSpeed > 0.0f)
 		{
-			MoveAlpha = FMath::Clamp(static_cast<float>(Movement->Velocity.Size2D()) / Movement->MaxWalkSpeed, 0.0f, 1.0f);
+			MoveAlpha = FMath::Clamp(static_cast<float>(Movement->Velocity.Size2D()) / WalkSpeed, 0.0f, 1.0f);
 		}
 		bInAir = Movement->IsFalling();
+
+		const bool bGrappling = Movement->CurrentRootMotion.RootMotionSources.ContainsByPredicate([](const TSharedPtr<FRootMotionSource>& Source)
+		{
+			return Source.IsValid() && Source->InstanceName == FSavaGrappleRootMotionSource::GetPullInstanceName();
+		});
+		if (bGrappling)
+		{
+			SpreadMovement = ESavaSpreadMovement::Grapple;
+		}
+		else if (SavaMovement && SavaMovement->IsSliding())
+		{
+			SpreadMovement = ESavaSpreadMovement::Slide;
+		}
+		else if (SavaMovement && (SavaMovement->IsSprinting() || AbilitySpeedMultiplier > 1.0f + KINDA_SMALL_NUMBER))
+		{
+			SpreadMovement = ESavaSpreadMovement::Sprint;
+		}
 	}
-	return State->Stats.CalculateSpread(ADSAlpha, MoveAlpha, bInAir);
+	return State->Stats.CalculateSpread(ADSAlpha, MoveAlpha, bInAir, GetShotSpread(*State), SpreadMovement);
+}
+
+float USavaEquipmentComponent::GetShotSpread(const FSlotState& State) const
+{
+	return State.Stats.CalculateShotSpread(State.ShotSpread, static_cast<float>(GetWorld()->GetTimeSeconds() - State.ShotSpreadTime));
+}
+
+void USavaEquipmentComponent::AddShotSpread(ESavaWeaponSlot Slot)
+{
+	FSlotState* State = FindSlotState(Slot);
+	if (!State)
+	{
+		return;
+	}
+	State->ShotSpread = FMath::Min(GetShotSpread(*State) + State->Stats.SpreadPerShot, State->Stats.MaxShotSpread);
+	State->ShotSpreadTime = GetWorld()->GetTimeSeconds();
 }
 
 //--------------------------------Swap
@@ -286,6 +355,8 @@ void USavaEquipmentComponent::SwapWeapon()
 		return;
 	}
 	CurrentSlot = GetOtherSlot(CurrentSlot);
+	//しまう時間は取らず、出す武器の Equip Time だけ待つ(出している途中に持ち替えても、新しい武器の時間で数え直す)
+	EquipStartTime = GetWorld()->GetTimeSeconds();
 	OnRep_CurrentSlot();
 }
 
@@ -333,6 +404,33 @@ float USavaEquipmentComponent::GetRemainingFireInterval(ESavaWeaponSlot Slot) co
 	return State->Stats.GetFireInterval() - static_cast<float>(TimeSinceLastShot);
 }
 
+float USavaEquipmentComponent::GetRemainingSprintToFireTime() const
+{
+	const FSlotState* State = FindSlotState(CurrentSlot);
+	if (!State)
+	{
+		return 0.0f;
+	}
+	if (IsOwnerSprinting())
+	{
+		return State->Stats.SprintToFireTime;
+	}
+	const double TimeSinceSprint = GetWorld()->GetTimeSeconds() - LastSprintTime;
+	return FMath::Max(State->Stats.SprintToFireTime - static_cast<float>(TimeSinceSprint), 0.0f);
+}
+
+float USavaEquipmentComponent::GetRemainingReadyTime() const
+{
+	return FMath::Max(GetRemainingEquipTime(), GetRemainingSprintToFireTime());
+}
+
+bool USavaEquipmentComponent::IsOwnerSprinting() const
+{
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	const USavaCharacterMovementComponent* Movement = Character ? Cast<USavaCharacterMovementComponent>(Character->GetCharacterMovement()) : nullptr;
+	return Movement && Movement->IsSprinting();
+}
+
 bool USavaEquipmentComponent::TryConsumeLocalShot(ESavaWeaponSlot Slot)
 {
 	FSlotState* State = FindSlotState(Slot);
@@ -360,8 +458,12 @@ bool USavaEquipmentComponent::TryConsumeServerShot(ESavaWeaponSlot Slot, float I
 
 	const double Now = GetWorld()->GetTimeSeconds();
 	const bool bTooFast = Now - State->ServerLastFireTime < State->Stats.GetFireInterval() * IntervalTolerance;
+	//持ち替えた直後(通信で届く時刻がずれるので、間隔と同じだけ余裕を持たせる)
+	const bool bEquipping = Now - EquipStartTime < State->Stats.EquipTime * IntervalTolerance;
+	//ダッシュをやめた直後(同じく余裕を持たせる)
+	const bool bJustSprinted = Now - LastSprintTime < State->Stats.SprintToFireTime * IntervalTolerance;
 	State->ServerLastFireTime = Now;
-	return !bTooFast;
+	return !bTooFast && !bEquipping && !bJustSprinted;
 }
 
 void USavaEquipmentComponent::FinishReload(ESavaWeaponSlot Slot)
@@ -409,7 +511,8 @@ void USavaEquipmentComponent::BroadcastAmmoChanged(ESavaWeaponSlot Slot)
 void USavaEquipmentComponent::UpdateADS(float DeltaTime)
 {
 	const UAbilitySystemComponent* AbilitySystem = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner());
-	const bool bAiming = AbilitySystem && AbilitySystem->HasMatchingGameplayTag(SavaGameplayTags::State_Weapon_Aiming);
+	//武器を出している途中は構えない(ボタンを押したままなら、出し終わってから構え始める)
+	const bool bAiming = AbilitySystem && AbilitySystem->HasMatchingGameplayTag(SavaGameplayTags::State_Weapon_Aiming) && !IsEquipping();
 	const FSavaWeaponStats Stats = GetStats(CurrentSlot);
 
 	const float TargetAlpha = bAiming ? 1.0f : 0.0f;
@@ -438,33 +541,73 @@ void USavaEquipmentComponent::ApplyRecoil(ESavaWeaponSlot Slot)
 		return;
 	}
 
-	FRotator ControlRotation = PlayerController->GetControlRotation();
-	const float CurrentPitch = FRotator::NormalizeAxis(ControlRotation.Pitch);
-	AbsorbPlayerPitchInput(CurrentPitch);
+	//撃つのをしばらくやめた・持ち替えた: パターンの最初から
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (Now - LastRecoilTime > State->Stats.RecoilResetTime || RecoilSlot != Slot)
+	{
+		RecoilShotIndex = 0;
+	}
 
-	//上へは 0 〜 Vertical Recoil、左右へは ±Horizontal Recoil だけランダムに動かす
-	const float KickUp = FMath::FRandRange(0.0f, State->Stats.VerticalRecoil);
-	const float KickSide = FMath::FRandRange(-State->Stats.HorizontalRecoil, State->Stats.HorizontalRecoil);
-	ControlRotation.Pitch = CurrentPitch + KickUp;
-	ControlRotation.Yaw += KickSide;
-	PlayerController->SetControlRotation(ControlRotation);
+	//パターンに沿った量を溜める(少しだけランダムにずらす)。視点へは Recoil Kick Time かけて Tick で足す
+	const FVector2D Noise(FMath::FRandRange(-1.0f, 1.0f), FMath::FRandRange(-1.0f, 1.0f));
+	const FVector2D Kick = State->Stats.CalculateRecoilKick(RecoilShotIndex, Noise);
+	PendingRecoil += Kick;
 
-	RecoilPitchToRecover += KickUp;
-	LastRecoilPitch = ControlRotation.Pitch;
-	LastRecoilTime = GetWorld()->GetTimeSeconds();
+	//見た目だけの揺れ: 速さを与えると、Visual Kick Time 後に (速さ / (強さ × e)) まで跳ねてから戻るので、狙った大きさになる速さを足す
+	const FVector VisualKick(Kick.Y * State->Stats.VisualKickScale, Kick.X * State->Stats.VisualKickScale,
+		FMath::FRandRange(-State->Stats.VisualKickRoll, State->Stats.VisualKickRoll));
+	if (!VisualKick.IsNearlyZero())
+	{
+		VisualKickStiffness = 1.0f / FMath::Max(State->Stats.VisualKickTime, 0.005f);
+		VisualKickVelocity += VisualKick * VisualKickStiffness * UE_EULERS_NUMBER;
+		bVisualKickActive = true;
+	}
+
+	RecoilKickTimeRemaining = State->Stats.RecoilKickTime;
+	if (RecoilKickTimeRemaining <= 0.0f)
+	{
+		AddRecoilToView(PlayerController, PendingRecoil);
+		PendingRecoil = FVector2D::ZeroVector;
+	}
+
+	LastRecoilTime = Now;
+	++RecoilShotIndex;
+	RecoilSlot = Slot;
 	RecoilRecoveryDelay = State->Stats.GetFireInterval();
 	RecoilRecoverySpeed = State->Stats.RecoilRecovery;
 }
 
-void USavaEquipmentComponent::UpdateRecoilRecovery(float DeltaTime)
+void USavaEquipmentComponent::UpdateRecoil(float DeltaTime)
 {
 	APlayerController* PlayerController = GetLocalPlayerController();
-	if (!PlayerController || RecoilPitchToRecover <= 0.0f)
+	if (!PlayerController)
 	{
 		return;
 	}
 
-	//撃ち続けている間は戻さない(次の 1 発までの間隔が過ぎたら戻し始める)
+	//溜まった反動を足す。残りの割合を (残り時間 / Kick Time)^2 で減らすので、最初は速く、だんだんゆっくりになり、ちょうど Kick Time で足し終わる
+	//(撃つたびに残り時間は Kick Time に戻り、前の 1 発の残りもまとめて足す)
+	if (RecoilKickTimeRemaining > 0.0f)
+	{
+		const float NewRemaining = FMath::Max(RecoilKickTimeRemaining - DeltaTime, 0.0f);
+		const float RemainingRatio = FMath::Square(NewRemaining / RecoilKickTimeRemaining);
+		const FVector2D Step = PendingRecoil * (1.0f - RemainingRatio);
+		AddRecoilToView(PlayerController, Step);
+		PendingRecoil -= Step;
+		RecoilKickTimeRemaining = NewRemaining;
+		if (RecoilKickTimeRemaining <= 0.0f)
+		{
+			PendingRecoil = FVector2D::ZeroVector;
+		}
+		return;
+	}
+
+	if (RecoilPitchToRecover <= 0.0f)
+	{
+		return;
+	}
+
+	//撃ち続けている間は戻さない(反動を足し終え、次の 1 発までの間隔が過ぎたら戻し始める)
 	if (GetWorld()->GetTimeSeconds() - LastRecoilTime < RecoilRecoveryDelay)
 	{
 		return;
@@ -483,6 +626,64 @@ void USavaEquipmentComponent::UpdateRecoilRecovery(float DeltaTime)
 	PlayerController->SetControlRotation(ControlRotation);
 
 	RecoilPitchToRecover -= Step;
+	LastRecoilPitch = ControlRotation.Pitch;
+}
+
+void USavaEquipmentComponent::UpdateVisualKick(float DeltaTime)
+{
+	const AsavaCharacter* Character = Cast<AsavaCharacter>(GetOwner());
+	UCameraComponent* Camera = Character ? Character->GetFirstPersonCameraComponent() : nullptr;
+	USkeletalMeshComponent* Arms = Character ? Character->GetMesh1P() : nullptr;
+	if (!bVisualKickActive || !Camera || !Arms)
+	{
+		return;
+	}
+
+	//揺れ始め: 揺れていないときの腕の位置を覚える
+	if (VisualKickOffset.IsZero())
+	{
+		ArmsBaseTransform = Arms->GetRelativeTransform();
+	}
+
+	//行きすぎない一番速いバネ(臨界減衰)の式で進める(フレームの長さによらず同じ動きになる)
+	const float W = VisualKickStiffness;
+	const float Decay = FMath::Exp(-W * DeltaTime);
+	const FVector Temp = VisualKickVelocity + VisualKickOffset * W;
+	VisualKickOffset = (VisualKickOffset + Temp * DeltaTime) * Decay;
+	VisualKickVelocity = (VisualKickVelocity - Temp * (W * DeltaTime)) * Decay;
+
+	//十分小さくなったら止める
+	const bool bSettled = VisualKickOffset.IsNearlyZero(0.001f) && VisualKickVelocity.IsNearlyZero(0.01f);
+	if (bSettled)
+	{
+		VisualKickOffset = FVector::ZeroVector;
+		VisualKickVelocity = FVector::ZeroVector;
+		bVisualKickActive = false;
+	}
+
+	//画面(カメラの見た目だけの回転)と腕を同じだけ回す。視点の向き(Control Rotation)は変えないので、弾の向きは変わらない
+	const FTransform Kick(FRotator(VisualKickOffset.X, VisualKickOffset.Y, VisualKickOffset.Z));
+	Camera->ClearAdditiveOffset();
+	Arms->SetRelativeTransform(bSettled ? ArmsBaseTransform : ArmsBaseTransform * Kick);
+	if (!bSettled)
+	{
+		Camera->AddAdditiveOffset(Kick, 0.0f);
+	}
+}
+
+void USavaEquipmentComponent::AddRecoilToView(APlayerController* PlayerController, const FVector2D& Kick)
+{
+	//角度を上書きせず差分を足すので、反動を足している間もプレイヤーの視点操作はそのまま効く
+	FRotator ControlRotation = PlayerController->GetControlRotation();
+	const float CurrentPitch = FRotator::NormalizeAxis(ControlRotation.Pitch);
+	AbsorbPlayerPitchInput(CurrentPitch);
+
+	ControlRotation.Pitch = CurrentPitch + Kick.Y;
+	ControlRotation.Yaw += Kick.X;
+	PlayerController->SetControlRotation(ControlRotation);
+
+	//下向きの反動の分は、戻す量から引く
+	RecoilPitchToRecover = FMath::Max(0.0f, RecoilPitchToRecover + Kick.Y);
 	LastRecoilPitch = ControlRotation.Pitch;
 }
 

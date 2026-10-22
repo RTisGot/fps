@@ -91,6 +91,26 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
 	bool CanSwapWeapon() const;
 
+	//ADS 中の移動速度の倍率(ADS していなければ 1)。サーバーとクライアントで同じ値になる(ADS のタグと装備で決まる)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	float GetAimMoveSpeedMultiplier() const;
+
+	//持ち替えで出した武器が使えるようになるまで残り何秒か(0 なら使える)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	float GetRemainingEquipTime() const;
+
+	//持ち替えで武器を出している途中か(撃つ・ADS・リロードができない)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	bool IsEquipping() const { return GetRemainingEquipTime() > 0.0f; }
+
+	//ダッシュをやめてから撃てるようになるまで残り何秒か(ダッシュ中は Sprint To Fire Time そのもの)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	float GetRemainingSprintToFireTime() const;
+
+	//持ち替え・ダッシュの待ち時間のうち、撃てるようになるまで残り何秒か(連射間隔は含まない)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	float GetRemainingReadyTime() const;
+
 	//今の拡散の角度(クロスヘアの広がりに使う。自分の画面だけ正しい値になる)
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
 	float GetCurrentSpreadAngle() const;
@@ -121,13 +141,13 @@ public:
 	//持ち替える(自分の画面とサーバーの両方で呼ぶ)
 	void SwapWeapon();
 
-	//自分の画面: 次の 1 発まで残り何秒か
+	//自分の画面: 前の 1 発からの連射間隔が空くまで残り何秒か(持ち替え・ダッシュの待ち時間は GetRemainingReadyTime)
 	float GetRemainingFireInterval(ESavaWeaponSlot Slot) const;
 
 	//自分の画面: 弾を 1 発使う。マガジンが空なら false
 	bool TryConsumeLocalShot(ESavaWeaponSlot Slot);
 
-	//サーバー: クライアントから届いた 1 発分の弾を使う。マガジンが空、または撃つ間隔が短すぎれば false
+	//サーバー: クライアントから届いた 1 発分の弾を使う。マガジンが空、または撃つ間隔が短すぎる・武器を出し終わっていなければ false
 	//(短すぎる場合も弾は使う。自分の画面の弾数とずれないようにするため)
 	bool TryConsumeServerShot(ESavaWeaponSlot Slot, float IntervalTolerance);
 
@@ -136,6 +156,9 @@ public:
 
 	//自分の画面: 反動で視点を動かす
 	void ApplyRecoil(ESavaWeaponSlot Slot);
+
+	//自分の画面: 連射の拡散を 1 発分増やす(レイを飛ばした後に呼ぶ。次の 1 発から影響する)
+	void AddShotSpread(ESavaWeaponSlot Slot);
 
 	//自分の画面: 腕のメッシュ(アニメーションの再生用)
 	USkeletalMeshComponent* GetFirstPersonMesh() const;
@@ -181,7 +204,13 @@ private:
 		int32 ReserveAmmo = 0;
 		double LocalLastFireTime = -1.0e9;
 		double ServerLastFireTime = -1.0e9;
+		//連射の拡散(最後に撃った直後の値と、その時刻。今の値は Stats.CalculateShotSpread で求める)
+		float ShotSpread = 0.0f;
+		double ShotSpreadTime = -1.0e9;
 	};
+
+	//今の連射の拡散
+	float GetShotSpread(const FSlotState& State) const;
 
 	UFUNCTION()
 	void OnRep_Loadout();
@@ -202,11 +231,16 @@ private:
 
 	void UpdateWeaponMesh();
 	void UpdateADS(float DeltaTime);
-	void UpdateRecoilRecovery(float DeltaTime);
+	//溜まった反動を視点に足し、足し終えて撃つのをやめていれば戻す
+	void UpdateRecoil(float DeltaTime);
 
 	//発砲時に銃口位置へマズルフラッシュを生成
 	void SpawnMuzzleFlash(const FVector& MuzzleLocation);
 
+	//見た目だけの揺れを動かし、カメラと腕に反映する
+	void UpdateVisualKick(float DeltaTime);
+	//反動の分だけ視点を動かす(X = 横、Y = 縦)
+	void AddRecoilToView(APlayerController* PlayerController, const FVector2D& Kick);
 	//プレイヤーが自分で視点を下げた分は、反動で戻す量から引く(戻しすぎないように)
 	void AbsorbPlayerPitchInput(float CurrentPitch);
 
@@ -246,14 +280,34 @@ private:
 		FVector_NetQuantize MuzzleLocation,
 		const TArray<FVector_NetQuantize>& TraceEnds);
 
+	//最後に持ち替えた時刻(自分の画面とサーバーがそれぞれ持つ)
+	double EquipStartTime = -1.0e9;
+	//最後にダッシュしていた時刻(自分の画面とサーバーがそれぞれ持つ)
+	double LastSprintTime = -1.0e9;
+
+	bool IsOwnerSprinting() const;
+
 	//ADS
 	float ADSAlpha = 0.0f;
 	float BaseFieldOfView = 0.0f;
 
+	//反動: まだ視点に足していない量(X = 横、Y = 縦)と、足しきるまでの残り時間
+	FVector2D PendingRecoil = FVector2D::ZeroVector;
+	float RecoilKickTimeRemaining = 0.0f;
 	//反動: まだ戻していない跳ね上がりの量
 	float RecoilPitchToRecover = 0.0f;
 	float LastRecoilPitch = 0.0f;
 	double LastRecoilTime = -1.0e9;
 	float RecoilRecoveryDelay = 0.0f;
 	float RecoilRecoverySpeed = 0.0f;
+	//見た目だけの揺れ(X = 縦、Y = 横、Z = 傾き)。減衰の強いバネで 0 へ戻る
+	FVector VisualKickOffset = FVector::ZeroVector;
+	FVector VisualKickVelocity = FVector::ZeroVector;
+	float VisualKickStiffness = 0.0f;
+	bool bVisualKickActive = false;
+	//揺れていないときの腕の位置(揺れている間は、カメラと一緒に回す)
+	FTransform ArmsBaseTransform;
+	//反動のパターンの何発目か(撃つのをやめて Recoil Reset Time 経つか、持ち替えると 0 に戻る)
+	int32 RecoilShotIndex = 0;
+	ESavaWeaponSlot RecoilSlot = ESavaWeaponSlot::Primary;
 };

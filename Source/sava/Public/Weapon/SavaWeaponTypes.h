@@ -42,6 +42,19 @@ enum class ESavaWeaponSlot : uint8
 	Secondary,
 };
 
+//拡散を決めるための、キャラクターの動き方
+UENUM(BlueprintType)
+enum class ESavaSpreadMovement : uint8
+{
+	//歩き・止まっている・空中
+	Walk,
+	//ダッシュ・加速スキルなどで速くなっている
+	Sprint,
+	Slide,
+	//グラップルで引っ張られている
+	Grapple,
+};
+
 //武器の数値(BP の ST_WeaponStats を移したもの。Reload Time と Burst Count は追加)
 USTRUCT(BlueprintType)
 struct SAVA_API FSavaWeaponStats
@@ -76,6 +89,14 @@ struct SAVA_API FSavaWeaponStats
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = "0", ForceUnits = "s"))
 	float ReloadTime = 2.0f;
 
+	//持ち替えでこの武器を出してから、撃つ・ADS・リロードができるまでの時間(前の武器をしまう時間もここに含める)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = "0", ForceUnits = "s"))
+	float EquipTime = 0.4f;
+
+	//ダッシュをやめてから撃てるようになるまでの時間(ダッシュ中に撃とうとすると、ダッシュが止まってからこの時間後に撃つ)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = "0", ForceUnits = "s"))
+	float SprintToFireTime = 0.2f;
+
 	//バースト 1 回の発射数(Fire Mode が Burst のときだけ使う)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = "1"))
 	int32 BurstCount = 3;
@@ -90,27 +111,85 @@ struct SAVA_API FSavaWeaponStats
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ForceUnits = "deg"))
 	float ADSSpread = 0.3f;
 
-	//移動中に足す拡散(歩く速さで最大になる)
+	//歩いているときに足す拡散(歩く速さで最大になる)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ForceUnits = "deg"))
 	float MovementSpread = 1.5f;
+
+	//ダッシュ中に足す拡散(歩きの拡散の代わりに使う)。加速スキルなどで速くなっている間は、歩いていてもこちらを使う(速さに合わせて最大になる)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ForceUnits = "deg"))
+	float SprintSpread = 3.0f;
+
+	//スライディング中に足す拡散(歩きの拡散の代わりに使う)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ForceUnits = "deg"))
+	float SlideSpread = 2.0f;
+
+	//グラップルで引っ張られている間に足す拡散(歩き・空中の拡散の代わりに使う)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ForceUnits = "deg"))
+	float GrappleSpread = 4.0f;
 
 	//空中にいるときに足す拡散
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ForceUnits = "deg"))
 	float JumpSpread = 4.0f;
 
-	//ADS 中は、移動中・空中の拡散をこの割合に減らす(0.5 なら半分、1 なら減らさない。ADS に入るほど近づく)
+	//ADS 中は、移動中・空中・連射の拡散をこの割合に減らす(0.5 なら半分、1 なら減らさない。ADS に入るほど近づく)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ClampMax = "1"))
 	float ADSMovementSpreadScale = 0.5f;
 
-	//--------------------------------Recoil(1 発ごとに視点がランダムに動く)
+	//連射の拡散: 1 発撃つごとに足す拡散(1 発目は足す前の拡散で撃つ)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ForceUnits = "deg"))
+	float SpreadPerShot = 0.25f;
 
-	//上への跳ね上がり(0 〜 この値)
+	//連射の拡散の上限
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0", ForceUnits = "deg"))
+	float MaxShotSpread = 2.0f;
+
+	//連射の拡散が戻る速さ(度/秒)。撃った後、連射間隔が過ぎてから戻り始める(撃ち続けている間は戻らない)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0"))
+	float ShotSpreadRecovery = 8.0f;
+
+	//--------------------------------Recoil(1 発ごとに、Recoil Pattern に沿って視点が動く)
+
+	//パターンの縦の値 1 につき、上へ跳ね上がる角度
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0", ForceUnits = "deg"))
 	float VerticalRecoil = 0.6f;
 
-	//左右のぶれ(-この値 〜 +この値)
+	//パターンの横の値 1 につき、横へ動く角度
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0", ForceUnits = "deg"))
 	float HorizontalRecoil = 0.3f;
+
+	//撃ち始めから n 発目に視点が動く量(X = 横(+ で右)、Y = 縦(+ で上))。実際の角度は X × Horizontal Recoil、Y × Vertical Recoil
+	//例: (0, 1) (0, 1) (0.5, 1) (-0.5, 1) … なら、2 発まっすぐ上がってから左右に揺れる。空なら毎発 (0, 1)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil")
+	TArray<FVector2D> RecoilPattern;
+
+	//パターンの最後まで撃ったら、この番号(0 = 最初)の 1 発から繰り返す
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0"))
+	int32 RecoilPatternLoopStart = 0;
+
+	//パターンの値に足すランダムなずれ(-この値 〜 +この値。0 ならいつも同じ形、0.1 なら 1 発分の 1 割くらいずれる)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0", ClampMax = "1"))
+	float RecoilRandomness = 0.1f;
+
+	//撃つのをやめてからこの時間が経つと、パターンが最初の 1 発目に戻る(連射間隔より短いと、毎発 1 発目になる)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0", ForceUnits = "s"))
+	float RecoilResetTime = 0.3f;
+
+	//1 発分の反動を視点に足しきるまでの時間(最初は速く、だんだんゆっくり動く。0 なら一瞬で動く)
+	//連射間隔より長いと、次の弾は上がりきる前の向きに飛ぶ
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0", ForceUnits = "s"))
+	float RecoilKickTime = 0.06f;
+
+	//見た目だけの揺れ(画面と腕が一瞬跳ねて、バネのように戻る。弾の向きは変わらない)の大きさ。1 発の反動の角度にこの値を掛ける(0 なら揺れない)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0"))
+	float VisualKickScale = 0.5f;
+
+	//見た目だけの揺れで、画面が傾く角度(-この値 〜 +この値でランダム)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0", ForceUnits = "deg"))
+	float VisualKickRoll = 0.4f;
+
+	//見た目だけの揺れが一番大きくなるまでの時間(戻りきるのはこの 5 倍くらい)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0.005", ForceUnits = "s"))
+	float VisualKickTime = 0.04f;
 
 	//撃ち終わった後に、跳ね上がった分が戻る速さ(度/秒)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recoil", meta = (ClampMin = "0"))
@@ -125,6 +204,10 @@ struct SAVA_API FSavaWeaponStats
 	//ADS 中の視野角の倍率(0.8 なら 80%)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS", meta = (ClampMin = "0.05", ClampMax = "1"))
 	float ADSZoom = 0.8f;
+
+	//ADS 中の移動速度の倍率(0.7 なら 70%。ADS ボタンを押した瞬間から効く。スライディング中は変わらない)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS", meta = (ClampMin = "0.1", ClampMax = "1"))
+	float ADSMoveSpeed = 0.7f;
 
 	//--------------------------------Falloff(Start まではそのまま、End までに Minimum Damage まで直線的に下がる)
 
@@ -155,8 +238,16 @@ struct SAVA_API FSavaWeaponStats
 	float CalculateDamage(float Distance, bool bHeadshot) const;
 
 	//拡散の角度を計算する
-	//ADSAlpha: ADS の進み具合(0 〜 1) / MoveAlpha: 歩く速さに対する今の速さ(0 〜 1) / bInAir: 空中にいるか
-	float CalculateSpread(float ADSAlpha, float MoveAlpha, bool bInAir) const;
+	//ADSAlpha: ADS の進み具合(0 〜 1) / MoveAlpha: 歩く速さに対する今の速さ(0 〜 1) / bInAir: 空中にいるか / ShotSpread: 今の連射の拡散
+	//Movement: どう動いているか(歩き以外は、その動きの拡散を歩きの拡散の代わりに使う)
+	float CalculateSpread(float ADSAlpha, float MoveAlpha, bool bInAir, float ShotSpread = 0.0f, ESavaSpreadMovement Movement = ESavaSpreadMovement::Walk) const;
+
+	//最後に撃ってから TimeSinceLastShot 秒後の、連射の拡散(撃った直後が ShotSpreadAtLastShot)
+	float CalculateShotSpread(float ShotSpreadAtLastShot, float TimeSinceLastShot) const;
+
+	//撃ち始めから ShotIndex 発目(0 = 1 発目)の反動の角度を計算する(X = 横(+ で右)、Y = 縦(+ で上))
+	//Noise: ランダムなずれ(-1 〜 +1。Recoil Randomness を掛けてからパターンの値に足す)
+	FVector2D CalculateRecoilKick(int32 ShotIndex, const FVector2D& Noise) const;
 };
 
 //武器のカスタム(アタッチメントなど)で数値を変える量(BP の ST_WeaponModifier を移したもの。Reload Time Multiplier は追加)
@@ -183,6 +274,12 @@ struct SAVA_API FSavaWeaponModifier
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = "0"))
 	float ReloadTimeMultiplier = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = "0"))
+	float EquipTimeMultiplier = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ammo", meta = (ClampMin = "0"))
+	float SprintToFireTimeMultiplier = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spread", meta = (ClampMin = "0"))
 	float HipSpreadMultiplier = 1.0f;
@@ -213,6 +310,9 @@ struct SAVA_API FSavaWeaponModifier
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS", meta = (ClampMin = "0"))
 	float ADSZoomMultiplier = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS", meta = (ClampMin = "0"))
+	float ADSMoveSpeedMultiplier = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Falloff", meta = (ClampMin = "0"))
 	float FalloffStartMultiplier = 1.0f;

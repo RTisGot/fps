@@ -6,6 +6,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "SavaGameplayTags.h"
+#include "Weapon/SavaEquipmentComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -39,9 +40,10 @@ bool USavaCharacterMovementComponent::IsSprinting() const
 		return false;
 	}
 
-	//スタンなどでダッシュ不可のタグが付いている
+	//スタンなどでダッシュ不可のタグが付いている・ADS 中(ADS するとダッシュは止まる)
 	const UAbilitySystemComponent* AbilitySystem = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner());
-	if (AbilitySystem && AbilitySystem->HasMatchingGameplayTag(SavaGameplayTags::State_SprintBlocked))
+	if (AbilitySystem && (AbilitySystem->HasMatchingGameplayTag(SavaGameplayTags::State_SprintBlocked)
+		|| AbilitySystem->HasMatchingGameplayTag(SavaGameplayTags::State_Weapon_Aiming)))
 	{
 		return false;
 	}
@@ -59,8 +61,10 @@ float USavaCharacterMovementComponent::GetMaxSpeed() const {
 	if (IsSliding()) {
 		return SlideMaxSpeed;
 	}
-	//スキル等による速度変化(加速・減速など)は GAS の MoveSpeedMultiplier で受け取る
-	const float AbilitySpeedMultiplier = GetAbilityMoveSpeedMultiplier();
+	//スキル等による速度変化(加速・減速など)は GAS の MoveSpeedMultiplier で受け取る。ADS 中は武器ごとの倍率も掛ける
+	const USavaEquipmentComponent* Equipment = USavaEquipmentComponent::FindEquipmentComponent(GetOwner());
+	const float AimSpeedMultiplier = Equipment ? Equipment->GetAimMoveSpeedMultiplier() : 1.0f;
+	const float AbilitySpeedMultiplier = GetAbilityMoveSpeedMultiplier() * AimSpeedMultiplier;
 	if (IsSprinting()) {
 		return Super::GetMaxSpeed() * SprintSpeedMultiplier * AbilitySpeedMultiplier;
 	}

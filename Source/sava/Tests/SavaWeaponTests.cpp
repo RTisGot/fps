@@ -41,6 +41,65 @@ bool FSavaWeaponSpreadTest::RunTest(const FString&)
 	TestEqual(TEXT("Hip, moving and in the air: full movement spread"), Stats.CalculateSpread(0.0f, 1.0f, true), 2.0f + 1.5f + 4.0f);
 	TestEqual(TEXT("ADS, moving and in the air: movement spread halved"), Stats.CalculateSpread(1.0f, 1.0f, true), 0.4f + (1.5f + 4.0f) * 0.5f);
 	TestEqual(TEXT("Halfway into ADS: scale is halfway too"), Stats.CalculateSpread(0.5f, 1.0f, false), 1.2f + 1.5f * 0.75f);
+	TestEqual(TEXT("Hip, shot spread is added"), Stats.CalculateSpread(0.0f, 0.0f, false, 1.0f), 3.0f);
+	TestEqual(TEXT("ADS, shot spread is scaled like movement"), Stats.CalculateSpread(1.0f, 0.0f, false, 1.0f), 0.4f + 0.5f);
+
+	//動き方ごとの拡散(歩きの拡散の代わりに使う)
+	Stats.SprintSpread = 3.0f;
+	Stats.SlideSpread = 2.0f;
+	Stats.GrappleSpread = 5.0f;
+	TestEqual(TEXT("Sprint replaces walk spread"), Stats.CalculateSpread(0.0f, 1.0f, false, 0.0f, ESavaSpreadMovement::Sprint), 2.0f + 3.0f);
+	TestEqual(TEXT("Sprint (boosted walk) scales with speed"), Stats.CalculateSpread(0.0f, 0.5f, false, 0.0f, ESavaSpreadMovement::Sprint), 2.0f + 1.5f);
+	TestEqual(TEXT("Slide ignores speed"), Stats.CalculateSpread(0.0f, 0.2f, false, 0.0f, ESavaSpreadMovement::Slide), 2.0f + 2.0f);
+	TestEqual(TEXT("Grapple ignores air"), Stats.CalculateSpread(0.0f, 1.0f, true, 0.0f, ESavaSpreadMovement::Grapple), 2.0f + 5.0f);
+	TestEqual(TEXT("ADS scales sprint spread"), Stats.CalculateSpread(1.0f, 1.0f, false, 0.0f, ESavaSpreadMovement::Sprint), 0.4f + 3.0f * 0.5f);
+
+	FSavaWeaponModifier HeavyFrame;
+	HeavyFrame.MovementSpreadMultiplier = 2.0f;
+	const FSavaWeaponStats Heavy = USavaWeaponLibrary::ApplyWeaponModifiers(Stats, { HeavyFrame });
+	TestEqual(TEXT("Movement multiplier scales sprint"), Heavy.SprintSpread, 6.0f);
+	TestEqual(TEXT("Movement multiplier scales slide"), Heavy.SlideSpread, 4.0f);
+	TestEqual(TEXT("Movement multiplier scales grapple"), Heavy.GrappleSpread, 10.0f);
+
+	//連射の拡散は、連射間隔が過ぎてから戻り始める
+	Stats.RateOfFire = 600.0f;
+	Stats.ShotSpreadRecovery = 10.0f;
+	TestEqual(TEXT("Shot spread holds within the fire interval"), Stats.CalculateShotSpread(1.0f, 0.1f), 1.0f);
+	TestEqual(TEXT("Shot spread recovers after the fire interval"), Stats.CalculateShotSpread(1.0f, 0.15f), 0.5f, KINDA_SMALL_NUMBER);
+	TestEqual(TEXT("Shot spread never goes below 0"), Stats.CalculateShotSpread(1.0f, 5.0f), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponRecoilPatternTest, "Sava.Weapon.RecoilPattern",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaWeaponRecoilPatternTest::RunTest(const FString&)
+{
+	FSavaWeaponStats Stats;
+	Stats.VerticalRecoil = 0.5f;
+	Stats.HorizontalRecoil = 0.2f;
+	Stats.RecoilRandomness = 0.1f;
+
+	const FVector2D NoNoise = FVector2D::ZeroVector;
+	auto TestKick = [this](const TCHAR* What, const FVector2D& Actual, const FVector2D& Expected)
+	{
+		TestTrue(FString::Printf(TEXT("%s: %s (expected %s)"), What, *Actual.ToString(), *Expected.ToString()), Actual.Equals(Expected, KINDA_SMALL_NUMBER));
+	};
+	TestKick(TEXT("Empty pattern: straight up"), Stats.CalculateRecoilKick(5, NoNoise), FVector2D(0.0f, 0.5f));
+
+	//4 発のパターン。最後まで撃ったら 2 発目(番号 1)から繰り返す
+	Stats.RecoilPattern = { FVector2D(0.0f, 1.0f), FVector2D(1.0f, 1.0f), FVector2D(-1.0f, 2.0f), FVector2D(0.5f, 0.0f) };
+	Stats.RecoilPatternLoopStart = 1;
+	TestKick(TEXT("1st shot"), Stats.CalculateRecoilKick(0, NoNoise), FVector2D(0.0f, 0.5f));
+	TestKick(TEXT("3rd shot is scaled"), Stats.CalculateRecoilKick(2, NoNoise), FVector2D(-0.2f, 1.0f));
+	TestKick(TEXT("5th shot loops to index 1"), Stats.CalculateRecoilKick(4, NoNoise), FVector2D(0.2f, 0.5f));
+	TestKick(TEXT("7th shot loops to index 3"), Stats.CalculateRecoilKick(6, NoNoise), FVector2D(0.1f, 0.0f));
+
+	//ずれは Recoil Randomness の分だけ(パターンの値に足してから掛ける)
+	TestKick(TEXT("Max noise"), Stats.CalculateRecoilKick(0, FVector2D(1.0f, -1.0f)), FVector2D(0.1f * 0.2f, 0.9f * 0.5f));
+
+	Stats.RecoilPatternLoopStart = 100;
+	TestKick(TEXT("Loop start past the end repeats the last shot"), Stats.CalculateRecoilKick(10, NoNoise), FVector2D(0.1f, 0.0f));
 	return true;
 }
 
@@ -68,6 +127,19 @@ bool FSavaWeaponModifierTest::RunTest(const FString&)
 	TestEqual(TEXT("Damage multiplies"), Result.BaseDamage, 18.0f);
 	TestEqual(TEXT("Spread multiplies"), Result.HipSpread, 1.0f);
 	TestEqual(TEXT("ADS time multiplies"), Result.ADSTime, Base.ADSTime * 1.2f);
+
+	FSavaWeaponModifier LightStock;
+	LightStock.ADSMoveSpeedMultiplier = 1.2f;
+	TestEqual(TEXT("ADS move speed multiplies"), USavaWeaponLibrary::ApplyWeaponModifiers(Base, { LightStock }).ADSMoveSpeed, Base.ADSMoveSpeed * 1.2f);
+	LightStock.ADSMoveSpeedMultiplier = 10.0f;
+	TestEqual(TEXT("ADS move speed never exceeds 1"), USavaWeaponLibrary::ApplyWeaponModifiers(Base, { LightStock }).ADSMoveSpeed, 1.0f);
+
+	FSavaWeaponModifier QuickHands;
+	QuickHands.EquipTimeMultiplier = 0.5f;
+	QuickHands.SprintToFireTimeMultiplier = 0.5f;
+	const FSavaWeaponStats Quick = USavaWeaponLibrary::ApplyWeaponModifiers(Base, { QuickHands });
+	TestEqual(TEXT("Equip time multiplies"), Quick.EquipTime, Base.EquipTime * 0.5f);
+	TestEqual(TEXT("Sprint to fire time multiplies"), Quick.SprintToFireTime, Base.SprintToFireTime * 0.5f);
 
 	FSavaWeaponModifier TinyMag;
 	TinyMag.MagazineSizeAdd = -100;
