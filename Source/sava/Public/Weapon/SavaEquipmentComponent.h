@@ -237,6 +237,9 @@ private:
 	//発砲時に銃口位置へマズルフラッシュを生成
 	void SpawnMuzzleFlash(const FVector& MuzzleLocation);
 
+	// 発砲時の弾道エフェクトを生成
+	void SpawnTracerEffect(const FVector& MuzzleLocation, const TArray<FVector>& TraceEnds);
+
 	//見た目だけの揺れを動かし、カメラと腕に反映する
 	void UpdateVisualKick(float DeltaTime);
 	//反動の分だけ視点を動かす(X = 横、Y = 縦)

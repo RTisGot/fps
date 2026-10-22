@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Weapon/SavaWeaponTypes.h"
+#include "NiagaraSystem.h"
 #include "SavaWeaponData.generated.h"
 
 class UAnimMontage;
@@ -101,6 +102,10 @@ public:
 	//撃つたびに銃口に出すエフェクト。空なら、キャラクターの Equipment Component の Muzzle Flash System を使う
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<UNiagaraSystem> MuzzleFlashEffect;
+
+	// 発砲時に使用する弾道エフェクト。未設定の場合は弾道を生成しない
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TObjectPtr<UNiagaraSystem> TracerEffect;
 
 	//マズル位置のデバッグ描画の色
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")

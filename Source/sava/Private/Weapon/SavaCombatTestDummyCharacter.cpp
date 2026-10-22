@@ -99,8 +99,8 @@ void ASavaCombatTestDummyCharacter::NotifyWeaponImpact(const FHitResult& Hit, fl
         const FColor Color = GetRegionColor(LastHitRegion);
         const float MarkerSize = GetRegionMarkerSize(LastHitRegion);
 
-        DrawDebugSphere(World, Hit.ImpactPoint, MarkerSize, 10, Color, false, DrawTime);
-        DrawDebugPoint(World, Hit.ImpactPoint, MarkerSize * 2.0f, Color, false, DrawTime);
+        //DrawDebugSphere(World, Hit.ImpactPoint, MarkerSize, 10, Color, false, DrawTime);
+        //DrawDebugPoint(World, Hit.ImpactPoint, MarkerSize * 2.0f, Color, false, DrawTime);
         DrawDebugString(World, Hit.ImpactPoint + FVector(0.0f, 0.0f, MarkerSize + 12.0f),
             FString::Printf(TEXT("%s %.1f"), HitRegionToLabel(LastHitRegion), Damage), nullptr, Color, DrawTime);
     }
