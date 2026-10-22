@@ -1,6 +1,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 #include "Weapon/SavaWeaponData.h"
+#include "Loadout/SavaLoadoutStatLibrary.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponDamageFalloffTest, "Sava.Weapon.DamageFalloff",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -223,6 +224,56 @@ bool FSavaWeaponTuningTest::RunTest(const FString&)
 	TestEqual(TEXT("Unknown option falls back to the first"), Fixed.GetToggleOption(TEXT("Sight")), FName(TEXT("Iron")));
 	TestEqual(TEXT("Order follows the weapon data"), Fixed.Sliders[0].Slider, FName(TEXT("Ammo")));
 	TestTrue(TEXT("Sanitized tuning is stable"), Weapon->SanitizeTuning(Fixed) == Fixed);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponStatRowsTest, "Sava.Weapon.StatRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaWeaponStatRowsTest::RunTest(const FString&)
+{
+	auto FindRow = [](const TArray<FSavaStatRow>& Rows, const TCHAR* Label) -> const FSavaStatRow*
+	{
+		return Rows.FindByPredicate([Label](const FSavaStatRow& Row) { return Row.Label.ToString() == Label; });
+	};
+
+	FSavaWeaponStats Base;
+
+	//マズル(跳ね上がり抑制): 縦は良くなり、横は悪くなる(まとめた 1 行では差が見えなかった)
+	FSavaWeaponModifier Muzzle;
+	Muzzle.VerticalRecoilMultiplier = 0.8f;
+	Muzzle.HorizontalRecoilMultiplier = 1.25f;
+	const TArray<FSavaStatRow> Rows = USavaLoadoutStatLibrary::MakeWeaponStatRows(USavaWeaponLibrary::ApplyWeaponModifiers(Base, { Muzzle }), Base);
+
+	const FSavaStatRow* Vertical = FindRow(Rows, TEXT("縦反動"));
+	const FSavaStatRow* Horizontal = FindRow(Rows, TEXT("横反動"));
+	if (TestNotNull(TEXT("Vertical recoil row"), Vertical) && TestNotNull(TEXT("Horizontal recoil row"), Horizontal))
+	{
+		TestEqual(TEXT("Less vertical recoil is better"), Vertical->Change, ESavaStatChange::Better);
+		TestEqual(TEXT("More horizontal recoil is worse"), Horizontal->Change, ESavaStatChange::Worse);
+	}
+	const FSavaStatRow* Damage = FindRow(Rows, TEXT("ダメージ"));
+	if (TestNotNull(TEXT("Damage row"), Damage))
+	{
+		TestEqual(TEXT("Unchanged stat has no change"), Damage->Change, ESavaStatChange::None);
+	}
+
+	//決めた 15 行だけを、決めた順に出す
+	const TArray<FString> ExpectedLabels = { TEXT("ダメージ"), TEXT("連射速度"), TEXT("有効射程"), TEXT("最大射程"), TEXT("マガジン"), TEXT("リロード"),
+		TEXT("持ち替え"), TEXT("射撃遅延"), TEXT("ADS速度"), TEXT("ズーム倍率"), TEXT("縦反動"), TEXT("横反動"), TEXT("反動制御"), TEXT("基本拡散"), TEXT("ADS拡散") };
+	TArray<FString> Labels;
+	for (const FSavaStatRow& Row : Rows)
+	{
+		Labels.Add(Row.Label.ToString());
+	}
+	TestEqual(TEXT("Stat labels and order"), FString::Join(Labels, TEXT(",")), FString::Join(ExpectedLabels, TEXT(",")));
+
+	//ズームは視野角の倍率の逆数で見せる
+	const FSavaStatRow* Zoom = FindRow(Rows, TEXT("ズーム倍率"));
+	if (TestNotNull(TEXT("Zoom row"), Zoom))
+	{
+		TestEqual(TEXT("ADS Zoom 0.8 shows as x1.25"), Zoom->ValueText.ToString(), FString(TEXT("×1.25")));
+	}
 	return true;
 }
 

@@ -56,7 +56,7 @@ class SAVA_API USavaLoadoutStatLibrary : public UBlueprintFunctionLibrary
 	GENERATED_BODY()
 
 public:
-	//武器の数値の行(ダメージ・連射速度・マガジン・リロード・ADS 時間・射程・反動・腰撃ちの拡散)
+	//武器の数値の行(ダメージ・連射速度・有効射程・最大射程・マガジン・リロード・持ち替え・射撃遅延・ADS速度・ズーム倍率・縦反動・横反動・反動制御・基本拡散・ADS拡散)
 	//Stats: 見せる数値 / CompareStats: 比べる数値(比べないなら Stats と同じものを渡す)
 	UFUNCTION(BlueprintPure, Category = "Sava|Loadout")
 	static TArray<FSavaStatRow> MakeWeaponStatRows(const FSavaWeaponStats& Stats, const FSavaWeaponStats& CompareStats);
