@@ -33,7 +33,7 @@ namespace
 	}
 
 	//武器の当たり判定の確認用の表示(SavaWeaponFireAbility.cpp で定義している sava.Weapon.Debug を使う)
-	bool IsWeaponDebugEnabled()
+	bool IsImpactDecalDebugEnabled()
 	{
 		static const IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("sava.Weapon.Debug"));
 		return CVar && CVar->GetBool();
@@ -905,7 +905,7 @@ void USavaEquipmentComponent::SpawnImpactDecals(const TArray<FVector>& TraceEnds
 		return;
 	}
 
-	const bool bDebug = IsWeaponDebugEnabled();
+	const bool bDebug = IsImpactDecalDebugEnabled();
 
 	// 弾痕が未設定の武器では生成しない
 	if (!Weapon->ImpactDecal)
