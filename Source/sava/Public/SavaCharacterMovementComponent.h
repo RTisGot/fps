@@ -299,6 +299,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ClampMax = "1"))
 	float WallRunMaxWallNormalZ = 0.3f;
 
+	//このタグを持つアクター/コンポーネントは壁走り・マントルの対象外(マップ外周の透明な壁など)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun")
+	FName NoWallRunTag = TEXT("NoWallRun");
+
 	//ウォールジャンプで壁から離れる方向の速度
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|WallRun", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float WallJumpOffSpeed = 600.0f;

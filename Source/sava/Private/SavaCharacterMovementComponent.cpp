@@ -310,10 +310,14 @@ bool USavaCharacterMovementComponent::FindWallRunWall(const FVector& Direction, 
 
 bool USavaCharacterMovementComponent::IsValidWallRunWall(const FHitResult& Hit) const
 {
-	//ほぼ垂直な面だけ。他のプレイヤーには張り付かない
+	//ほぼ垂直な面だけ。他のプレイヤーと NoWallRunTag 付きの壁には張り付かない
+	const AActor* HitActor = Hit.GetActor();
+	const UPrimitiveComponent* HitComponent = Hit.GetComponent();
 	return Hit.bBlockingHit
 		&& FMath::Abs(Hit.ImpactNormal.Z) <= WallRunMaxWallNormalZ
-		&& !Cast<APawn>(Hit.GetActor());
+		&& !Cast<APawn>(HitActor)
+		&& !(HitActor && HitActor->ActorHasTag(NoWallRunTag))
+		&& !(HitComponent && HitComponent->ComponentHasTag(NoWallRunTag));
 }
 
 bool USavaCharacterMovementComponent::HasWallRunInput(const FVector& RunDirection, const FVector& Normal) const
