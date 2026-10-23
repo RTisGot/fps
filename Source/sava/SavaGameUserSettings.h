@@ -32,6 +32,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Settings|Input")
 	void SetADSSensitivity(float NewSensitivity);
 
+	/** 画面の揺れの強さ(0 = 揺れない、1 = そのまま)。着地・ジャンプ・被弾・爆発・歩行・スタンの揺れに掛かる。 */
+	UFUNCTION(BlueprintPure, Category = "Settings|Camera")
+	float GetCameraShakeScale() const { return CameraShakeScale; }
+
+	/** Updates and immediately persists the camera shake scale. */
+	UFUNCTION(BlueprintCallable, Category = "Settings|Camera")
+	void SetCameraShakeScale(float NewScale);
+
 	bool IsYInverted() const { return bInvertY; }
 	/** Used by the settings transaction; saving is a separate commit step. */
 	void SetInputPreferences(float NewSensitivity, bool bNewInvertY);
@@ -46,4 +54,7 @@ private:
 
 	UPROPERTY(Config)
 	float ADSSensitivity = 1.0f;
+
+	UPROPERTY(Config)
+	float CameraShakeScale = 1.0f;
 };

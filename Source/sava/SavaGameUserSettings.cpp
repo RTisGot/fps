@@ -39,9 +39,23 @@ void USavaGameUserSettings::SetADSSensitivity(const float NewSensitivity)
 	SaveSettings();
 }
 
+void USavaGameUserSettings::SetCameraShakeScale(const float NewScale)
+{
+	const float ClampedScale = FMath::IsFinite(NewScale) ? FMath::Clamp(NewScale, 0.0f, 1.0f) : 1.0f;
+
+	if (FMath::IsNearlyEqual(CameraShakeScale, ClampedScale))
+	{
+		return;
+	}
+
+	CameraShakeScale = ClampedScale;
+	SaveSettings();
+}
+
 void USavaGameUserSettings::ValidateSettings()
 {
 	Super::ValidateSettings();
 	SetInputPreferences(MouseSensitivity, bInvertY);
 	ADSSensitivity = FMath::IsFinite(ADSSensitivity) ? FMath::Clamp(ADSSensitivity, 0.1f, 3.0f) : 1.0f;
+	CameraShakeScale = FMath::IsFinite(CameraShakeScale) ? FMath::Clamp(CameraShakeScale, 0.0f, 1.0f) : 1.0f;
 }

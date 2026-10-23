@@ -4,11 +4,55 @@
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
-#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "SavaCharacterMovementComponent.h"
+#include "SavaGameUserSettings.h"
 #include "Weapon/SavaEquipmentComponent.h"
 #include "Weapon/SavaWeaponTypes.h"
 #include "savaCharacter.h"
+
+//--------------------------------FSavaCameraSpring
+
+void FSavaCameraSpring::AddKick(const FVector& Peak, float PeakTime)
+{
+	if (Peak.IsNearlyZero())
+	{
+		return;
+	}
+	//速さを与えると、PeakTime 後に (速さ / (強さ × e)) まで動いてから戻るので、狙った大きさになる速さを足す
+	Stiffness = 1.0f / FMath::Max(PeakTime, 0.005f);
+	Velocity += Peak * Stiffness * UE_EULERS_NUMBER;
+	bActive = true;
+}
+
+void FSavaCameraSpring::Step(float DeltaTime)
+{
+	if (!bActive)
+	{
+		return;
+	}
+
+	const float W = Stiffness;
+	const float Decay = FMath::Exp(-W * DeltaTime);
+	const FVector Temp = Velocity + Value * W;
+	Value = (Value + Temp * DeltaTime) * Decay;
+	Velocity = (Velocity - Temp * (W * DeltaTime)) * Decay;
+
+	//十分小さくなったら止める
+	if (Value.IsNearlyZero(0.001f) && Velocity.IsNearlyZero(0.01f))
+	{
+		Reset();
+	}
+}
+
+void FSavaCameraSpring::Reset()
+{
+	Value = FVector::ZeroVector;
+	Velocity = FVector::ZeroVector;
+	bActive = false;
+}
+
+//--------------------------------USavaCameraEffectComponent
 
 USavaCameraEffectComponent::USavaCameraEffectComponent()
 {
@@ -46,14 +90,22 @@ void USavaCameraEffectComponent::TickComponent(float DeltaTime, ELevelTick TickT
 		return;
 	}
 
-	//演出ごとに状態を進める(視点の向きを直接動かすものは、ここで反映される)
+	//視点の向きを直接動かす演出
 	UpdateRecoil(PlayerController, DeltaTime);
 	UpdateWallRunTilt(PlayerController, DeltaTime);
-	UpdateVisualKick(DeltaTime);
+
+	//見た目のずれの演出
+	RecoilKickSpring.Step(DeltaTime);
 
 	//合成してカメラと腕に反映する
-	ApplyFieldOfView();
-	ApplyViewKickAndArms();
+	ApplyFieldOfView(DeltaTime);
+	ApplyViewOffsetAndArms();
+}
+
+float USavaCameraEffectComponent::GetShakeScale()
+{
+	const USavaGameUserSettings* Settings = USavaGameUserSettings::GetSavaGameUserSettings();
+	return Settings ? Settings->GetCameraShakeScale() : 1.0f;
 }
 
 //--------------------------------しゃがみ
@@ -124,15 +176,9 @@ void USavaCameraEffectComponent::AddRecoil(const FVector2D& Kick, const FSavaWea
 	//視点へは Recoil Kick Time かけて Tick で足す
 	PendingRecoil += Kick;
 
-	//見た目だけの揺れ: 速さを与えると、Visual Kick Time 後に (速さ / (強さ × e)) まで跳ねてから戻るので、狙った大きさになる速さを足す
-	const FVector VisualKick(Kick.Y * Stats.VisualKickScale, Kick.X * Stats.VisualKickScale,
-		FMath::FRandRange(-Stats.VisualKickRoll, Stats.VisualKickRoll));
-	if (!VisualKick.IsNearlyZero())
-	{
-		VisualKickStiffness = 1.0f / FMath::Max(Stats.VisualKickTime, 0.005f);
-		VisualKickVelocity += VisualKick * VisualKickStiffness * UE_EULERS_NUMBER;
-		bVisualKickActive = true;
-	}
+	//見た目だけの揺れ: Visual Kick Time 後に一番大きくなり、バネのように戻る
+	RecoilKickSpring.AddKick(FVector(Kick.Y * Stats.VisualKickScale, Kick.X * Stats.VisualKickScale,
+		FMath::FRandRange(-Stats.VisualKickRoll, Stats.VisualKickRoll)), Stats.VisualKickTime);
 
 	RecoilKickTimeRemaining = Stats.RecoilKickTime;
 	if (RecoilKickTimeRemaining <= 0.0f)
@@ -221,31 +267,6 @@ void USavaCameraEffectComponent::AbsorbPlayerPitchInput(float CurrentPitch)
 	}
 }
 
-//--------------------------------見た目だけの揺れ
-
-void USavaCameraEffectComponent::UpdateVisualKick(float DeltaTime)
-{
-	if (!bVisualKickActive)
-	{
-		return;
-	}
-
-	//行きすぎない一番速いバネ(臨界減衰)の式で進める(フレームの長さによらず同じ動きになる)
-	const float W = VisualKickStiffness;
-	const float Decay = FMath::Exp(-W * DeltaTime);
-	const FVector Temp = VisualKickVelocity + VisualKickOffset * W;
-	VisualKickOffset = (VisualKickOffset + Temp * DeltaTime) * Decay;
-	VisualKickVelocity = (VisualKickVelocity - Temp * (W * DeltaTime)) * Decay;
-
-	//十分小さくなったら止める
-	if (VisualKickOffset.IsNearlyZero(0.001f) && VisualKickVelocity.IsNearlyZero(0.01f))
-	{
-		VisualKickOffset = FVector::ZeroVector;
-		VisualKickVelocity = FVector::ZeroVector;
-		bVisualKickActive = false;
-	}
-}
-
 //--------------------------------壁走り
 
 void USavaCameraEffectComponent::UpdateWallRunTilt(APlayerController* PlayerController, float DeltaTime)
@@ -270,6 +291,13 @@ void USavaCameraEffectComponent::UpdateWallRunTilt(APlayerController* PlayerCont
 	PlayerController->SetControlRotation(ControlRotation);
 }
 
+//--------------------------------視野角
+
+float USavaCameraEffectComponent::CalculateTargetMoveFOVScale() const
+{
+	return 1.0f;
+}
+
 //--------------------------------合成
 
 void USavaCameraEffectComponent::ApplyCameraLocation()
@@ -281,7 +309,7 @@ void USavaCameraEffectComponent::ApplyCameraLocation()
 	}
 }
 
-void USavaCameraEffectComponent::ApplyFieldOfView()
+void USavaCameraEffectComponent::ApplyFieldOfView(float DeltaTime)
 {
 	UCameraComponent* Camera = GetCamera();
 	if (!Camera || BaseFieldOfView <= 0.0f)
@@ -289,12 +317,26 @@ void USavaCameraEffectComponent::ApplyFieldOfView()
 		return;
 	}
 
+	MoveFOVScale = FMath::FInterpTo(MoveFOVScale, CalculateTargetMoveFOVScale(), DeltaTime, MoveFOVInterpSpeed);
+
+	//ADS 中は、動きによる倍率を ADS の進み具合の分だけ弱める(ズームを邪魔しない)
 	const USavaEquipmentComponent* Equipment = GetEquipment();
 	const float ADSScale = Equipment ? Equipment->GetADSFieldOfViewScale() : 1.0f;
-	Camera->SetFieldOfView(BaseFieldOfView * ADSScale);
+	const float ADSViewAlpha = Equipment ? Equipment->GetADSViewAlpha() : 0.0f;
+	Camera->SetFieldOfView(BaseFieldOfView * ADSScale * FMath::Lerp(MoveFOVScale, 1.0f, ADSViewAlpha));
 }
 
-void USavaCameraEffectComponent::ApplyViewKickAndArms()
+FTransform USavaCameraEffectComponent::CalculateViewOffset() const
+{
+	//X = 縦、Y = 横、Z = 傾き(度)
+	const FVector Rotation = RecoilKickSpring.Value;
+	//X = 前、Y = 右、Z = 上(cm。カメラから見た向き)
+	const FVector Location = FVector::ZeroVector;
+
+	return FTransform(FRotator(Rotation.X, Rotation.Y, Rotation.Z), Location);
+}
+
+void USavaCameraEffectComponent::ApplyViewOffsetAndArms()
 {
 	UCameraComponent* Camera = GetCamera();
 	const AsavaCharacter* Character = GetCharacter();
@@ -304,19 +346,20 @@ void USavaCameraEffectComponent::ApplyViewKickAndArms()
 		return;
 	}
 
-	//画面の見た目だけの回転。視点の向き(Control Rotation)は変えないので、弾の向きは変わらない
-	const FTransform Kick(FRotator(VisualKickOffset.X, VisualKickOffset.Y, VisualKickOffset.Z));
-	if (bViewKickApplied)
+	//画面の見た目だけのずれ。視点の向き(Control Rotation)は変えないので、弾の向きは変わらない
+	const FTransform ViewOffset = CalculateViewOffset();
+	const bool bViewOffsetActive = !ViewOffset.GetRotation().IsIdentity(1.0e-6f) || !ViewOffset.GetTranslation().IsNearlyZero(0.001f);
+	if (bViewOffsetApplied)
 	{
 		Camera->ClearAdditiveOffset();
 	}
-	if (bVisualKickActive)
+	if (bViewOffsetActive)
 	{
-		Camera->AddAdditiveOffset(Kick, 0.0f);
+		Camera->AddAdditiveOffset(ViewOffset, 0.0f);
 	}
-	bViewKickApplied = bVisualKickActive;
+	bViewOffsetApplied = bViewOffsetActive;
 
-	//揺れても ADS でもない間は、腕に触らない(元の位置を覚え直すだけ)
+	//ずれも ADS もない間は、腕に触らない(元の位置を覚え直すだけ)
 	if (!bArmsModified)
 	{
 		ArmsBaseTransform = Arms->GetRelativeTransform();
@@ -325,18 +368,18 @@ void USavaCameraEffectComponent::ApplyViewKickAndArms()
 	const float ADSViewAlpha = Equipment ? Equipment->GetADSViewAlpha() : 0.0f;
 	const FVector ADSOffset = ADSViewAlpha > 0.0f ? Equipment->CalculateADSArmsOffset(Arms, ArmsBaseTransform) * ADSViewAlpha : FVector::ZeroVector;
 	const bool bADSOffsetActive = !ADSOffset.IsNearlyZero(0.01f);
-	if (!bVisualKickActive && !bADSOffsetActive && !bArmsModified)
+	if (!bViewOffsetActive && !bADSOffsetActive && !bArmsModified)
 	{
 		return;
 	}
 
-	//腕は画面と同じだけ回す。ADS の分は、カメラから見た向きに腕をずらす(腕はカメラに付いているので、相対位置に足す)
-	FTransform ArmsTransform = bVisualKickActive ? ArmsBaseTransform * Kick : ArmsBaseTransform;
+	//腕は画面と同じだけ動かす。ADS の分は、カメラから見た向きに腕をずらす(腕はカメラに付いているので、相対位置に足す)
+	FTransform ArmsTransform = bViewOffsetActive ? ArmsBaseTransform * ViewOffset : ArmsBaseTransform;
 	ArmsTransform.AddToTranslation(ADSOffset);
 	Arms->SetRelativeTransform(ArmsTransform);
 
 	//元の位置に戻しきったら、次のフレームからは触らない
-	bArmsModified = bVisualKickActive || bADSOffsetActive;
+	bArmsModified = bViewOffsetActive || bADSOffsetActive;
 }
 
 //--------------------------------Helper
@@ -356,6 +399,12 @@ USavaEquipmentComponent* USavaCameraEffectComponent::GetEquipment() const
 {
 	const AsavaCharacter* Character = GetCharacter();
 	return Character ? Character->GetEquipmentComponent() : nullptr;
+}
+
+USavaCharacterMovementComponent* USavaCameraEffectComponent::GetMovement() const
+{
+	const AsavaCharacter* Character = GetCharacter();
+	return Character ? Character->GetSavaCharacterMovementComponent() : nullptr;
 }
 
 APlayerController* USavaCameraEffectComponent::GetLocalPlayerController() const

@@ -9,12 +9,32 @@
 class AsavaCharacter;
 class APlayerController;
 class UCameraComponent;
+class USavaCharacterMovementComponent;
 class USavaEquipmentComponent;
 struct FSavaWeaponStats;
 
+//行きすぎない一番速いバネ(臨界減衰)。Value が 0 へ戻る(フレームの長さによらず同じ動きになる)
+struct SAVA_API FSavaCameraSpring
+{
+	FVector Value = FVector::ZeroVector;
+	FVector Velocity = FVector::ZeroVector;
+	//強さ(1/秒)。大きいほど速く戻る
+	float Stiffness = 0.0f;
+	bool bActive = false;
+
+	//Value が PeakTime 後に Peak まで動いてから戻るように、速さを足す(戻りきるのは PeakTime の 5 倍くらい)
+	void AddKick(const FVector& Peak, float PeakTime);
+	void Step(float DeltaTime);
+	void Reset();
+};
+
 //1 人称カメラの演出をまとめて動かす(新しいカメラの演出もここに足す)
-//・各演出の状態はここで持ち、Tick で合成してカメラ(位置・視野角・見た目の回転)・腕・視点の向きに反映する
-//・しゃがみの高さだけは全員の画面で動かす(カメラの位置は撃つ位置にも使うため)。ほかは操作している本人の画面だけ
+//・各演出の状態はここで持ち、Tick で合成してカメラ(位置・視野角・見た目のずれ)・腕・視点の向きに反映する
+//  - カメラの位置: しゃがみ(撃つ位置にも使うので、全員の画面で動かす)
+//  - 視野角: ADS × 動きによる倍率
+//  - 見た目のずれ(回転・位置): 反動の揺れ・衝撃など。画面と腕を一緒に動かし、狙う向き(Control Rotation)は変えない
+//  - 視点の向き(Control Rotation): 反動の跳ね上がり・壁走りの傾き
+//・しゃがみ以外は、操作している本人の画面だけで動かす
 //・武器の ADS の進み具合は装備コンポーネントから読む(装備コンポーネントの Tick の後に動く)
 UCLASS(ClassGroup = (Sava), meta = (BlueprintSpawnableComponent))
 class SAVA_API USavaCameraEffectComponent : public UActorComponent
@@ -46,6 +66,9 @@ public:
 	//ズームなどを含まない、元の視野角
 	float GetBaseFieldOfView() const { return BaseFieldOfView; }
 
+	//設定の「画面の揺れの強さ」(0 〜 1)
+	static float GetShakeScale();
+
 protected:
 	//しゃがみ切り替え時にカメラが目標の高さへ追いつく速さ
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Crouch", meta = (ClampMin = "0"))
@@ -59,10 +82,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|WallRun", meta = (ClampMin = "0"))
 	float WallRunCameraTiltSpeed = 8.0f;
 
+	//動きによる視野角の倍率が、目標へ追いつく速さ
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0"))
+	float MoveFOVInterpSpeed = 6.0f;
+
 private:
 	AsavaCharacter* GetCharacter() const;
 	UCameraComponent* GetCamera() const;
 	USavaEquipmentComponent* GetEquipment() const;
+	USavaCharacterMovementComponent* GetMovement() const;
 	APlayerController* GetLocalPlayerController() const;
 
 	//カメラ本来の相対位置を、まだ覚えていなければ今の位置で覚える
@@ -74,19 +102,22 @@ private:
 	void UpdateCrouch(float DeltaTime);
 	//溜まった反動を視点に足し、足し終えて撃つのをやめていれば戻す
 	void UpdateRecoil(APlayerController* PlayerController, float DeltaTime);
-	//見た目だけの揺れをバネで 0 へ戻す
-	void UpdateVisualKick(float DeltaTime);
 	//壁走り中に視点を傾ける
 	void UpdateWallRunTilt(APlayerController* PlayerController, float DeltaTime);
+
+	//今の動き方での、視野角の倍率の目標(1 = そのまま)
+	float CalculateTargetMoveFOVScale() const;
 
 	//--------------------------------合成してカメラ・腕に反映
 
 	//カメラの位置 = 本来の位置 - しゃがみで下げる量 + 切り替え直後のずれ
 	void ApplyCameraLocation();
-	//視野角 = 元の視野角 × ADS のズーム
-	void ApplyFieldOfView();
-	//画面の見た目だけの回転(揺れ)と、腕の位置(揺れ・ADS)
-	void ApplyViewKickAndArms();
+	//視野角 = 元の視野角 × ADS のズーム × 動きによる倍率(ADS 中は弱める)
+	void ApplyFieldOfView(float DeltaTime);
+	//見た目のずれ(回転・位置)を合成する
+	FTransform CalculateViewOffset() const;
+	//見た目のずれを画面と腕に、ADS の分を腕に反映する
+	void ApplyViewOffsetAndArms();
 
 	//反動の分だけ視点を動かす(X = 横、Y = 縦)
 	void AddRecoilToView(APlayerController* PlayerController, const FVector2D& Kick);
@@ -103,6 +134,8 @@ private:
 	//--------------------------------視野角
 
 	float BaseFieldOfView = 0.0f;
+	//動きによる視野角の倍率(目標へ滑らかに追いつく)
+	float MoveFOVScale = 1.0f;
 
 	//--------------------------------反動
 
@@ -116,20 +149,17 @@ private:
 	float RecoilRecoveryDelay = 0.0f;
 	float RecoilRecoverySpeed = 0.0f;
 
-	//--------------------------------見た目だけの揺れ
+	//--------------------------------見た目のずれ
 
-	//X = 縦、Y = 横、Z = 傾き。減衰の強いバネで 0 へ戻る
-	FVector VisualKickOffset = FVector::ZeroVector;
-	FVector VisualKickVelocity = FVector::ZeroVector;
-	float VisualKickStiffness = 0.0f;
-	bool bVisualKickActive = false;
-	//前のフレームでカメラに見た目の回転を足したか(足していたら外す)
-	bool bViewKickApplied = false;
+	//反動の見た目だけの揺れ(X = 縦、Y = 横、Z = 傾き。度)。設定の揺れの強さは掛けない
+	FSavaCameraSpring RecoilKickSpring;
+	//前のフレームでカメラに見た目のずれを足したか(足していたら外す)
+	bool bViewOffsetApplied = false;
 
 	//--------------------------------腕
 
-	//揺れていないときの腕の位置(揺れている間は、カメラと一緒に回す)
+	//ずらしていないときの腕の位置(ずれている間は、カメラと一緒に動かす)
 	FTransform ArmsBaseTransform;
-	//腕を、揺れ・ADS で元の位置から動かしているか(動かしていない間に、元の位置を覚え直す)
+	//腕を、見た目のずれ・ADS で元の位置から動かしているか(動かしていない間に、元の位置を覚え直す)
 	bool bArmsModified = false;
 };
