@@ -213,7 +213,7 @@ void USavaBlinkAbility::StartBlink(const FTransform& TargetTransform)
 	// Root Motion Source: 「この時間でここへ動かす」という移動の指示。CharacterMovement が通信の予測・補正もしてくれる
 	// (自分の画面とサーバーで同じ指示を出すと、同じものとして扱われる。名前・時間・移動先を一致させること)
 	const TSharedPtr<FRootMotionSource_MoveToForce> Blink = MakeShared<FRootMotionSource_MoveToForce>();
-	Blink->InstanceName = TEXT("SavaBlink");
+	Blink->InstanceName = GetBlinkInstanceName();
 	Blink->AccumulateMode = ERootMotionAccumulateMode::Override;
 	// グラップルの引き寄せ(1000)より優先する
 	Blink->Priority = 2000;

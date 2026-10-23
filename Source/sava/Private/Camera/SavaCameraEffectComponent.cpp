@@ -7,6 +7,8 @@
 #include "GameFramework/PlayerController.h"
 #include "SavaCharacterMovementComponent.h"
 #include "SavaGameUserSettings.h"
+#include "SavaGrappleRootMotionSource.h"
+#include "Skill/SavaBlinkAbility.h"
 #include "Weapon/SavaEquipmentComponent.h"
 #include "Weapon/SavaWeaponTypes.h"
 #include "savaCharacter.h"
@@ -388,7 +390,15 @@ float USavaCameraEffectComponent::CalculateTargetMoveFOVScale() const
 	float Scale = 1.0f;
 	if (const USavaCharacterMovementComponent* Movement = GetMovement())
 	{
-		if (Movement->IsSliding())
+		if (HasRootMotionSource(USavaBlinkAbility::GetBlinkInstanceName()))
+		{
+			Scale *= BlinkFOVScale;
+		}
+		else if (HasRootMotionSource(FSavaGrappleRootMotionSource::GetPullInstanceName()))
+		{
+			Scale *= GrappleFOVScale;
+		}
+		else if (Movement->IsSliding())
 		{
 			Scale *= SlideFOVScale;
 		}
@@ -398,6 +408,15 @@ float USavaCameraEffectComponent::CalculateTargetMoveFOVScale() const
 		}
 	}
 	return Scale;
+}
+
+bool USavaCameraEffectComponent::HasRootMotionSource(FName InstanceName) const
+{
+	const USavaCharacterMovementComponent* Movement = GetMovement();
+	return Movement && Movement->CurrentRootMotion.RootMotionSources.ContainsByPredicate([InstanceName](const TSharedPtr<FRootMotionSource>& Source)
+	{
+		return Source.IsValid() && Source->InstanceName == InstanceName;
+	});
 }
 
 //--------------------------------合成
@@ -419,7 +438,9 @@ void USavaCameraEffectComponent::ApplyFieldOfView(float DeltaTime)
 		return;
 	}
 
-	MoveFOVScale = FMath::FInterpTo(MoveFOVScale, CalculateTargetMoveFOVScale(), DeltaTime, MoveFOVInterpSpeed);
+	//ブリンクは一瞬なので速く広げる(戻るのはいつもの速さ)
+	const float InterpSpeed = HasRootMotionSource(USavaBlinkAbility::GetBlinkInstanceName()) ? BlinkFOVInterpSpeed : MoveFOVInterpSpeed;
+	MoveFOVScale = FMath::FInterpTo(MoveFOVScale, CalculateTargetMoveFOVScale(), DeltaTime, InterpSpeed);
 
 	//ADS 中は、動きによる倍率を ADS の進み具合の分だけ弱める(ズームを邪魔しない)
 	const USavaEquipmentComponent* Equipment = GetEquipment();

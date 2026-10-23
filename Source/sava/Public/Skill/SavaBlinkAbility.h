@@ -30,6 +30,9 @@ class SAVA_API USavaBlinkAbility : public USavaHoldAimAbility
 public:
 	USavaBlinkAbility();
 
+	//ブリンクの移動(Root Motion Source)の名前。カメラの演出などで「ブリンク中か」を調べるのに使う
+	static FName GetBlinkInstanceName() { return TEXT("SavaBlink"); }
+
 	/**
 	 * 移動先(カプセルの中心)を探す。テストからも使う
 	 * ViewLocation / ViewDirection: 視点の位置と向き

@@ -102,6 +102,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0.5", ClampMax = "2"))
 	float SlideFOVScale = 1.12f;
 
+	//グラップルで引っ張られている間の視野角の倍率
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0.5", ClampMax = "2"))
+	float GrappleFOVScale = 1.12f;
+
+	//ブリンクで動いている間(一瞬)の視野角の倍率
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0.5", ClampMax = "2"))
+	float BlinkFOVScale = 1.25f;
+
+	//ブリンク中に視野角が広がる速さ(一瞬で広がるように、Move FOV Interp Speed より速くする)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0"))
+	float BlinkFOVInterpSpeed = 25.0f;
+
 	//--------------------------------着地
 
 	//これより遅く着地したら揺らさない(落ちる速さ)
@@ -204,6 +216,8 @@ private:
 
 	//今の動き方での、視野角の倍率の目標(1 = そのまま)
 	float CalculateTargetMoveFOVScale() const;
+	//その名前の Root Motion Source で動かされているか(グラップル・ブリンク)
+	bool HasRootMotionSource(FName InstanceName) const;
 
 	//--------------------------------合成してカメラ・腕に反映
 
