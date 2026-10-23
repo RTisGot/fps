@@ -61,6 +61,14 @@ public:
 	//1 発分の反動(X = 横、Y = 縦)で視点を動かし、見た目だけの揺れを足す。動き方は武器の数値で決まる
 	void AddRecoil(const FVector2D& Kick, const FSavaWeaponStats& Stats);
 
+	//--------------------------------移動(キャラクターから呼ぶ)
+
+	//着地した(FallSpeed = 着地直前の落ちる速さ。上向きなら 0 以下)
+	void NotifyLanded(float FallSpeed);
+
+	//着地の揺れの大きさ(0 〜 1)。MinSpeed より遅ければ 0、MaxSpeed 以上で 1
+	static float CalculateLandingAlpha(float FallSpeed, float MinSpeed, float MaxSpeed);
+
 	//--------------------------------状態
 
 	//ズームなどを含まない、元の視野角
@@ -86,6 +94,87 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0"))
 	float MoveFOVInterpSpeed = 6.0f;
 
+	//ダッシュ中の視野角の倍率(1.08 なら 8% 広がる)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0.5", ClampMax = "2"))
+	float SprintFOVScale = 1.08f;
+
+	//スライディング中の視野角の倍率
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0.5", ClampMax = "2"))
+	float SlideFOVScale = 1.12f;
+
+	//--------------------------------着地
+
+	//これより遅く着地したら揺らさない(落ちる速さ)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Landing", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float LandingMinFallSpeed = 500.0f;
+
+	//これ以上の速さで着地したら、一番大きく揺らす
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Landing", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float LandingMaxFallSpeed = 1500.0f;
+
+	//一番大きいときに、カメラが沈む量
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Landing", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float LandingMaxDrop = 6.0f;
+
+	//一番大きいときに、画面が下を向く角度
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Landing", meta = (ClampMin = "0", ForceUnits = "Deg"))
+	float LandingMaxPitch = 2.5f;
+
+	//一番沈むまでの時間(戻りきるのはこの 5 倍くらい)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Landing", meta = (ClampMin = "0.005", ForceUnits = "s"))
+	float LandingKickTime = 0.07f;
+
+	//--------------------------------ジャンプ
+
+	//二段ジャンプで、画面が下を向く角度(踏み込んだ感じ)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Jump", meta = (ClampMin = "0", ForceUnits = "Deg"))
+	float DoubleJumpKickPitch = 1.5f;
+
+	//二段ジャンプで、カメラが沈む量
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Jump", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float DoubleJumpKickDrop = 2.0f;
+
+	//ウォールジャンプで、壁と反対側へ傾く角度
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Jump", meta = (ClampMin = "0", ForceUnits = "Deg"))
+	float WallJumpKickRoll = 3.0f;
+
+	//ジャンプの揺れが一番大きくなるまでの時間
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Jump", meta = (ClampMin = "0.005", ForceUnits = "s"))
+	float JumpKickTime = 0.08f;
+
+	//--------------------------------歩行の揺れ
+
+	//1 歩の長さ(この距離を進むごとに 1 回上下する)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "1", ForceUnits = "cm"))
+	float HeadBobStepLength = 90.0f;
+
+	//この速さのときに、下の大きさで揺れる(速いほど大きく、Max Scale 倍まで)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "1", ForceUnits = "cm/s"))
+	float HeadBobReferenceSpeed = 600.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "1"))
+	float HeadBobMaxScale = 1.5f;
+
+	//上下に揺れる大きさ
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float HeadBobVerticalAmplitude = 0.6f;
+
+	//左右に揺れる大きさ(2 歩で 1 往復)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float HeadBobHorizontalAmplitude = 0.4f;
+
+	//左右に傾く角度(2 歩で 1 往復)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "Deg"))
+	float HeadBobRollAmplitude = 0.3f;
+
+	//歩き始め・止まったときに、揺れの大きさが追いつく速さ
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0"))
+	float HeadBobBlendSpeed = 8.0f;
+
+	//ADS に入りきったときの揺れの倍率
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ClampMax = "1"))
+	float HeadBobADSScale = 0.2f;
+
 private:
 	AsavaCharacter* GetCharacter() const;
 	UCameraComponent* GetCamera() const;
@@ -104,6 +193,14 @@ private:
 	void UpdateRecoil(APlayerController* PlayerController, float DeltaTime);
 	//壁走り中に視点を傾ける
 	void UpdateWallRunTilt(APlayerController* PlayerController, float DeltaTime);
+	//地上を歩く速さに合わせて、歩行の揺れを進める
+	void UpdateHeadBob(float DeltaTime);
+
+	//二段ジャンプ・ウォールジャンプした(移動コンポーネントのイベント。サーバーでも呼ばれるので、本人の画面か確かめる)
+	UFUNCTION()
+	void HandleDoubleJumped();
+	UFUNCTION()
+	void HandleWallJumped();
 
 	//今の動き方での、視野角の倍率の目標(1 = そのまま)
 	float CalculateTargetMoveFOVScale() const;
@@ -153,6 +250,16 @@ private:
 
 	//反動の見た目だけの揺れ(X = 縦、Y = 横、Z = 傾き。度)。設定の揺れの強さは掛けない
 	FSavaCameraSpring RecoilKickSpring;
+	//衝撃(着地・ジャンプなど)の回転(X = 縦、Y = 横、Z = 傾き。度)と位置(X = 前、Y = 右、Z = 上。cm)
+	FSavaCameraSpring ImpulseRotationSpring;
+	FSavaCameraSpring ImpulseLocationSpring;
+
+	//歩行の揺れ: 進んだ距離で進む位相と、今の大きさ(速さに合わせて滑らかに変わる)
+	float HeadBobPhase = 0.0f;
+	float HeadBobAlpha = 0.0f;
+
+	//最後に壁走りしていた壁の左右(ウォールジャンプの瞬間には、もう壁走りが終わっているため)
+	float LastWallRunSide = 0.0f;
 	//前のフレームでカメラに見た目のずれを足したか(足していたら外す)
 	bool bViewOffsetApplied = false;
 

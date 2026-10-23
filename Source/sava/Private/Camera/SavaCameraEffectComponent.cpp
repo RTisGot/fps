@@ -74,6 +74,12 @@ void USavaCameraEffectComponent::BeginPlay()
 	{
 		AddTickPrerequisiteComponent(Equipment);
 	}
+
+	if (USavaCharacterMovementComponent* Movement = GetMovement())
+	{
+		Movement->OnDoubleJumped.AddDynamic(this, &USavaCameraEffectComponent::HandleDoubleJumped);
+		Movement->OnWallJumped.AddDynamic(this, &USavaCameraEffectComponent::HandleWallJumped);
+	}
 }
 
 void USavaCameraEffectComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -96,6 +102,18 @@ void USavaCameraEffectComponent::TickComponent(float DeltaTime, ELevelTick TickT
 
 	//見た目のずれの演出
 	RecoilKickSpring.Step(DeltaTime);
+	ImpulseRotationSpring.Step(DeltaTime);
+	ImpulseLocationSpring.Step(DeltaTime);
+	UpdateHeadBob(DeltaTime);
+
+	if (const AsavaCharacter* Character = GetCharacter())
+	{
+		const float WallRunSide = Character->GetWallRunSide();
+		if (WallRunSide != 0.0f)
+		{
+			LastWallRunSide = WallRunSide;
+		}
+	}
 
 	//合成してカメラと腕に反映する
 	ApplyFieldOfView(DeltaTime);
@@ -267,6 +285,78 @@ void USavaCameraEffectComponent::AbsorbPlayerPitchInput(float CurrentPitch)
 	}
 }
 
+//--------------------------------移動
+
+void USavaCameraEffectComponent::NotifyLanded(float FallSpeed)
+{
+	if (!GetLocalPlayerController())
+	{
+		return;
+	}
+
+	const float Alpha = CalculateLandingAlpha(FallSpeed, LandingMinFallSpeed, LandingMaxFallSpeed);
+	if (Alpha <= 0.0f)
+	{
+		return;
+	}
+	ImpulseLocationSpring.AddKick(FVector(0.0f, 0.0f, -LandingMaxDrop * Alpha), LandingKickTime);
+	ImpulseRotationSpring.AddKick(FVector(-LandingMaxPitch * Alpha, 0.0f, 0.0f), LandingKickTime);
+}
+
+float USavaCameraEffectComponent::CalculateLandingAlpha(float FallSpeed, float MinSpeed, float MaxSpeed)
+{
+	if (FallSpeed < MinSpeed)
+	{
+		return 0.0f;
+	}
+	if (MaxSpeed <= MinSpeed)
+	{
+		return 1.0f;
+	}
+	return FMath::Clamp((FallSpeed - MinSpeed) / (MaxSpeed - MinSpeed), 0.0f, 1.0f);
+}
+
+void USavaCameraEffectComponent::HandleDoubleJumped()
+{
+	if (!GetLocalPlayerController())
+	{
+		return;
+	}
+	ImpulseRotationSpring.AddKick(FVector(-DoubleJumpKickPitch, 0.0f, 0.0f), JumpKickTime);
+	ImpulseLocationSpring.AddKick(FVector(0.0f, 0.0f, -DoubleJumpKickDrop), JumpKickTime);
+}
+
+void USavaCameraEffectComponent::HandleWallJumped()
+{
+	if (!GetLocalPlayerController())
+	{
+		return;
+	}
+	//壁走りの傾きと同じ向き(壁と反対側)へ、さらに少し傾ける
+	ImpulseRotationSpring.AddKick(FVector(0.0f, 0.0f, -LastWallRunSide * WallJumpKickRoll), JumpKickTime);
+}
+
+void USavaCameraEffectComponent::UpdateHeadBob(float DeltaTime)
+{
+	//地上を歩いている間だけ(スライディング・壁走り・空中では揺らさない)
+	float TargetAlpha = 0.0f;
+	const USavaCharacterMovementComponent* Movement = GetMovement();
+	if (Movement && (Movement->MovementMode == MOVE_Walking || Movement->MovementMode == MOVE_NavWalking))
+	{
+		const float Speed = Movement->Velocity.Size2D();
+		TargetAlpha = FMath::Min(Speed / HeadBobReferenceSpeed, HeadBobMaxScale);
+		//2 歩で 1 周する
+		HeadBobPhase = FMath::Fmod(HeadBobPhase + Speed * DeltaTime / (2.0f * HeadBobStepLength) * UE_TWO_PI, UE_TWO_PI);
+	}
+
+	//ADS 中は弱める
+	const USavaEquipmentComponent* Equipment = GetEquipment();
+	const float ADSViewAlpha = Equipment ? Equipment->GetADSViewAlpha() : 0.0f;
+	TargetAlpha *= FMath::Lerp(1.0f, HeadBobADSScale, ADSViewAlpha);
+
+	HeadBobAlpha = FMath::FInterpTo(HeadBobAlpha, TargetAlpha, DeltaTime, HeadBobBlendSpeed);
+}
+
 //--------------------------------壁走り
 
 void USavaCameraEffectComponent::UpdateWallRunTilt(APlayerController* PlayerController, float DeltaTime)
@@ -295,7 +385,19 @@ void USavaCameraEffectComponent::UpdateWallRunTilt(APlayerController* PlayerCont
 
 float USavaCameraEffectComponent::CalculateTargetMoveFOVScale() const
 {
-	return 1.0f;
+	float Scale = 1.0f;
+	if (const USavaCharacterMovementComponent* Movement = GetMovement())
+	{
+		if (Movement->IsSliding())
+		{
+			Scale *= SlideFOVScale;
+		}
+		else if (Movement->IsSprinting())
+		{
+			Scale *= SprintFOVScale;
+		}
+	}
+	return Scale;
 }
 
 //--------------------------------合成
@@ -329,9 +431,29 @@ void USavaCameraEffectComponent::ApplyFieldOfView(float DeltaTime)
 FTransform USavaCameraEffectComponent::CalculateViewOffset() const
 {
 	//X = 縦、Y = 横、Z = 傾き(度)
-	const FVector Rotation = RecoilKickSpring.Value;
+	FVector Rotation = FVector::ZeroVector;
 	//X = 前、Y = 右、Z = 上(cm。カメラから見た向き)
-	const FVector Location = FVector::ZeroVector;
+	FVector Location = FVector::ZeroVector;
+
+	//衝撃
+	Rotation += ImpulseRotationSpring.Value;
+	Location += ImpulseLocationSpring.Value;
+
+	//歩行の揺れ(1 歩ごとに上下、2 歩で左右に 1 往復)
+	if (HeadBobAlpha > 0.0f)
+	{
+		const float Side = FMath::Sin(HeadBobPhase);
+		Location += FVector(0.0f, Side * HeadBobHorizontalAmplitude, FMath::Sin(2.0f * HeadBobPhase) * HeadBobVerticalAmplitude) * HeadBobAlpha;
+		Rotation.Z += Side * HeadBobRollAmplitude * HeadBobAlpha;
+	}
+
+	//ここまでが設定の「画面の揺れの強さ」を掛けるもの
+	const float ShakeScale = GetShakeScale();
+	Rotation *= ShakeScale;
+	Location *= ShakeScale;
+
+	//反動の見た目の揺れ(射撃の手応えなので、揺れの強さは掛けない)
+	Rotation += RecoilKickSpring.Value;
 
 	return FTransform(FRotator(Rotation.X, Rotation.Y, Rotation.Z), Location);
 }

@@ -216,6 +216,7 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void Landed(const FHitResult& Hit) override;
 	virtual bool CanJumpInternal_Implementation() const override;
 
 	//壁走り中に見回せる範囲を制限する(自分の画面だけ。サーバーには制限後の向きが送られる)

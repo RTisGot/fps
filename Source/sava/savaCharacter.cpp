@@ -352,6 +352,17 @@ void AsavaCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightA
 	CameraEffectComponent->NotifyEndCrouch(ScaledHalfHeightAdjust);
 }
 
+void AsavaCharacter::Landed(const FHitResult& Hit)
+{
+	Super::Landed(Hit);
+
+	//補正後のやり直し中の着地は、すでに一度揺らしているので揺らさない(速度は着地直前のまま)
+	if (!bClientUpdating)
+	{
+		CameraEffectComponent->NotifyLanded(-GetVelocity().Z);
+	}
+}
+
 //--------------------------------キャラクター
 
 void AsavaCharacter::SetCharacterId(FName NewCharacterId)
