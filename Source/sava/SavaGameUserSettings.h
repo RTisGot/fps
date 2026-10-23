@@ -32,7 +32,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Settings|Input")
 	void SetADSSensitivity(float NewSensitivity);
 
-	/** 画面の揺れの強さ(0 = 揺れない、1 = そのまま)。着地・ジャンプ・被弾・爆発・歩行・スタンの揺れに掛かる。 */
+	/** 画面の揺れの強さ(0 = 揺れない、1 = そのまま)。着地・ジャンプ・被弾・歩行の揺れに掛かる(射撃の揺れ・スタンのふらつきには掛からない)。 */
 	UFUNCTION(BlueprintPure, Category = "Settings|Camera")
 	float GetCameraShakeScale() const { return CameraShakeScale; }
 

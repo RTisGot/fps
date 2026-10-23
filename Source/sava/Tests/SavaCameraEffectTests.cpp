@@ -51,17 +51,4 @@ bool FSavaCameraLandingTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaCameraExplosionFalloffTest, "Sava.Camera.ExplosionFalloff",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FSavaCameraExplosionFalloffTest::RunTest(const FString&)
-{
-	TestEqual(TEXT("Center: full"), USavaCameraEffectComponent::CalculateExplosionFalloff(0.0f, 1000.0f), 1.0f);
-	TestEqual(TEXT("Halfway: half"), USavaCameraEffectComponent::CalculateExplosionFalloff(500.0f, 1000.0f), 0.5f);
-	TestEqual(TEXT("Edge: none"), USavaCameraEffectComponent::CalculateExplosionFalloff(1000.0f, 1000.0f), 0.0f);
-	TestEqual(TEXT("Outside: none"), USavaCameraEffectComponent::CalculateExplosionFalloff(3000.0f, 1000.0f), 0.0f);
-	TestEqual(TEXT("Zero radius: none"), USavaCameraEffectComponent::CalculateExplosionFalloff(0.0f, 0.0f), 0.0f);
-	return true;
-}
-
 #endif

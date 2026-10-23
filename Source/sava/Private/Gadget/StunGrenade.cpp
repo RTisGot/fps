@@ -1,5 +1,4 @@
 #include "Gadget/StunGrenade.h"
-#include "Camera/SavaCameraEffectComponent.h"
 
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
 #include "Components/SphereComponent.h"
@@ -327,5 +326,4 @@ void AStunGrenade::Multicast_PlayStunExplosion_Implementation(
 	 * BP_StunGrenadeÇÃOnStunExplodedÇ≈é¿ëïÇ∑ÇÈÅB
 	 */
 	OnStunExploded(ExplosionLocation);
-	USavaCameraEffectComponent::PlayExplosionShake(this, ExplosionLocation, m_CameraShakeRadius, m_CameraShakeStrength);
 }

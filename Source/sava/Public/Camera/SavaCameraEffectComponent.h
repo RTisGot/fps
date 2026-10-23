@@ -71,20 +71,10 @@ public:
 	//着地の揺れの大きさ(0 〜 1)。MinSpeed より遅ければ 0、MaxSpeed 以上で 1
 	static float CalculateLandingAlpha(float FallSpeed, float MinSpeed, float MaxSpeed);
 
-	//--------------------------------被弾・爆発
+	//--------------------------------被弾
 
 	//ダメージを受けた(キャラクターの ClientDamageTaken から呼ぶ)。来た向きから押されたように揺らす
 	void NotifyDamageTaken(const FSavaDamageTakenInfo& Info);
-
-	//近くで爆発した。Radius の外なら揺れない。Strength = 爆発の真ん中での揺れの大きさ(0 〜 1。1 で一番大きく揺れる)
-	void AddExplosionShake(const FVector& Location, float Radius, float Strength);
-
-	//その画面で操作しているキャラクター全員に、爆発の揺れを与える(爆発の演出を全員の画面で出すところから呼ぶ)
-	UFUNCTION(BlueprintCallable, Category = "Sava|Camera", meta = (WorldContext = "WorldContextObject"))
-	static void PlayExplosionShake(const UObject* WorldContextObject, FVector Location, float Radius, float Strength);
-
-	//爆発からの距離による揺れの割合(真ん中で 1、Radius で 0)
-	static float CalculateExplosionFalloff(float Distance, float Radius);
 
 	//--------------------------------状態
 
@@ -173,9 +163,9 @@ protected:
 
 	//--------------------------------歩行の揺れ
 
-	//1 歩の長さ(この距離を進むごとに 1 回上下する)
+	//1 歩の長さ(この距離を進むごとに 1 回上下する。長いほどゆっくり揺れる)
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "1", ForceUnits = "cm"))
-	float HeadBobStepLength = 90.0f;
+	float HeadBobStepLength = 250.0f;
 
 	//この速さのときに、下の大きさで揺れる(速いほど大きく、Max Scale 倍まで)
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "1", ForceUnits = "cm/s"))
@@ -191,10 +181,6 @@ protected:
 	//左右に揺れる大きさ(2 歩で 1 往復)
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float HeadBobHorizontalAmplitude = 0.4f;
-
-	//左右に傾く角度(2 歩で 1 往復)
-	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "Deg"))
-	float HeadBobRollAmplitude = 0.3f;
 
 	//歩き始め・止まったときに、揺れの大きさが追いつく速さ
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0"))
@@ -230,27 +216,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Damage", meta = (ClampMin = "0.005", ForceUnits = "s"))
 	float DamageKickTime = 0.05f;
 
-	//--------------------------------爆発の揺れ(細かく震えて、だんだん収まる)
-
-	//一番大きいときの角度(縦・横・傾き)
-	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Explosion", meta = (ClampMin = "0", ForceUnits = "Deg"))
-	FVector ExplosionShakeMaxRotation = FVector(4.0f, 2.0f, 5.0f);
-
-	//一番大きいときに、上下左右に揺れる量
-	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Explosion", meta = (ClampMin = "0", ForceUnits = "cm"))
-	float ExplosionShakeMaxLocation = 2.0f;
-
-	//震える速さ(大きいほど細かく震える)
-	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Explosion", meta = (ClampMin = "0"))
-	float ExplosionShakeFrequency = 18.0f;
-
-	//揺れが収まる速さ(1 秒に減る大きさ。一番大きい揺れは 1 / この値 秒で収まる)
-	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Explosion", meta = (ClampMin = "0.01"))
-	float ExplosionShakeDecay = 1.5f;
-
 	//--------------------------------スタン・スロー
 
-	//スタン中にふらつく角度(縦・横・傾き)
+	//スタン中にふらつく角度(縦・横・傾き)。状態を伝える演出なので、設定の「画面の揺れの強さ」は掛けない
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|Stun", meta = (ClampMin = "0", ForceUnits = "Deg"))
 	FVector StunWobbleRotation = FVector(2.0f, 3.0f, 4.0f);
 
@@ -290,8 +258,6 @@ private:
 	void UpdateWallRunTilt(APlayerController* PlayerController, float DeltaTime);
 	//地上を歩く速さに合わせて、歩行の揺れを進める
 	void UpdateHeadBob(float DeltaTime);
-	//爆発の揺れを収めていく
-	void UpdateExplosionShake(float DeltaTime);
 	//スタン中のふらつきを進める
 	void UpdateStun(float DeltaTime);
 	//状態(スタン・スローなど)のタグが付いているか
@@ -363,10 +329,6 @@ private:
 
 	//最後に壁走りしていた壁の左右(ウォールジャンプの瞬間には、もう壁走りが終わっているため)
 	float LastWallRunSide = 0.0f;
-
-	//爆発の揺れの大きさ(0 〜 1。時間で減る。揺れは 2 乗で効く)と、震えの時刻
-	float ExplosionShakeAmount = 0.0f;
-	float ExplosionShakeTime = 0.0f;
 
 	//スタンのふらつきの大きさ(0 〜 1。滑らかに変わる)と、ふらつきの時刻
 	float StunAlpha = 0.0f;
