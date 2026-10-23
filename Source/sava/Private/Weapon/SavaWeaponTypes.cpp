@@ -101,6 +101,27 @@ FVector2D FSavaWeaponStats::SampleConeOffset(float ConeAngle, float CenterRatio,
 	return FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * Radius;
 }
 
+float FSavaWeaponStats::StepADSViewAlpha(float Current, bool bAiming, float DeltaTime) const
+{
+	if (ADSTime <= 0.0f)
+	{
+		return bAiming ? 1.0f : 0.0f;
+	}
+
+	//進み具合 T(一定の速さ)を、1 - (1 - T)^Ease で見た目の値にする。今の値から T を逆算して進めるので、途中で向きを変えても飛ばない
+	const float Ease = FMath::Max(ADSEase, 1.0f);
+	auto EaseOut = [Ease](float T) { return 1.0f - FMath::Pow(1.0f - FMath::Clamp(T, 0.0f, 1.0f), Ease); };
+	auto InverseEaseOut = [Ease](float Value) { return 1.0f - FMath::Pow(1.0f - FMath::Clamp(Value, 0.0f, 1.0f), 1.0f / Ease); };
+
+	const float Step = DeltaTime / ADSTime;
+	if (bAiming)
+	{
+		return EaseOut(InverseEaseOut(Current) + Step);
+	}
+	//抜けるときも最初は速く: 「抜けた量」を同じ形で進める
+	return 1.0f - EaseOut(InverseEaseOut(1.0f - Current) + Step);
+}
+
 float FSavaWeaponStats::GetReloadDuration(bool bEmpty) const
 {
 	return bEmpty ? EmptyReloadTime : ReloadTime;

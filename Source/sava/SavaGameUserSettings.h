@@ -24,6 +24,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Settings|Input")
 	void SetMouseSensitivity(float NewSensitivity);
 
+	/** ADS 中の感度の倍率(ズームに合わせて自動で下がった感度に、さらに掛ける。1 = ズーム分だけ下げる)。 */
+	UFUNCTION(BlueprintPure, Category = "Settings|Input")
+	float GetADSSensitivity() const { return ADSSensitivity; }
+
+	/** Updates and immediately persists the ADS sensitivity multiplier. */
+	UFUNCTION(BlueprintCallable, Category = "Settings|Input")
+	void SetADSSensitivity(float NewSensitivity);
+
 	bool IsYInverted() const { return bInvertY; }
 	/** Used by the settings transaction; saving is a separate commit step. */
 	void SetInputPreferences(float NewSensitivity, bool bNewInvertY);
@@ -35,4 +43,7 @@ private:
 
 	UPROPERTY(Config)
 	bool bInvertY = false;
+
+	UPROPERTY(Config)
+	float ADSSensitivity = 1.0f;
 };

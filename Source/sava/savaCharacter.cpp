@@ -174,7 +174,9 @@ void AsavaCharacter::Look(const FInputActionValue& Value)
 	// input is a Vector2D
 	FVector2D LookAxisVector = Value.Get<FVector2D>();
 	const USavaGameUserSettings* Settings = USavaGameUserSettings::GetSavaGameUserSettings();
-	const float MouseSensitivity = Settings ? Settings->GetMouseSensitivity() : 1.0f;
+	//ADS 中は、ズームに合わせて感度を下げる
+	const float MouseSensitivity = (Settings ? Settings->GetMouseSensitivity() : 1.0f)
+		* (EquipmentComponent ? EquipmentComponent->GetLookSensitivityScale() : 1.0f);
 
 	if (Controller != nullptr)
 	{
