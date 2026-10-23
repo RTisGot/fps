@@ -6,6 +6,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "SavaCharacterMovementComponent.generated.h"
 
+class ASavaLadder;
+
 //MOVE_Custom のサブモード(今後の独自移動はここに追加する)。Blueprint でも名前で判定できる
 UENUM(BlueprintType)
 enum ESavaCustomMovementMode : uint8
@@ -14,6 +16,7 @@ enum ESavaCustomMovementMode : uint8
 	CMOVE_Slide		UMETA(DisplayName = "Slide"),
 	CMOVE_WallRun	UMETA(DisplayName = "Wall Run"),
 	CMOVE_Mantle	UMETA(DisplayName = "Mantle"),
+	CMOVE_Ladder	UMETA(DisplayName = "Ladder"),
 	CMOVE_MAX		UMETA(Hidden),
 };
 
@@ -49,6 +52,7 @@ struct FSavaCharacterMoveResponseDataContainer : FCharacterMoveResponseDataConta
 	FVector MantleExitDirection = FVector::ZeroVector;
 	float MantleElapsed = 0.0f;
 	float MantleDuration = 0.0f;
+	float LadderReattachCooldownRemaining = 0.0f;
 
 	virtual void ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment) override;
 	virtual bool Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap) override;
@@ -88,6 +92,7 @@ class SAVA_API USavaCharacterMovementComponent : public UCharacterMovementCompon
 		FVector MantleExitDirection = FVector::ZeroVector;
 		float MantleElapsed = 0.0f;
 		float MantleDuration = 0.0f;
+		float LadderReattachCooldownRemaining = 0.0f;
 	};
 
 	class FSavedMove_Sava : public FSavedMove_Character
@@ -97,6 +102,7 @@ class SAVA_API USavaCharacterMovementComponent : public UCharacterMovementCompon
 
 		uint8 bSavedWantsToSprint : 1;
 		uint8 bSavedJumpHeld : 1;
+		uint8 bSavedLadderLookDown : 1;
 
 		//この移動を始める時点の独自状態(結合で巻き戻すときに使う)
 		FSavaCustomMoveState StartCustomState;
@@ -506,6 +512,51 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Mantle")
 	bool IsMantling() const;
 
+	//----- 梯子(ASavaLadder): 梯子へ向かって入力すると掴まる。前入力で、上を見ていれば登り・下を見ていれば降りる(後ろ入力は逆) -----
+	//頂上ではよじ登りで上の足場に乗る。上の足場から梯子の方へ下を見て進むと、上から乗り込める。ジャンプで後ろへ飛び降りる
+
+	//登り降りの速さ
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float LadderClimbSpeed = 400.0f;
+
+	//入力が梯子の方向からこれ以内なら掴まる
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "Deg"))
+	float LadderMaxEntryAngle = 60.0f;
+
+	//視線の上下の角度がこれより下なら、前入力で降りる(マイナス = 水平より下)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "-89", ClampMax = "89", ForceUnits = "Deg"))
+	float LadderLookDownPitch = -30.0f;
+
+	//梯子に掴まっている間の、カプセルの表面から梯子の面までの距離
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float LadderStandOffDistance = 15.0f;
+
+	//梯子の中心線へ寄せる速さ(掴まった直後・上から乗り込むとき)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float LadderSnapSpeed = 500.0f;
+
+	//頂上で上の足場に乗り始める高さ(足元が梯子の上端からこれだけ下に来たら)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float LadderTopExitHeight = 40.0f;
+
+	//頂上で上の足場に乗るのにかかる時間
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0.05", ForceUnits = "s"))
+	float LadderTopMantleDuration = 0.35f;
+
+	//ジャンプで飛び降りるときの、梯子から離れる方向の速度 / 上向きの速度
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float LadderJumpOffSpeed = 450.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ForceUnits = "cm/s"))
+	float LadderJumpUpSpeed = 350.0f;
+
+	//梯子から離れてから、また掴まれるようになるまでの時間
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "s"))
+	float LadderReattachCooldown = 0.4f;
+
+	UFUNCTION(BlueprintPure, Category = "Sava|Ladder")
+	bool IsOnLadder() const;
+
 	//今の独自移動の種類(AnimBP 用)。他のプレイヤーでも有効
 	UFUNCTION(BlueprintPure, Category = "Sava")
 	TEnumAsByte<ESavaCustomMovementMode> GetCustomMovementModeType() const;
@@ -544,6 +595,12 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Events")
 	FSavaMovementEventSignature OnMantleEnded;
+
+	UPROPERTY(BlueprintAssignable, Category = "Sava|Events")
+	FSavaMovementEventSignature OnLadderStarted;
+
+	UPROPERTY(BlueprintAssignable, Category = "Sava|Events")
+	FSavaMovementEventSignature OnLadderEnded;
 
 	//----- デバッグ表示(一時的): テクニックの成立と移動の状態を画面左上に文字で出す -----
 
@@ -608,6 +665,15 @@ private:
 	bool IsCapsuleSweepClear(const FVector& Start, const FVector& End) const;
 	void PhysMantle(float DeltaTime, int32 Iterations);
 
+	ASavaLadder* FindLadder() const;
+	float GetLadderClimbInput() const;
+	FVector GetLadderSnapLocation(const ASavaLadder* Ladder) const;
+	bool TryStartLadder();
+	bool TryLadderTopExit(const ASavaLadder* Ladder);
+	void ExitLadder(EMovementMode NewMode);
+	void DoLadderJump();
+	void PhysLadder(float DeltaTime, int32 Iterations);
+
 	bool bWantsToSprint = false;
 
 	//ジャンプボタンを押しているか(押している間は壁走り、離すとウォールジャンプ)。ダッシュと同じく入力としてサーバーへ送る
@@ -668,6 +734,12 @@ private:
 	FVector MantleExitDirection = FVector::ZeroVector;
 	float MantleElapsed = 0.0f;
 	float MantleDuration = 0.0f;
+
+	//梯子: 視線が下を向いているか(前入力で降りる)。ダッシュと同じく入力としてサーバーへ送る
+	bool bLadderLookDown = false;
+
+	//梯子から離れた直後、また掴まれない残り時間
+	float LadderReattachCooldownRemaining = 0.0f;
 
 	FSavaCharacterMoveResponseDataContainer SavaMoveResponseDataContainer;
 };

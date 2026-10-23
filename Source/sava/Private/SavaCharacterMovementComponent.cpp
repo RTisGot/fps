@@ -7,10 +7,13 @@
 #include "AbilitySystemGlobals.h"
 #include "SavaGameplayTags.h"
 #include "Weapon/SavaEquipmentComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/Engine.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
+#include "Map/SavaLadder.h"
 
 USavaCharacterMovementComponent::USavaCharacterMovementComponent()
 {
@@ -90,6 +93,7 @@ void USavaCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
 	Super::UpdateFromCompressedFlags(Flags);
 	bWantsToSprint = (Flags & FSavedMove_Character::FLAG_Custom_0) != 0;
 	bJumpHeld = (Flags & FSavedMove_Character::FLAG_Custom_1) != 0;
+	bLadderLookDown = (Flags & FSavedMove_Character::FLAG_Custom_2) != 0;
 }
 
 //--------------------------------Blueprint events
@@ -141,6 +145,9 @@ void USavaCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previo
 	case CMOVE_Mantle:
 		OnMantleEnded.Broadcast();
 		break;
+	case CMOVE_Ladder:
+		OnLadderEnded.Broadcast();
+		break;
 	default:
 		break;
 	}
@@ -155,6 +162,9 @@ void USavaCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previo
 		break;
 	case CMOVE_Mantle:
 		OnMantleStarted.Broadcast();
+		break;
+	case CMOVE_Ladder:
+		OnLadderStarted.Broadcast();
 		break;
 	default:
 		break;
@@ -508,6 +518,13 @@ void USavaCharacterMovementComponent::DoWallJump()
 
 bool USavaCharacterMovementComponent::DoJump(bool bReplayingMoves, float DeltaTime)
 {
+	//梯子ではジャンプで後ろへ飛び降りる
+	if (IsOnLadder())
+	{
+		DoLadderJump();
+		return true;
+	}
+
 	//壁走り中はジャンプボタンを押しても何もしない(ウォールジャンプはボタンを離したときに DoWallJump で行う)
 	if (IsWallRunning())
 	{
@@ -912,6 +929,224 @@ void USavaCharacterMovementComponent::PhysMantle(float DeltaTime, int32 Iteratio
 	}
 }
 
+//--------------------------------Ladder
+
+bool USavaCharacterMovementComponent::IsOnLadder() const
+{
+	return MovementMode == MOVE_Custom && CustomMovementMode == CMOVE_Ladder;
+}
+
+ASavaLadder* USavaCharacterMovementComponent::FindLadder() const
+{
+	//今のカプセルが重なっている梯子の範囲(ClimbVolume)を探す
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(SavaLadder), false, CharacterOwner);
+	TArray<FOverlapResult> Overlaps;
+	GetWorld()->OverlapMultiByChannel(Overlaps, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentQuat(),
+		UpdatedComponent->GetCollisionObjectType(), CharacterOwner->GetCapsuleComponent()->GetCollisionShape(), Params);
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		ASavaLadder* Ladder = Cast<ASavaLadder>(Overlap.GetActor());
+		if (Ladder && Overlap.GetComponent() == Ladder->GetClimbVolume())
+		{
+			return Ladder;
+		}
+	}
+	return nullptr;
+}
+
+float USavaCharacterMovementComponent::GetLadderClimbInput() const
+{
+	//前後の入力の量(-1 〜 1)。上を見ていれば前入力で登り、下を見ていれば前入力で降りる(後ろ入力は逆)
+	const float MaxAccel = GetMaxAcceleration();
+	if (MaxAccel <= KINDA_SMALL_NUMBER)
+	{
+		return 0.0f;
+	}
+	const FVector Facing = UpdatedComponent->GetForwardVector().GetSafeNormal2D();
+	const float Forward = FMath::Clamp(FVector::DotProduct(FVector(Acceleration.X, Acceleration.Y, 0.0f), Facing) / MaxAccel, -1.0f, 1.0f);
+	return bLadderLookDown ? -Forward : Forward;
+}
+
+FVector USavaCharacterMovementComponent::GetLadderSnapLocation(const ASavaLadder* Ladder) const
+{
+	//梯子の中心線の正面で、カプセルの表面が梯子の面から LadderStandOffDistance 離れる位置(高さは今のまま)
+	const float Radius = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	const FVector Snap = Ladder->GetActorLocation() + Ladder->GetLadderNormal() * (Radius + LadderStandOffDistance);
+	return FVector(Snap.X, Snap.Y, UpdatedComponent->GetComponentLocation().Z);
+}
+
+bool USavaCharacterMovementComponent::TryStartLadder()
+{
+	if (LadderReattachCooldownRemaining > 0.0f)
+	{
+		return false;
+	}
+
+	const FVector InputDir = FVector(Acceleration.X, Acceleration.Y, 0.0f).GetSafeNormal();
+	if (InputDir.IsNearlyZero())
+	{
+		return false;
+	}
+
+	ASavaLadder* Ladder = FindLadder();
+	if (!Ladder)
+	{
+		return false;
+	}
+
+	const FVector Normal = Ladder->GetLadderNormal();
+	const FVector Location = UpdatedComponent->GetComponentLocation();
+	const float MinDot = FMath::Cos(FMath::DegreesToRadians(LadderMaxEntryAngle));
+	const float Climb = GetLadderClimbInput();
+	if (FVector::DotProduct(Location - Ladder->GetActorLocation(), Normal) < 0.0f)
+	{
+		//梯子の裏側(上の足場): 足場の端(梯子の方)へ、降りる向きに入力したときだけ上から乗り込む
+		const float FeetZ = Location.Z - CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		if (!IsMovingOnGround() || Climb >= 0.0f || FMath::Abs(FeetZ - Ladder->GetTopZ()) > LadderTopExitHeight
+			|| FVector::DotProduct(InputDir, Normal) < MinDot)
+		{
+			return false;
+		}
+	}
+	else
+	{
+		//正面: 梯子の方へ入力したとき。地上では降りる向きなら掴まらない(梯子の下で下を見ながら近づいても足踏みしないように)
+		if (FVector::DotProduct(InputDir, -Normal) < MinDot || (IsMovingOnGround() && Climb < 0.0f))
+		{
+			return false;
+		}
+	}
+
+	//位置は PhysLadder で梯子の正面へ寄せる
+	Velocity = FVector::ZeroVector;
+	SetMovementMode(MOVE_Custom, CMOVE_Ladder);
+	ShowTechniqueDebug(TEXT("Ladder"), FColor::White);
+	return true;
+}
+
+bool USavaCharacterMovementComponent::TryLadderTopExit(const ASavaLadder* Ladder)
+{
+	const UCapsuleComponent* Capsule = CharacterOwner->GetCapsuleComponent();
+	const float Radius = Capsule->GetScaledCapsuleRadius();
+	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	const FVector Location = UpdatedComponent->GetComponentLocation();
+	const FVector TowardLadder = -Ladder->GetLadderNormal();
+
+	//梯子の奥(上の足場)の床を、上端の少し上から下へ探す
+	const FVector LadderBase = Ladder->GetActorLocation();
+	const FVector TopPoint = FVector(LadderBase.X, LadderBase.Y, Ladder->GetTopZ()) + TowardLadder * (Radius + 10.0f);
+	FHitResult TopHit;
+	if (!TraceMovementLine(TopPoint + FVector(0.0f, 0.0f, LadderTopExitHeight + HalfHeight), TopPoint - FVector(0.0f, 0.0f, LadderTopExitHeight), TopHit)
+		|| TopHit.bStartPenetrating || !IsWalkable(TopHit))
+	{
+		return false;
+	}
+
+	//上→奥の経路がふさがっていないこと(よじ登りと同じ確認)
+	const FVector Target = TopHit.ImpactPoint + FVector(0.0f, 0.0f, HalfHeight + 2.0f);
+	const FVector Above = FVector(Location.X, Location.Y, Target.Z);
+	if (!IsCapsuleSweepClear(Location, Above) || !IsCapsuleSweepClear(Above, Target))
+	{
+		return false;
+	}
+
+	//よじ登りの動きで上の足場に乗る
+	MantleDuration = LadderTopMantleDuration;
+	MantleElapsed = 0.0f;
+	MantleStartLocation = Location;
+	MantleTargetLocation = Target;
+	MantleExitDirection = TowardLadder;
+	Velocity = FVector::ZeroVector;
+	LadderReattachCooldownRemaining = LadderReattachCooldown;
+	SetMovementMode(MOVE_Custom, CMOVE_Mantle);
+	return true;
+}
+
+void USavaCharacterMovementComponent::ExitLadder(EMovementMode NewMode)
+{
+	//梯子の共通の終わり方(離れた直後にまた掴まらないように)
+	LadderReattachCooldownRemaining = LadderReattachCooldown;
+	SetMovementMode(NewMode);
+}
+
+void USavaCharacterMovementComponent::DoLadderJump()
+{
+	//梯子から離れる方向と上へ飛ぶ
+	const ASavaLadder* Ladder = FindLadder();
+	const FVector Away = Ladder ? Ladder->GetLadderNormal() : -UpdatedComponent->GetForwardVector().GetSafeNormal2D();
+	Velocity = Away * LadderJumpOffSpeed + FVector(0.0f, 0.0f, LadderJumpUpSpeed);
+	ExitLadder(MOVE_Falling);
+	ShowTechniqueDebug(TEXT("Ladder Jump"), FColor::Silver);
+	StartLurch();
+}
+
+void USavaCharacterMovementComponent::PhysLadder(float DeltaTime, int32 Iterations)
+{
+	if (DeltaTime < MIN_TICK_TIME)
+	{
+		return;
+	}
+
+	//梯子の範囲から出た(横に抜けた・下端より下へ降りた)ら落下へ
+	const ASavaLadder* Ladder = FindLadder();
+	if (!Ladder)
+	{
+		ExitLadder(MOVE_Falling);
+		StartNewPhysics(DeltaTime, Iterations);
+		return;
+	}
+
+	const float HalfHeight = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+	const float FeetZ = OldLocation.Z - HalfHeight;
+	const float Climb = GetLadderClimbInput();
+
+	//頂上: 登っていて上端の近くまで来たら、よじ登りの動きで上の足場に乗る
+	if (Climb > 0.0f && FeetZ >= Ladder->GetTopZ() - LadderTopExitHeight && TryLadderTopExit(Ladder))
+	{
+		StartNewPhysics(DeltaTime, Iterations);
+		return;
+	}
+
+	//上下: 入力の量 × 登り降りの速さ。上に足場がない梯子では、足元が上端より上には登らない
+	const float MaxUpSpeed = FMath::Max((Ladder->GetTopZ() - FeetZ) / DeltaTime, 0.0f);
+	const float UpSpeed = FMath::Min(Climb * LadderClimbSpeed, MaxUpSpeed);
+
+	//水平: 梯子の中心線の正面へ寄せる(掴まった直後・上から乗り込むとき)
+	const FVector SnapDelta = (GetLadderSnapLocation(Ladder) - OldLocation).GetClampedToMaxSize(LadderSnapSpeed * DeltaTime);
+
+	Iterations++;
+	bJustTeleported = false;
+	const FVector Delta = SnapDelta + FVector(0.0f, 0.0f, UpSpeed * DeltaTime);
+	FHitResult Hit(1.0f);
+	SafeMoveUpdatedComponent(Delta, UpdatedComponent->GetComponentQuat(), true, Hit);
+	if (Hit.Time < 1.0f)
+	{
+		HandleImpact(Hit, DeltaTime, Delta);
+		SlideAlongSurface(Delta, 1.0f - Hit.Time, Hit.Normal, Hit, true);
+	}
+
+	if (!bJustTeleported)
+	{
+		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
+	}
+
+	//底: 降りていて、梯子の正面に寄り終わっていて、足元に床があれば歩きへ
+	//(上から乗り込む途中は、まだ上の足場の上にいるので降りない)
+	constexpr float SnapTolerance = 5.0f;
+	constexpr float LandingFloorDistance = 5.0f;
+	const FVector Location = UpdatedComponent->GetComponentLocation();
+	if (Climb < 0.0f && (GetLadderSnapLocation(Ladder) - Location).SizeSquared2D() < FMath::Square(SnapTolerance))
+	{
+		FFindFloorResult Floor;
+		FindFloor(Location, Floor, false);
+		if (Floor.IsWalkableFloor() && Floor.GetDistanceToFloor() <= LandingFloorDistance)
+		{
+			ExitLadder(MOVE_Walking);
+		}
+	}
+}
+
 //--------------------------------Slide
 
 bool USavaCharacterMovementComponent::IsSliding() const
@@ -927,9 +1162,9 @@ bool USavaCharacterMovementComponent::IsMovingOnGround() const
 
 bool USavaCharacterMovementComponent::CanAttemptJump() const
 {
-	//通常はしゃがみボタン押下中はジャンプ不可だが、スライディング中と空中(二段ジャンプ)は許可する
+	//通常はしゃがみボタン押下中はジャンプ不可だが、スライディング中と空中(二段ジャンプ)・梯子(飛び降り)は許可する
 	//(壁走り中はジャンプボタンを押しても跳ばない。ウォールジャンプはボタンを離したときに行う)
-	if (IsSliding() || IsFalling())
+	if (IsSliding() || IsFalling() || IsOnLadder())
 	{
 		return IsJumpAllowed();
 	}
@@ -953,6 +1188,7 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 		WallJumpLateReleaseRemaining = FMath::Max(WallJumpLateReleaseRemaining - DeltaSeconds, 0.0f);
 		JustLandingInputRemaining = FMath::Max(JustLandingInputRemaining - DeltaSeconds, 0.0f);
 		JustLandingCooldownRemaining = FMath::Max(JustLandingCooldownRemaining - DeltaSeconds, 0.0f);
+		LadderReattachCooldownRemaining = FMath::Max(LadderReattachCooldownRemaining - DeltaSeconds, 0.0f);
 
 		bCrouchPressed = bWantsToCrouch && !bPrevWantsToCrouch;
 		bPrevWantsToCrouch = bWantsToCrouch;
@@ -982,11 +1218,15 @@ void USavaCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float D
 		}
 		else if (IsFalling())
 		{
-			//正面によじ登れる縁があれば優先する(壁走りは横の壁、よじ登りは正面の壁)
-			if (!TryStartMantle())
+			//梯子 → 正面によじ登れる縁 → 横の壁 の順に優先する(壁走りは横の壁、よじ登りは正面の壁)
+			if (!TryStartLadder() && !TryStartMantle())
 			{
 				TryStartWallRun();
 			}
+		}
+		else if (MovementMode == MOVE_Walking)
+		{
+			TryStartLadder();
 		}
 	}
 
@@ -1100,6 +1340,9 @@ void USavaCharacterMovementComponent::PhysCustom(float DeltaTime, int32 Iteratio
 			break;
 		case CMOVE_Mantle:
 			PhysMantle(Step, Iterations);
+			break;
+		case CMOVE_Ladder:
+			PhysLadder(Step, Iterations);
 			break;
 		default:
 			break;
@@ -1242,6 +1485,12 @@ void USavaCharacterMovementComponent::ShowTechniqueDebug(const FString& Text, co
 
 void USavaCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	//梯子の登り降りの向きは視線で決める。自分が操作しているキャラだけ、移動の計算の前に入力として決める(サーバーへはフラグで送る)
+	if (CharacterOwner && CharacterOwner->IsLocallyControlled())
+	{
+		bLadderLookDown = FRotator::NormalizeAxis(CharacterOwner->GetControlRotation().Pitch) < LadderLookDownPitch;
+	}
+
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 #if !UE_BUILD_SHIPPING
@@ -1304,6 +1553,11 @@ void USavaCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick 
 	{
 		Line += FString::Printf(TEXT("  |  Lurch %.2fs  %.0f deg left"), LurchTimeRemaining, LurchAngleRemaining);
 	}
+	if (IsOnLadder())
+	{
+		Line += FString::Printf(TEXT("  |  Ladder (%s: forward = %s)"),
+			bLadderLookDown ? TEXT("look down") : TEXT("look up"), bLadderLookDown ? TEXT("down") : TEXT("up"));
+	}
 	GEngine->AddOnScreenDebugMessage(static_cast<uint64>(GetUniqueID()), 0.5f, FColor::Yellow, Line, true, FVector2D(1.3f, 1.3f));
 #endif
 }
@@ -1352,6 +1606,7 @@ void USavaCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterM
 		MantleExitDirection = SavaResponse.MantleExitDirection;
 		MantleElapsed = SavaResponse.MantleElapsed;
 		MantleDuration = SavaResponse.MantleDuration;
+		LadderReattachCooldownRemaining = SavaResponse.LadderReattachCooldownRemaining;
 	}
 	Super::ClientHandleMoveResponse(MoveResponse);
 }
@@ -1385,6 +1640,7 @@ void FSavaCharacterMoveResponseDataContainer::ServerFillResponseData(const UChar
 	MantleExitDirection = SavaMovement.MantleExitDirection;
 	MantleElapsed = SavaMovement.MantleElapsed;
 	MantleDuration = SavaMovement.MantleDuration;
+	LadderReattachCooldownRemaining = SavaMovement.LadderReattachCooldownRemaining;
 }
 
 bool FSavaCharacterMoveResponseDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
@@ -1420,6 +1676,7 @@ bool FSavaCharacterMoveResponseDataContainer::Serialize(UCharacterMovementCompon
 		Ar << MantleExitDirection;
 		Ar << MantleElapsed;
 		Ar << MantleDuration;
+		Ar << LadderReattachCooldownRemaining;
 	}
 	return !Ar.IsError();
 }
@@ -1439,6 +1696,7 @@ void USavaCharacterMovementComponent::FSavedMove_Sava::Clear()
 	Super::Clear();
 	bSavedWantsToSprint = false;
 	bSavedJumpHeld = false;
+	bSavedLadderLookDown = false;
 	StartCustomState = FSavaCustomMoveState();
 }
 
@@ -1490,6 +1748,7 @@ USavaCharacterMovementComponent::FSavaCustomMoveState USavaCharacterMovementComp
 	State.MantleExitDirection = MantleExitDirection;
 	State.MantleElapsed = MantleElapsed;
 	State.MantleDuration = MantleDuration;
+	State.LadderReattachCooldownRemaining = LadderReattachCooldownRemaining;
 	return State;
 }
 
@@ -1518,6 +1777,7 @@ void USavaCharacterMovementComponent::RestoreCustomMoveState(const FSavaCustomMo
 	MantleExitDirection = State.MantleExitDirection;
 	MantleElapsed = State.MantleElapsed;
 	MantleDuration = State.MantleDuration;
+	LadderReattachCooldownRemaining = State.LadderReattachCooldownRemaining;
 }
 
 uint8 USavaCharacterMovementComponent::FSavedMove_Sava::GetCompressedFlags() const
@@ -1531,13 +1791,18 @@ uint8 USavaCharacterMovementComponent::FSavedMove_Sava::GetCompressedFlags() con
 	{
 		Result |= FSavedMove_Character::FLAG_Custom_1;
 	}
+	if (bSavedLadderLookDown)
+	{
+		Result |= FSavedMove_Character::FLAG_Custom_2;
+	}
 	return Result;
 }
 
 bool USavaCharacterMovementComponent::FSavedMove_Sava::CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* Character, float MaxDelta) const
 {
 	const FSavedMove_Sava* NewSavaMove = static_cast<FSavedMove_Sava*>(NewMove.Get());
-	if (bSavedWantsToSprint != NewSavaMove->bSavedWantsToSprint || bSavedJumpHeld != NewSavaMove->bSavedJumpHeld) {
+	if (bSavedWantsToSprint != NewSavaMove->bSavedWantsToSprint || bSavedJumpHeld != NewSavaMove->bSavedJumpHeld
+		|| bSavedLadderLookDown != NewSavaMove->bSavedLadderLookDown) {
 		return false;
 	}
 	return Super::CanCombineWith(NewMove, Character, MaxDelta);
@@ -1550,6 +1815,7 @@ void USavaCharacterMovementComponent::FSavedMove_Sava::SetMoveFor(ACharacter* Ch
 	if (SavaMovement) {
 		bSavedWantsToSprint = SavaMovement->bWantsToSprint;
 		bSavedJumpHeld = SavaMovement->bJumpHeld;
+		bSavedLadderLookDown = SavaMovement->bLadderLookDown;
 	}
 }
 
@@ -1560,5 +1826,6 @@ void USavaCharacterMovementComponent::FSavedMove_Sava::PrepMoveFor(class ACharac
 	if (SavaMovement) {
 		SavaMovement->bWantsToSprint = bSavedWantsToSprint;
 		SavaMovement->bJumpHeld = bSavedJumpHeld;
+		SavaMovement->bLadderLookDown = bSavedLadderLookDown;
 	}
 }
