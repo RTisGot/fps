@@ -57,6 +57,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float HeadshotHeight = 30.0f;
 
+	//単発・バースト: 次の 1 発を撃てるようになるまでの残りがこの時間以内なら、押したクリックを覚えておき、撃てるようになった瞬間に撃つ(先行入力)
+	//連打したときに「押したのに撃てなかった」を減らす。0 なら覚えない(早すぎるクリックは無視)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon", meta = (ClampMin = "0", ForceUnits = "s"))
+	float FireInputBufferTime = 0.15f;
+
 	//物理で動く物(テンプレートの青い箱など)に 1 発当たったときに加える速さ。重さに関係なく同じだけ動く。0 なら押さない
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float PhysicsImpulseSpeed = 300.0f;

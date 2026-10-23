@@ -100,6 +100,19 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	FName MuzzleSocketName = NAME_None;
 
+	//ADS で、武器メッシュのこのソケットが画面の真ん中に来るように腕を動かす(サイトの覗く位置にソケットを作る)
+	//空なら、ADS Arms Offset の分だけ動かす(両方とも空・ゼロなら腕は動かさない。アニメーションで ADS の姿勢を作る場合はそのままにする)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual|ADS")
+	FName SightSocketName = NAME_None;
+
+	//ADS で、サイトのソケットをカメラの何 cm 前に置くか(小さいほど大きく見える)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual|ADS", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float ADSSightDistance = 20.0f;
+
+	//ADS で腕を動かす量(カメラから見て X = 前、Y = 右、Z = 上)。サイトのソケットがあれば、その位置合わせに足す(微調整用)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual|ADS", meta = (ForceUnits = "cm"))
+	FVector ADSArmsOffset = FVector::ZeroVector;
+
 	//撃つたびに銃口に出すエフェクト。空なら、キャラクターの Equipment Component の Muzzle Flash System を使う
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<UNiagaraSystem> MuzzleFlashEffect;

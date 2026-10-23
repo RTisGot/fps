@@ -11,6 +11,7 @@ class USavaWeaponData;
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
 class UNiagaraSystem;
+class USoundBase;
 
 //1 つの枠の装備(サーバーが決めて全員へ同期する)
 USTRUCT(BlueprintType)
@@ -28,6 +29,7 @@ struct FSavaWeaponLoadoutEntry
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSavaOnWeaponChanged, ESavaWeaponSlot, Slot, USavaWeaponData*, Weapon);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FSavaOnAmmoChanged, ESavaWeaponSlot, Slot, int32, AmmoInMagazine, int32, ReserveAmmo);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnHitFeedback, const FSavaHitFeedback&, Feedback);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnWeaponMuzzleFlash, FVector, MuzzleLocation);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSavaOnWeaponTracer, FVector, MuzzleLocation, TArray<FVector>, TraceEnds);
@@ -132,9 +134,17 @@ public:
 	//マズル位置をデバッグ描画する
 	void DrawMuzzleDebug() const;
 
-	//ADS の進み具合(0 = 腰撃ち、1 = ADS に入りきった。自分の画面だけ)
+	//ADS の進み具合(0 = 腰撃ち、1 = ADS に入りきった。一定の速さで進む。拡散に使う。自分の画面だけ)
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
 	float GetADSAlpha() const { return ADSAlpha; }
+
+	//見た目の ADS の進み具合(ADS Ease で滑らかにしたもの。視野角・腕の位置・感度に使う。クロスヘアを消すのにも使える)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	float GetADSViewAlpha() const { return ADSViewAlpha; }
+
+	//視点を動かす感度に掛ける倍率(ADS 中はズームに合わせて下がる。設定の ADS 感度も掛かる。自分の画面だけ)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	float GetLookSensitivityScale() const;
 
 	//装備中の武器が変わった(持ち替え・装備の変更)
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Weapon")
@@ -143,6 +153,31 @@ public:
 	//弾数が変わった(自分の画面では撃った瞬間に呼ばれる)
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Weapon")
 	FSavaOnAmmoChanged OnAmmoChanged;
+
+	//撃った弾が当たった(サーバーが当たりを認めた後に、撃った本人の画面で呼ばれる。1 回撃つごとに 1 回)
+	//ヒットマーカー・ダメージ表示に使う。音は下の Hit Sound などで鳴る
+	UPROPERTY(BlueprintAssignable, Category = "Sava|Weapon")
+	FSavaOnHitFeedback OnHitFeedback;
+
+	//--------------------------------当たったときの音(撃った本人だけに聞こえる。空なら鳴らさない)
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon|Hit Feedback")
+	TObjectPtr<USoundBase> HitSound;
+
+	//頭に当たった(Hit Sound の代わりに鳴らす)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon|Hit Feedback")
+	TObjectPtr<USoundBase> HeadshotSound;
+
+	//倒した(Hit Sound・Headshot Sound と一緒に鳴らす)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon|Hit Feedback")
+	TObjectPtr<USoundBase> KillSound;
+
+	//シールドに防がれた(ダメージを与えた弾が無いときだけ鳴らす)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Weapon|Hit Feedback")
+	TObjectPtr<USoundBase> ShieldHitSound;
+
+	//サーバー: 撃った本人へ当たった結果を送る(本人の画面で On Hit Feedback が呼ばれ、音が鳴る)
+	void SendHitFeedback(const FSavaHitFeedback& Feedback);
 
 	//--------------------------------武器の能力から呼ぶ
 
@@ -235,6 +270,9 @@ private:
 	UFUNCTION(Client, Reliable)
 	void ClientRefillAllAmmo();
 
+	UFUNCTION(Client, Reliable)
+	void ClientHitFeedback(const FSavaHitFeedback& Feedback);
+
 	//装備に合わせて数値を計算し直す。武器が変わった枠は弾を満タンにする
 	void ApplyLoadout();
 	void RefillAmmoLocal();
@@ -253,8 +291,10 @@ private:
 	// 壁に弾痕を貼る(法線がゼロの弾は貼らない)
 	void SpawnImpactDecals(const TArray<FVector>& TraceEnds, const TArray<FVector>& ImpactNormals);
 
-	//見た目だけの揺れを動かし、カメラと腕に反映する
+	//見た目だけの揺れを動かし、ADS の腕の位置と一緒に、カメラと腕に反映する
 	void UpdateVisualKick(float DeltaTime);
+	//ADS に入りきったときに腕を動かす量(カメラから見た向き)。サイトのソケットが画面の真ん中に来るようにする
+	FVector CalculateADSArmsOffset(const USkeletalMeshComponent* Arms) const;
 	//反動の分だけ視点を動かす(X = 横、Y = 縦)
 	void AddRecoilToView(APlayerController* PlayerController, const FVector2D& Kick);
 	//プレイヤーが自分で視点を下げた分は、反動で戻す量から引く(戻しすぎないように)
@@ -321,6 +361,9 @@ private:
 
 	//ADS
 	float ADSAlpha = 0.0f;
+	float ADSViewAlpha = 0.0f;
+	//腕を、揺れ・ADS で元の位置から動かしているか(動かしていない間に、元の位置を覚え直す)
+	bool bArmsModified = false;
 	float BaseFieldOfView = 0.0f;
 
 	//反動: まだ視点に足していない量(X = 横、Y = 縦)と、足しきるまでの残り時間

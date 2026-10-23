@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/NetSerialization.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "SavaWeaponTypes.generated.h"
 
@@ -89,6 +90,37 @@ struct SAVA_API FSavaSpreadBreakdown
 	//1 発目の精度が効いているか
 	UPROPERTY(BlueprintReadOnly, Category = "Spread")
 	bool bFirstShot = false;
+};
+
+//撃った本人へ返す、1 回撃った結果(ショットガンは弾をまとめて 1 つ。サーバーが当たりを認めたものだけ)
+USTRUCT(BlueprintType)
+struct SAVA_API FSavaHitFeedback
+{
+	GENERATED_BODY()
+
+	//与えたダメージの合計(キャラクターの倍率を掛けた後)
+	UPROPERTY(BlueprintReadOnly, Category = "Hit")
+	float Damage = 0.0f;
+
+	//ダメージを与えた弾の数
+	UPROPERTY(BlueprintReadOnly, Category = "Hit")
+	int32 NumHits = 0;
+
+	//頭に当たった弾があった
+	UPROPERTY(BlueprintReadOnly, Category = "Hit")
+	bool bHeadshot = false;
+
+	//この 1 回で相手を倒した
+	UPROPERTY(BlueprintReadOnly, Category = "Hit")
+	bool bKilled = false;
+
+	//シールドに防がれた弾があった(ダメージなし)
+	UPROPERTY(BlueprintReadOnly, Category = "Hit")
+	bool bBlockedByShield = false;
+
+	//最後に当たった位置(ダメージ表示などに使う)
+	UPROPERTY(BlueprintReadOnly, Category = "Hit")
+	FVector_NetQuantize Location = FVector::ZeroVector;
 };
 
 //武器の数値(BP の ST_WeaponStats を移したもの。Reload Time と Burst Count は追加)
@@ -293,6 +325,11 @@ struct SAVA_API FSavaWeaponStats
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS", meta = (ClampMin = "0", ForceUnits = "s"))
 	float ADSTime = 0.2f;
 
+	//ADS の入り・抜けの見た目(視野角・腕の位置・感度)の滑らかさ。1 = 一定の速さ / 2 = 最初は速く、最後はゆっくり / 大きいほど最後がゆっくり
+	//かかる時間は ADS Time のまま。拡散の減り方は一定の速さのまま
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS", meta = (ClampMin = "1", ClampMax = "5"))
+	float ADSEase = 2.0f;
+
 	//ADS 中の視野角の倍率(0.8 なら 80%)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ADS", meta = (ClampMin = "0.05", ClampMax = "1"))
 	float ADSZoom = 0.8f;
@@ -354,6 +391,12 @@ struct SAVA_API FSavaWeaponStats
 
 	//円 ConeAngle の中の位置(度)。CenterRatio = 半径の半分より内側に入る割合(0.25 で均等)
 	static FVector2D SampleConeOffset(float ConeAngle, float CenterRatio, float RandRadius, float RandAngle);
+
+	//--------------------------------ADS
+
+	//見た目の ADS の進み具合を DeltaTime 秒分進める(bAiming = 構えている)
+	//ADS Time で入りきり・抜けきり、最初は速く最後はゆっくり動く。途中で向きを変えても、値は飛ばずにそこから動く
+	float StepADSViewAlpha(float Current, bool bAiming, float DeltaTime) const;
 
 	//--------------------------------リロード
 

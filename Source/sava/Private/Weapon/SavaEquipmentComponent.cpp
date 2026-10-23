@@ -20,6 +20,7 @@
 #include "SavaGameplayTags.h"
 #include "SavaGrappleRootMotionSource.h"
 #include "savaCharacter.h"
+#include "SavaGameUserSettings.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "NiagaraComponent.h"
@@ -255,6 +256,43 @@ void USavaEquipmentComponent::RefillAllAmmo()
 void USavaEquipmentComponent::ClientRefillAllAmmo_Implementation()
 {
 	RefillAmmoLocal();
+}
+
+//--------------------------------Hit Feedback
+
+void USavaEquipmentComponent::SendHitFeedback(const FSavaHitFeedback& Feedback)
+{
+	//プレイヤーが撃ったときだけ(AI の弾で、ホストの画面に音が鳴らないように)
+	const APawn* Pawn = Cast<APawn>(GetOwner());
+	if (!Pawn || !Pawn->HasAuthority() || !Pawn->IsPlayerControlled())
+	{
+		return;
+	}
+	//ホスト自身なら、その場で呼ばれる
+	ClientHitFeedback(Feedback);
+}
+
+void USavaEquipmentComponent::ClientHitFeedback_Implementation(const FSavaHitFeedback& Feedback)
+{
+	USoundBase* Sound = nullptr;
+	if (Feedback.NumHits > 0)
+	{
+		Sound = Feedback.bHeadshot && HeadshotSound ? HeadshotSound.Get() : HitSound.Get();
+	}
+	else if (Feedback.bBlockedByShield)
+	{
+		Sound = ShieldHitSound;
+	}
+	if (Sound)
+	{
+		UGameplayStatics::PlaySound2D(this, Sound);
+	}
+	if (Feedback.bKilled && KillSound)
+	{
+		UGameplayStatics::PlaySound2D(this, KillSound);
+	}
+
+	OnHitFeedback.Broadcast(Feedback);
 }
 
 void USavaEquipmentComponent::RefillAmmoLocal()
@@ -653,11 +691,31 @@ void USavaEquipmentComponent::UpdateADS(float DeltaTime)
 		ADSAlpha = FMath::FInterpConstantTo(ADSAlpha, TargetAlpha, DeltaTime, 1.0f / Stats.ADSTime);
 	}
 
+	//見た目(視野角・腕の位置・感度)は、最初は速く最後はゆっくり動かす
+	ADSViewAlpha = Stats.StepADSViewAlpha(ADSViewAlpha, bAiming, DeltaTime);
+
 	const AsavaCharacter* Character = Cast<AsavaCharacter>(GetOwner());
 	if (Character && BaseFieldOfView > 0.0f)
 	{
-		Character->GetFirstPersonCameraComponent()->SetFieldOfView(BaseFieldOfView * FMath::Lerp(1.0f, Stats.ADSZoom, ADSAlpha));
+		Character->GetFirstPersonCameraComponent()->SetFieldOfView(BaseFieldOfView * FMath::Lerp(1.0f, Stats.ADSZoom, ADSViewAlpha));
 	}
+}
+
+float USavaEquipmentComponent::GetLookSensitivityScale() const
+{
+	if (BaseFieldOfView <= 0.0f || ADSViewAlpha <= 0.0f)
+	{
+		return 1.0f;
+	}
+
+	//画面上で同じ距離を動かすのに同じだけマウスを動かすように、ズームした分だけ感度を下げる(視野角の半分の tan の比)
+	const float CurrentFieldOfView = BaseFieldOfView * FMath::Lerp(1.0f, GetStats(CurrentSlot).ADSZoom, ADSViewAlpha);
+	const float ZoomScale = FMath::Tan(FMath::DegreesToRadians(CurrentFieldOfView * 0.5f)) / FMath::Tan(FMath::DegreesToRadians(BaseFieldOfView * 0.5f));
+
+	//設定の ADS 感度(好みで上げ下げする倍率)
+	const USavaGameUserSettings* Settings = USavaGameUserSettings::GetSavaGameUserSettings();
+	const float UserScale = Settings ? Settings->GetADSSensitivity() : 1.0f;
+	return ZoomScale * FMath::Lerp(1.0f, UserScale, ADSViewAlpha);
 }
 
 void USavaEquipmentComponent::ApplyRecoil(ESavaWeaponSlot Slot)
@@ -762,41 +820,80 @@ void USavaEquipmentComponent::UpdateVisualKick(float DeltaTime)
 	const AsavaCharacter* Character = Cast<AsavaCharacter>(GetOwner());
 	UCameraComponent* Camera = Character ? Character->GetFirstPersonCameraComponent() : nullptr;
 	USkeletalMeshComponent* Arms = Character ? Character->GetMesh1P() : nullptr;
-	if (!bVisualKickActive || !Camera || !Arms)
+	if (!Camera || !Arms)
 	{
 		return;
 	}
 
-	//揺れ始め: 揺れていないときの腕の位置を覚える
-	if (VisualKickOffset.IsZero())
+	//揺れても ADS でもない間は、腕に触らない(元の位置を覚え直すだけ)
+	if (!bArmsModified)
 	{
 		ArmsBaseTransform = Arms->GetRelativeTransform();
 	}
-
-	//行きすぎない一番速いバネ(臨界減衰)の式で進める(フレームの長さによらず同じ動きになる)
-	const float W = VisualKickStiffness;
-	const float Decay = FMath::Exp(-W * DeltaTime);
-	const FVector Temp = VisualKickVelocity + VisualKickOffset * W;
-	VisualKickOffset = (VisualKickOffset + Temp * DeltaTime) * Decay;
-	VisualKickVelocity = (VisualKickVelocity - Temp * (W * DeltaTime)) * Decay;
-
-	//十分小さくなったら止める
-	const bool bSettled = VisualKickOffset.IsNearlyZero(0.001f) && VisualKickVelocity.IsNearlyZero(0.01f);
-	if (bSettled)
+	const FVector ADSOffset = ADSViewAlpha > 0.0f ? CalculateADSArmsOffset(Arms) * ADSViewAlpha : FVector::ZeroVector;
+	const bool bADSOffsetActive = !ADSOffset.IsNearlyZero(0.01f);
+	if (!bVisualKickActive && !bADSOffsetActive && !bArmsModified)
 	{
-		VisualKickOffset = FVector::ZeroVector;
-		VisualKickVelocity = FVector::ZeroVector;
-		bVisualKickActive = false;
+		return;
+	}
+
+	const bool bKickWasActive = bVisualKickActive;
+	if (bVisualKickActive)
+	{
+		//行きすぎない一番速いバネ(臨界減衰)の式で進める(フレームの長さによらず同じ動きになる)
+		const float W = VisualKickStiffness;
+		const float Decay = FMath::Exp(-W * DeltaTime);
+		const FVector Temp = VisualKickVelocity + VisualKickOffset * W;
+		VisualKickOffset = (VisualKickOffset + Temp * DeltaTime) * Decay;
+		VisualKickVelocity = (VisualKickVelocity - Temp * (W * DeltaTime)) * Decay;
+
+		//十分小さくなったら止める
+		if (VisualKickOffset.IsNearlyZero(0.001f) && VisualKickVelocity.IsNearlyZero(0.01f))
+		{
+			VisualKickOffset = FVector::ZeroVector;
+			VisualKickVelocity = FVector::ZeroVector;
+			bVisualKickActive = false;
+		}
 	}
 
 	//画面(カメラの見た目だけの回転)と腕を同じだけ回す。視点の向き(Control Rotation)は変えないので、弾の向きは変わらない
+	//ADS の分は、カメラから見た向きに腕をずらす(腕はカメラに付いているので、相対位置に足す)
 	const FTransform Kick(FRotator(VisualKickOffset.X, VisualKickOffset.Y, VisualKickOffset.Z));
-	Camera->ClearAdditiveOffset();
-	Arms->SetRelativeTransform(bSettled ? ArmsBaseTransform : ArmsBaseTransform * Kick);
-	if (!bSettled)
+	FTransform ArmsTransform = bVisualKickActive ? ArmsBaseTransform * Kick : ArmsBaseTransform;
+	ArmsTransform.AddToTranslation(ADSOffset);
+	Arms->SetRelativeTransform(ArmsTransform);
+
+	if (bKickWasActive)
 	{
-		Camera->AddAdditiveOffset(Kick, 0.0f);
+		Camera->ClearAdditiveOffset();
+		if (bVisualKickActive)
+		{
+			Camera->AddAdditiveOffset(Kick, 0.0f);
+		}
 	}
+
+	//元の位置に戻しきったら、次のフレームからは触らない
+	bArmsModified = bVisualKickActive || bADSOffsetActive;
+}
+
+FVector USavaEquipmentComponent::CalculateADSArmsOffset(const USkeletalMeshComponent* Arms) const
+{
+	const USavaWeaponData* Weapon = GetCurrentWeaponData();
+	if (!Weapon || !Arms)
+	{
+		return FVector::ZeroVector;
+	}
+
+	FVector Offset = Weapon->ADSArmsOffset;
+	if (!Weapon->SightSocketName.IsNone() && WeaponMeshComponent && WeaponMeshComponent->DoesSocketExist(Weapon->SightSocketName))
+	{
+		//サイトの位置を、腕から見た位置(今の揺れ・ADS のずらしに関係ない)→ 元の位置の腕でのカメラから見た位置、と直す
+		const FVector SightInArms = Arms->GetComponentTransform().InverseTransformPosition(WeaponMeshComponent->GetSocketLocation(Weapon->SightSocketName));
+		const FVector SightInCamera = ArmsBaseTransform.TransformPosition(SightInArms);
+		//カメラの真正面、ADS Sight Distance 先に来るようにずらす
+		Offset += FVector(Weapon->ADSSightDistance, 0.0f, 0.0f) - SightInCamera;
+	}
+	return Offset;
 }
 
 void USavaEquipmentComponent::AddRecoilToView(APlayerController* PlayerController, const FVector2D& Kick)

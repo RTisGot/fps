@@ -395,4 +395,42 @@ bool FSavaWeaponStatRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponADSViewTest, "Sava.Weapon.ADSView",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaWeaponADSViewTest::RunTest(const FString&)
+{
+	FSavaWeaponStats Stats;
+	Stats.ADSTime = 0.2f;
+	Stats.ADSEase = 2.0f;
+
+	//半分の時間で 1 - 0.5^2 = 75% まで入る(最初は速い)。ADS Time で入りきる
+	TestEqual(TEXT("Half time: 75% in"), Stats.StepADSViewAlpha(0.0f, true, 0.1f), 0.75f, 0.001f);
+	TestEqual(TEXT("Full time: fully in"), Stats.StepADSViewAlpha(0.0f, true, 0.2f), 1.0f);
+	//抜けるときも最初は速い
+	TestEqual(TEXT("Half time out: 25% left"), Stats.StepADSViewAlpha(1.0f, false, 0.1f), 0.25f, 0.001f);
+	TestEqual(TEXT("Full time out"), Stats.StepADSViewAlpha(1.0f, false, 0.2f), 0.0f);
+
+	//刻んで進めても、まとめて進めても同じ
+	float Stepped = 0.0f;
+	for (int32 Step = 0; Step < 10; ++Step)
+	{
+		Stepped = Stats.StepADSViewAlpha(Stepped, true, 0.01f);
+	}
+	TestEqual(TEXT("Frame rate independent"), Stepped, 0.75f, 0.001f);
+
+	//途中で向きを変えても値は飛ばない(ほんの少し進んだだけ)
+	const float Reversed = Stats.StepADSViewAlpha(0.75f, false, 0.001f);
+	TestTrue(TEXT("Reversing does not jump"), Reversed < 0.75f && Reversed > 0.7f);
+
+	//Ease 1 は一定の速さ
+	Stats.ADSEase = 1.0f;
+	TestEqual(TEXT("Ease 1 is linear"), Stats.StepADSViewAlpha(0.0f, true, 0.1f), 0.5f, 0.001f);
+
+	//ADS Time 0 は一瞬
+	Stats.ADSTime = 0.0f;
+	TestEqual(TEXT("Instant in"), Stats.StepADSViewAlpha(0.0f, true, 0.001f), 1.0f);
+	return true;
+}
+
 #endif

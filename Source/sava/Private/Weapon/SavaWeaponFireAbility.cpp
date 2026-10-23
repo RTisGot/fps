@@ -7,6 +7,8 @@
 #include "Weapon/SavaWeaponReloadAbility.h"
 #include "Skill/SavaDomeShield.h"
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
+#include "AbilitySystem/SavaAttributeSet.h"
+#include "AbilitySystemGlobals.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "Abilities/Tasks/AbilityTask_WaitInputRelease.h"
 #include "AbilitySystemComponent.h"
@@ -20,6 +22,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/Controller.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/ScopeExit.h"
 #include "TimerManager.h"
 #include "SavaGameplayTags.h"
 
@@ -41,6 +44,23 @@ namespace
 	bool IsWeaponDebugEnabled()
 	{
 		return CVarWeaponDebug.GetValueOnGameThread();
+	}
+
+	//倒れているか(死亡中のタグがある、または HP が 0)
+	bool IsTargetDead(const AActor* Target)
+	{
+		const UAbilitySystemComponent* AbilitySystem = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Target);
+		if (!AbilitySystem)
+		{
+			return false;
+		}
+		if (AbilitySystem->HasMatchingGameplayTag(SavaGameplayTags::State_Dead))
+		{
+			return true;
+		}
+		bool bFound = false;
+		const float Health = AbilitySystem->GetGameplayAttributeValue(USavaAttributeSet::GetHealthAttribute(), bFound);
+		return bFound && Health <= 0.0f;
 	}
 
 	//拡散の確認用の表示(SavaEquipmentComponent.cpp で定義している sava.Weapon.SpreadDebug を使う)
@@ -124,9 +144,11 @@ void USavaWeaponFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Ha
 		case ESavaFireMode::FullAuto: ShotsRemaining = -1; break;
 		}
 
-		//単発・バーストで、前の 1 発から間隔が空いていない: このクリックは無視する(フルオートは押したままなら、間隔が空いた時点で撃ち始める)
+		//単発・バーストで、前の 1 発から間隔が空いていない:
+		//残りが Fire Input Buffer Time 以内ならクリックを覚えておき、撃てるようになった瞬間に撃つ。それより早いクリックは無視する
+		//(フルオートは押したままなら、間隔が空いた時点で撃ち始める)
 		const float RemainingInterval = Equipment->GetRemainingFireInterval(FiringSlot);
-		if (RemainingInterval > 0.0f && Weapon->FireMode != ESavaFireMode::FullAuto)
+		if (RemainingInterval > FireInputBufferTime && Weapon->FireMode != ESavaFireMode::FullAuto)
 		{
 			EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
 			return;
@@ -315,6 +337,17 @@ void USavaWeaponFireAbility::ProcessShotOnServer(const TArray<FHitResult>& Hits,
 
 	//本来の弾の数より多く送られてきても、その分は使わない
 	const int32 NumPellets = FMath::Min(Hits.Num(), FMath::Max(Stats.PelletCount, 1));
+
+	//撃った本人へ返す結果(弾をまとめて 1 つ)
+	FSavaHitFeedback Feedback;
+	ON_SCOPE_EXIT
+	{
+		if (Feedback.NumHits > 0 || Feedback.bBlockedByShield)
+		{
+			Equipment->SendHitFeedback(Feedback);
+		}
+	};
+
 	for (int32 Index = 0; Index < NumPellets; ++Index)
 	{
 		const FHitResult& Hit = Hits[Index];
@@ -328,6 +361,8 @@ void USavaWeaponFireAbility::ProcessShotOnServer(const TArray<FHitResult>& Hits,
 		if (HitActor->IsA<ASavaDomeShield>())
 		{
 			DrawServerResult(GetWorld(), Hit, FColor::Cyan, TEXT("Blocked by shield"));
+			Feedback.bBlockedByShield = true;
+			Feedback.Location = Hit.ImpactPoint;
 			continue;
 		}
 
@@ -351,10 +386,16 @@ void USavaWeaponFireAbility::ProcessShotOnServer(const TArray<FHitResult>& Hits,
 
 		const bool bHeadshot = Hit.BoneName == HeadBoneName && (!bFromRemoteClient || IsHeadHitPlausible(Hit));
 		const float Damage = Stats.CalculateDamage(FVector::Dist(Hit.TraceStart, Hit.ImpactPoint), bHeadshot);
+		const bool bWasDead = IsTargetDead(HitActor);
 		if (USavaAbilitySystemLibrary::ApplyDamage(Avatar, HitActor, Damage, Avatar))
 		{
 			//表示は、キャラクターの倍率を掛けた実際のダメージにする(倍率は ApplyDamage の中で掛かる)
 			const float AppliedDamage = Damage * USavaAbilitySystemLibrary::GetOutgoingDamageMultiplier(Avatar);
+			Feedback.Damage += AppliedDamage;
+			++Feedback.NumHits;
+			Feedback.bHeadshot |= bHeadshot;
+			Feedback.bKilled |= !bWasDead && IsTargetDead(HitActor);
+			Feedback.Location = Hit.ImpactPoint;
 			if (ASavaCombatTestDummyCharacter* TestDummy = Cast<ASavaCombatTestDummyCharacter>(HitActor))
 			{
 				TestDummy->NotifyWeaponImpact(Hit, AppliedDamage, bHeadshot);

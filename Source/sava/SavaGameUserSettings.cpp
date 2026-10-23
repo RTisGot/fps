@@ -26,8 +26,22 @@ void USavaGameUserSettings::SetInputPreferences(float NewSensitivity, bool bNewI
 	bInvertY = bNewInvertY;
 }
 
+void USavaGameUserSettings::SetADSSensitivity(const float NewSensitivity)
+{
+	const float ClampedSensitivity = FMath::IsFinite(NewSensitivity) ? FMath::Clamp(NewSensitivity, 0.1f, 3.0f) : 1.0f;
+
+	if (FMath::IsNearlyEqual(ADSSensitivity, ClampedSensitivity))
+	{
+		return;
+	}
+
+	ADSSensitivity = ClampedSensitivity;
+	SaveSettings();
+}
+
 void USavaGameUserSettings::ValidateSettings()
 {
 	Super::ValidateSettings();
 	SetInputPreferences(MouseSensitivity, bInvertY);
+	ADSSensitivity = FMath::IsFinite(ADSSensitivity) ? FMath::Clamp(ADSSensitivity, 0.1f, 3.0f) : 1.0f;
 }
