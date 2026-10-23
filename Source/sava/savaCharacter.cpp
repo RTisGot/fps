@@ -17,6 +17,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Engine/LocalPlayer.h"
+#include "Kismet/GameplayStatics.h"
 #include "Blueprint/UserWidget.h"
 #include "SavaGameUserSettings.h"
 #include "Player/SavaPlayerController.h"
@@ -536,6 +537,8 @@ void AsavaCharacter::InitAbilitySystem()
 		{
 			Attributes->OnOutOfHealth.RemoveAll(this);
 			Attributes->OnOutOfHealth.AddUObject(this, &AsavaCharacter::HandleOutOfHealth);
+			Attributes->OnDamageTaken.RemoveAll(this);
+			Attributes->OnDamageTaken.AddUObject(this, &AsavaCharacter::HandleDamageTaken);
 		}
 	}
 }
@@ -561,6 +564,7 @@ void AsavaCharacter::UnPossessed()
 		if (const USavaAttributeSet* Attributes = SavaPlayerState->GetAttributeSet())
 		{
 			Attributes->OnOutOfHealth.RemoveAll(this);
+			Attributes->OnDamageTaken.RemoveAll(this);
 		}
 	}
 
@@ -692,6 +696,65 @@ void AsavaCharacter::HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageC
 
 	//誰に倒されたか(DamageInstigator)は、後でキル数の加算に使う
 	HandleDeath();
+}
+
+void AsavaCharacter::HandleDamageTaken(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount)
+{
+	if (!HasAuthority() || bIsDead || !IsPlayerControlled())
+	{
+		return;
+	}
+
+	FSavaDamageTakenInfo Info;
+	Info.Damage = DamageAmount;
+	Info.Attacker = DamageInstigator;
+	Info.bSelfDamage = DamageInstigator == this;
+
+	//来た位置は、ダメージを起こした物(銃なら撃った人、グレネードなら爆発した物)の位置。無ければ攻撃した人の位置
+	if (const AActor* Source = DamageCauser ? DamageCauser : DamageInstigator)
+	{
+		Info.SourceLocation = Source->GetActorLocation();
+		Info.bHasSourceLocation = true;
+	}
+
+	//ホスト自身なら、その場で呼ばれる
+	ClientDamageTaken(Info);
+}
+
+void AsavaCharacter::ClientDamageTaken_Implementation(const FSavaDamageTakenInfo& Info)
+{
+	if (DamageTakenSound)
+	{
+		UGameplayStatics::PlaySound2D(this, DamageTakenSound);
+	}
+	OnDamageTaken.Broadcast(Info);
+}
+
+float AsavaCharacter::GetDamageDirectionAngle(const FVector& SourceLocation) const
+{
+	FVector ViewLocation = GetActorLocation();
+	FRotator ViewRotation = GetActorRotation();
+	if (Controller)
+	{
+		ViewRotation = Controller->GetControlRotation();
+	}
+	if (FirstPersonCameraComponent)
+	{
+		ViewLocation = FirstPersonCameraComponent->GetComponentLocation();
+	}
+	return CalculateDirectionAngle(ViewLocation, ViewRotation.Yaw, SourceLocation);
+}
+
+float AsavaCharacter::CalculateDirectionAngle(const FVector& ViewLocation, float ViewYaw, const FVector& SourceLocation)
+{
+	//上下は見ず、水平面での向きの差
+	const FVector ToSource = SourceLocation - ViewLocation;
+	if (ToSource.SizeSquared2D() < KINDA_SMALL_NUMBER)
+	{
+		return 0.0f;
+	}
+	const float SourceYaw = FMath::RadiansToDegrees(FMath::Atan2(ToSource.Y, ToSource.X));
+	return FRotator::NormalizeAxis(SourceYaw - ViewYaw);
 }
 
 void AsavaCharacter::HandleDeath()

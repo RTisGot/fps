@@ -16,6 +16,7 @@
 
 //HP が 0 になったとき(サーバーのみ)
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FSavaOutOfHealthDelegate, AActor* /*DamageInstigator*/, AActor* /*DamageCauser*/, float /*DamageAmount*/);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FSavaDamageTakenDelegate, AActor* /*DamageInstigator*/, AActor* /*DamageCauser*/, float /*DamageAmount*/);
 
 //プレイヤーの現在ステータス
 UCLASS()
@@ -42,6 +43,9 @@ public:
 	}
 
 	mutable FSavaOutOfHealthDelegate OnOutOfHealth;
+
+	//ダメージで HP が減った(サーバーだけ。ダメージ方向の表示などに使う)
+	mutable FSavaDamageTakenDelegate OnDamageTaken;
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;

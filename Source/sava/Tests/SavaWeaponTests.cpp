@@ -2,6 +2,7 @@
 #include "Misc/AutomationTest.h"
 #include "Weapon/SavaWeaponData.h"
 #include "Loadout/SavaLoadoutStatLibrary.h"
+#include "savaCharacter.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponDamageFalloffTest, "Sava.Weapon.DamageFalloff",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -430,6 +431,28 @@ bool FSavaWeaponADSViewTest::RunTest(const FString&)
 	//ADS Time 0 は一瞬
 	Stats.ADSTime = 0.0f;
 	TestEqual(TEXT("Instant in"), Stats.StepADSViewAlpha(0.0f, true, 0.001f), 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaDamageDirectionTest, "Sava.Weapon.DamageDirection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaDamageDirectionTest::RunTest(const FString&)
+{
+	const FVector View(100.0f, 200.0f, 50.0f);
+
+	//+X を向いているとき(Yaw 0)。UE は +Y が右
+	TestEqual(TEXT("In front"), AsavaCharacter::CalculateDirectionAngle(View, 0.0f, View + FVector(500.0f, 0.0f, 0.0f)), 0.0f, 0.01f);
+	TestEqual(TEXT("To the right"), AsavaCharacter::CalculateDirectionAngle(View, 0.0f, View + FVector(0.0f, 500.0f, 0.0f)), 90.0f, 0.01f);
+	TestEqual(TEXT("To the left"), AsavaCharacter::CalculateDirectionAngle(View, 0.0f, View + FVector(0.0f, -500.0f, 0.0f)), -90.0f, 0.01f);
+	TestEqual(TEXT("Behind"), FMath::Abs(AsavaCharacter::CalculateDirectionAngle(View, 0.0f, View + FVector(-500.0f, 0.0f, 0.0f))), 180.0f, 0.01f);
+
+	//振り向くと向きも変わる: 右を向く(Yaw 90)と、+X にいた相手は左
+	TestEqual(TEXT("Turning right puts the source on the left"), AsavaCharacter::CalculateDirectionAngle(View, 90.0f, View + FVector(500.0f, 0.0f, 0.0f)), -90.0f, 0.01f);
+
+	//上下は見ない
+	TestEqual(TEXT("Height is ignored"), AsavaCharacter::CalculateDirectionAngle(View, 0.0f, View + FVector(500.0f, 0.0f, 3000.0f)), 0.0f, 0.01f);
+	TestEqual(TEXT("Directly above: front"), AsavaCharacter::CalculateDirectionAngle(View, 0.0f, View + FVector(0.0f, 0.0f, 300.0f)), 0.0f);
 	return true;
 }
 

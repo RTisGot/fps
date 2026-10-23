@@ -60,14 +60,29 @@ bool FSavaDamagePipelineTest::RunTest(const FString&)
 	int32 OutOfHealthCount = 0;
 	Attributes->OnOutOfHealth.AddLambda([&OutOfHealthCount](AActor*, AActor*, float) { ++OutOfHealthCount; });
 
+	//ダメージを受けた通知(ダメージ方向の表示用)
+	int32 DamageTakenCount = 0;
+	float LastDamageTaken = 0.0f;
+	AActor* LastDamageCauser = nullptr;
+	Attributes->OnDamageTaken.AddLambda([&](AActor*, AActor* Causer, float Amount)
+	{
+		++DamageTakenCount;
+		LastDamageTaken = Amount;
+		LastDamageCauser = Causer;
+	});
+
 	//HP 100 に 10 ダメージ → HP 90
 	TestTrue(TEXT("Damage applied"), USavaAbilitySystemLibrary::ApplyDamage(Attacker, Victim, 10.0f, Attacker));
 	TestEqual(TEXT("Damage reduces health"), Attributes->GetHealth(), 90.0f);
 	TestEqual(TEXT("Damage meta attribute is reset"), Attributes->GetDamage(), 0.0f);
+	TestEqual(TEXT("Damage taken fires once per hit"), DamageTakenCount, 1);
+	TestEqual(TEXT("Damage taken carries the amount"), LastDamageTaken, 10.0f);
+	TestTrue(TEXT("Damage taken carries the causer"), LastDamageCauser == Attacker);
 
 	//回復は最大 HP を超えない
 	TestTrue(TEXT("Healing applied"), USavaAbilitySystemLibrary::ApplyHealing(Attacker, Victim, 50.0f));
 	TestEqual(TEXT("Healing is clamped to max health"), Attributes->GetHealth(), 100.0f);
+	TestEqual(TEXT("Healing is not damage taken"), DamageTakenCount, 1);
 
 	//HP 0 の通知は 1 回だけ
 	USavaAbilitySystemLibrary::ApplyDamage(Attacker, Victim, 500.0f, Attacker);

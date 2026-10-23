@@ -74,6 +74,9 @@ void USavaAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallba
 		if (LocalDamage > 0.0f)
 		{
 			SetHealth(FMath::Clamp(GetHealth() - LocalDamage, 0.0f, GetMaxHealth()));
+
+			const FGameplayEffectContextHandle& Context = Data.EffectSpec.GetEffectContext();
+			OnDamageTaken.Broadcast(Context.GetOriginalInstigator(), Context.GetEffectCauser(), LocalDamage);
 		}
 	}
 	else if (Data.EvaluatedData.Attribute == GetHealingAttribute())

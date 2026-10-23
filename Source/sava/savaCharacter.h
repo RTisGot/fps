@@ -25,6 +25,37 @@ class USavaEquipmentComponent;
 class USavaAbilityLoadoutComponent;
 class ASavaInteractable;
 struct FSavaCharacterRow;
+class USoundBase;
+
+//ダメージを受けたときに、受けた本人へ届く情報(ダメージ方向の表示・被弾音に使う)
+USTRUCT(BlueprintType)
+struct FSavaDamageTakenInfo
+{
+	GENERATED_BODY()
+
+	//受けたダメージ
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	float Damage = 0.0f;
+
+	//ダメージが来た位置(銃なら撃った人、グレネードなら爆発した位置。ダメージを受けた瞬間の位置)
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	FVector_NetQuantize SourceLocation = FVector::ZeroVector;
+
+	//Source Location が分かっているか(分からないダメージは方向を出さない)
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	bool bHasSourceLocation = false;
+
+	//自分の攻撃(自分のグレネードなど)
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	bool bSelfDamage = false;
+
+	//攻撃してきたキャラクター(遠くて自分の画面に居ない場合は空)
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	TObjectPtr<AActor> Attacker;
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSavaOnDamageTaken, const FSavaDamageTakenInfo&, Info);
+
 UCLASS(config=Game)
 class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 {
@@ -227,6 +258,17 @@ protected:
 	//HP が 0 になった(サーバーだけで呼ばれる。AttributeSet の OnOutOfHealth から)
 	void HandleOutOfHealth(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount);
 
+	//ダメージを受けた(サーバーだけで呼ばれる。AttributeSet の OnDamageTaken から)。受けた本人へ伝える
+	void HandleDamageTaken(AActor* DamageInstigator, AActor* DamageCauser, float DamageAmount);
+
+	//受けた本人の画面: 被弾音を鳴らし、On Damage Taken を呼ぶ(毒ガスなど続くダメージで多く届くので、届かなくてもよい送り方にする)
+	UFUNCTION(Client, Unreliable)
+	void ClientDamageTaken(const FSavaDamageTakenInfo& Info);
+
+	//ダメージを受けたときに、受けた本人だけに聞こえる音(空なら鳴らさない)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Damage")
+	TObjectPtr<USoundBase> DamageTakenSound;
+
 	//死亡処理(サーバーだけ)
 	void HandleDeath();
 
@@ -256,4 +298,16 @@ public:
 	USavaCharacterMovementComponent* GetSavaCharacterMovementComponent() const;
 	USavaEquipmentComponent* GetEquipmentComponent() const { return EquipmentComponent; }
 	USavaAbilityLoadoutComponent* GetAbilityLoadoutComponent() const { return AbilityLoadoutComponent; }
+
+	//ダメージを受けた(受けた本人の画面で呼ばれる)。ダメージ方向の表示は、これで Source Location を覚え、
+	//毎フレーム Get Damage Direction Angle で矢印を回す(振り向くと矢印も回る)
+	UPROPERTY(BlueprintAssignable, Category = "Sava|Damage")
+	FSavaOnDamageTaken OnDamageTaken;
+
+	//SourceLocation が、今向いている方向から見て何度の向きにあるか(0 = 正面、90 = 右、-90 = 左、±180 = 真後ろ。上下は見ない)
+	UFUNCTION(BlueprintPure, Category = "Sava|Damage")
+	float GetDamageDirectionAngle(const FVector& SourceLocation) const;
+
+	//ViewLocation から Yaw の向きを見たとき、SourceLocation が何度の向きにあるか(GetDamageDirectionAngle の中身)
+	static float CalculateDirectionAngle(const FVector& ViewLocation, float ViewYaw, const FVector& SourceLocation);
 };
