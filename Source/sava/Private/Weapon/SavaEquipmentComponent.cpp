@@ -11,6 +11,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMeshSocket.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -549,6 +550,18 @@ void USavaEquipmentComponent::UpdateWeaponMesh()
 			Character->GetMesh1P(),
 			FAttachmentTransformRules::SnapToTargetNotIncludingScale,
 			Weapon->AttachSocketName);
+
+		//武器の Grip ソケットが腕のソケットに重なるように、ソケットの逆の分だけずらす
+		//(Scale はメッシュコンポーネントのものをそのまま使い、ソケットの Scale は無視する)
+		const FVector Scale = WeaponMeshComponent->GetRelativeScale3D();
+		FQuat Rotation = FQuat::Identity;
+		FVector Location = FVector::ZeroVector;
+		if (const UStaticMeshSocket* GripSocket = Weapon->GripSocketName.IsNone() ? nullptr : Mesh->FindSocket(Weapon->GripSocketName))
+		{
+			Rotation = GripSocket->RelativeRotation.Quaternion().Inverse();
+			Location = -Rotation.RotateVector(GripSocket->RelativeLocation * Scale);
+		}
+		WeaponMeshComponent->SetRelativeLocationAndRotation(Location, Rotation);
 	}
 }
 

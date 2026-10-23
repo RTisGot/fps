@@ -91,6 +91,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	FName AttachSocketName = TEXT("GripPoint");
 
+	//武器メッシュの握る位置のソケット名。このソケットが腕の Attach Socket Name のソケットにぴったり重なるように武器を置く
+	//(モデルごとに原点や向きがバラバラでも、ソケットの位置・回転を腕のソケットの向きに合わせておけばそろう)
+	//メッシュにこのソケットが無い場合は、メッシュの原点を腕のソケットに合わせる
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	FName GripSocketName = TEXT("Grip");
+
 	//武器アタッチ位置からの銃口(マズル)の相対位置。モーションに依存しない固定位置になる
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (ForceUnits = "cm"))
 	FVector MuzzleOffset = FVector::ZeroVector;
