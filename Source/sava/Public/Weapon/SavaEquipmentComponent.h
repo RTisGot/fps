@@ -37,7 +37,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FSavaOnWeaponTracer, FVector, Muzzl
 //キャラクターが持つ武器(メイン・サブの 2 枠)を管理する
 //・装備(どの武器か・カスタム)はサーバーが決めて全員へ同期する
 //・弾数は自分の画面とサーバーがそれぞれ数える(撃つたびに通信しないため)。ずれやすい予備弾はリロード時にサーバーの値へ合わせる
-//・ADS の視野角・反動・拡散は自分の画面だけで計算する
+//・ADS・反動のパターン・拡散は自分の画面だけで計算する(カメラ・腕・視点を動かすのは USavaCameraEffectComponent)
 UCLASS(ClassGroup = (Sava), meta = (BlueprintSpawnableComponent))
 class SAVA_API USavaEquipmentComponent : public UActorComponent
 {
@@ -146,6 +146,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
 	float GetLookSensitivityScale() const;
 
+	//ADS で視野角に掛ける倍率(ADS していなければ 1。見た目の ADS の進み具合で変わる)
+	float GetADSFieldOfViewScale() const;
+
+	//ADS に入りきったときに腕を動かす量(カメラから見た向き)。サイトのソケットが画面の真ん中に来るようにする
+	//ArmsBaseTransform = 揺れ・ADS で動かしていない腕の相対位置
+	FVector CalculateADSArmsOffset(const USkeletalMeshComponent* Arms, const FTransform& ArmsBaseTransform) const;
+
 	//装備中の武器が変わった(持ち替え・装備の変更)
 	UPROPERTY(BlueprintAssignable, Category = "Sava|Weapon")
 	FSavaOnWeaponChanged OnWeaponChanged;
@@ -198,7 +205,7 @@ public:
 	//入れた弾数を返す
 	int32 LoadAmmo(ESavaWeaponSlot Slot, int32 MaxRounds, int32 Capacity);
 
-	//自分の画面: 反動で視点を動かす
+	//自分の画面: 反動のパターンから 1 発分を決めて、カメラの演出に渡す
 	void ApplyRecoil(ESavaWeaponSlot Slot);
 
 	//自分の画面: 連射の拡散を 1 発分増やす(レイを飛ばした後に呼ぶ。次の 1 発から影響する)
@@ -279,8 +286,6 @@ private:
 
 	void UpdateWeaponMesh();
 	void UpdateADS(float DeltaTime);
-	//溜まった反動を視点に足し、足し終えて撃つのをやめていれば戻す
-	void UpdateRecoil(float DeltaTime);
 
 	//発砲時に銃口位置へマズルフラッシュを生成
 	void SpawnMuzzleFlash(const FVector& MuzzleLocation);
@@ -290,15 +295,6 @@ private:
 
 	// 壁に弾痕を貼る(法線がゼロの弾は貼らない)
 	void SpawnImpactDecals(const TArray<FVector>& TraceEnds, const TArray<FVector>& ImpactNormals);
-
-	//見た目だけの揺れを動かし、ADS の腕の位置と一緒に、カメラと腕に反映する
-	void UpdateVisualKick(float DeltaTime);
-	//ADS に入りきったときに腕を動かす量(カメラから見た向き)。サイトのソケットが画面の真ん中に来るようにする
-	FVector CalculateADSArmsOffset(const USkeletalMeshComponent* Arms) const;
-	//反動の分だけ視点を動かす(X = 横、Y = 縦)
-	void AddRecoilToView(APlayerController* PlayerController, const FVector2D& Kick);
-	//プレイヤーが自分で視点を下げた分は、反動で戻す量から引く(戻しすぎないように)
-	void AbsorbPlayerPitchInput(float CurrentPitch);
 
 	FSlotState* FindSlotState(ESavaWeaponSlot Slot);
 	const FSlotState* FindSlotState(ESavaWeaponSlot Slot) const;
@@ -362,26 +358,9 @@ private:
 	//ADS
 	float ADSAlpha = 0.0f;
 	float ADSViewAlpha = 0.0f;
-	//腕を、揺れ・ADS で元の位置から動かしているか(動かしていない間に、元の位置を覚え直す)
-	bool bArmsModified = false;
-	float BaseFieldOfView = 0.0f;
 
-	//反動: まだ視点に足していない量(X = 横、Y = 縦)と、足しきるまでの残り時間
-	FVector2D PendingRecoil = FVector2D::ZeroVector;
-	float RecoilKickTimeRemaining = 0.0f;
-	//反動: まだ戻していない跳ね上がりの量
-	float RecoilPitchToRecover = 0.0f;
-	float LastRecoilPitch = 0.0f;
+	//反動: 最後に撃った時刻
 	double LastRecoilTime = -1.0e9;
-	float RecoilRecoveryDelay = 0.0f;
-	float RecoilRecoverySpeed = 0.0f;
-	//見た目だけの揺れ(X = 縦、Y = 横、Z = 傾き)。減衰の強いバネで 0 へ戻る
-	FVector VisualKickOffset = FVector::ZeroVector;
-	FVector VisualKickVelocity = FVector::ZeroVector;
-	float VisualKickStiffness = 0.0f;
-	bool bVisualKickActive = false;
-	//揺れていないときの腕の位置(揺れている間は、カメラと一緒に回す)
-	FTransform ArmsBaseTransform;
 	//反動のパターンの何発目か(撃つのをやめて Recoil Reset Time 経つか、持ち替えると 0 に戻る)
 	int32 RecoilShotIndex = 0;
 	ESavaWeaponSlot RecoilSlot = ESavaWeaponSlot::Primary;

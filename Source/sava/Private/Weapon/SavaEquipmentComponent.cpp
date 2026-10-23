@@ -4,7 +4,7 @@
 #include "Weapon/SavaWeaponData.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
-#include "Camera/CameraComponent.h"
+#include "Camera/SavaCameraEffectComponent.h"
 #include "Components/DecalComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
@@ -100,8 +100,6 @@ void USavaEquipmentComponent::BeginPlay()
 	//1 人称の腕に持たせる武器のメッシュを用意する(本人にだけ見える)
 	if (AsavaCharacter* Character = Cast<AsavaCharacter>(GetOwner()))
 	{
-		BaseFieldOfView = Character->GetFirstPersonCameraComponent()->FieldOfView;
-
 		//WeaponMeshComponent = NewObject<USkeletalMeshComponent>(Character, TEXT("WeaponMesh1P"));
 		WeaponMeshComponent = NewObject<UStaticMeshComponent>(Character, TEXT("WeaponMesh1P"));
 		WeaponMeshComponent->SetOnlyOwnerSee(true);
@@ -154,13 +152,11 @@ void USavaEquipmentComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		LastSprintTime = GetWorld()->GetTimeSeconds();
 	}
 
-	//ADS と反動は、操作している本人の画面だけで動かす
+	//ADS と拡散は、操作している本人の画面だけで動かす(カメラ・腕への反映は USavaCameraEffectComponent)
 	if (GetLocalPlayerController())
 	{
 		UpdateADS(DeltaTime);
 		UpdateMovementSpread(DeltaTime);
-		UpdateRecoil(DeltaTime);
-		UpdateVisualKick(DeltaTime);
 		DrawSpreadDebug();
 	}
 
@@ -706,23 +702,25 @@ void USavaEquipmentComponent::UpdateADS(float DeltaTime)
 
 	//見た目(視野角・腕の位置・感度)は、最初は速く最後はゆっくり動かす
 	ADSViewAlpha = Stats.StepADSViewAlpha(ADSViewAlpha, bAiming, DeltaTime);
+}
 
-	const AsavaCharacter* Character = Cast<AsavaCharacter>(GetOwner());
-	if (Character && BaseFieldOfView > 0.0f)
-	{
-		Character->GetFirstPersonCameraComponent()->SetFieldOfView(BaseFieldOfView * FMath::Lerp(1.0f, Stats.ADSZoom, ADSViewAlpha));
-	}
+float USavaEquipmentComponent::GetADSFieldOfViewScale() const
+{
+	return ADSViewAlpha > 0.0f ? FMath::Lerp(1.0f, GetStats(CurrentSlot).ADSZoom, ADSViewAlpha) : 1.0f;
 }
 
 float USavaEquipmentComponent::GetLookSensitivityScale() const
 {
+	const AsavaCharacter* Character = Cast<AsavaCharacter>(GetOwner());
+	const USavaCameraEffectComponent* CameraEffects = Character ? Character->GetCameraEffectComponent() : nullptr;
+	const float BaseFieldOfView = CameraEffects ? CameraEffects->GetBaseFieldOfView() : 0.0f;
 	if (BaseFieldOfView <= 0.0f || ADSViewAlpha <= 0.0f)
 	{
 		return 1.0f;
 	}
 
 	//画面上で同じ距離を動かすのに同じだけマウスを動かすように、ズームした分だけ感度を下げる(視野角の半分の tan の比)
-	const float CurrentFieldOfView = BaseFieldOfView * FMath::Lerp(1.0f, GetStats(CurrentSlot).ADSZoom, ADSViewAlpha);
+	const float CurrentFieldOfView = BaseFieldOfView * GetADSFieldOfViewScale();
 	const float ZoomScale = FMath::Tan(FMath::DegreesToRadians(CurrentFieldOfView * 0.5f)) / FMath::Tan(FMath::DegreesToRadians(BaseFieldOfView * 0.5f));
 
 	//設定の ADS 感度(好みで上げ下げする倍率)
@@ -733,9 +731,10 @@ float USavaEquipmentComponent::GetLookSensitivityScale() const
 
 void USavaEquipmentComponent::ApplyRecoil(ESavaWeaponSlot Slot)
 {
-	APlayerController* PlayerController = GetLocalPlayerController();
+	const AsavaCharacter* Character = Cast<AsavaCharacter>(GetOwner());
+	USavaCameraEffectComponent* CameraEffects = Character ? Character->GetCameraEffectComponent() : nullptr;
 	const FSlotState* State = FindSlotState(Slot);
-	if (!PlayerController || !State)
+	if (!GetLocalPlayerController() || !CameraEffects || !State)
 	{
 		return;
 	}
@@ -747,149 +746,17 @@ void USavaEquipmentComponent::ApplyRecoil(ESavaWeaponSlot Slot)
 		RecoilShotIndex = 0;
 	}
 
-	//パターンに沿った量を溜める(少しだけランダムにずらす)。視点へは Recoil Kick Time かけて Tick で足す
+	//パターンに沿った量(少しだけランダムにずらす)。視点・画面・腕を動かすのはカメラの演出
 	const FVector2D Noise(FMath::FRandRange(-1.0f, 1.0f), FMath::FRandRange(-1.0f, 1.0f));
 	const FVector2D Kick = State->Stats.CalculateRecoilKick(RecoilShotIndex, Noise);
-	PendingRecoil += Kick;
-
-	//見た目だけの揺れ: 速さを与えると、Visual Kick Time 後に (速さ / (強さ × e)) まで跳ねてから戻るので、狙った大きさになる速さを足す
-	const FVector VisualKick(Kick.Y * State->Stats.VisualKickScale, Kick.X * State->Stats.VisualKickScale,
-		FMath::FRandRange(-State->Stats.VisualKickRoll, State->Stats.VisualKickRoll));
-	if (!VisualKick.IsNearlyZero())
-	{
-		VisualKickStiffness = 1.0f / FMath::Max(State->Stats.VisualKickTime, 0.005f);
-		VisualKickVelocity += VisualKick * VisualKickStiffness * UE_EULERS_NUMBER;
-		bVisualKickActive = true;
-	}
-
-	RecoilKickTimeRemaining = State->Stats.RecoilKickTime;
-	if (RecoilKickTimeRemaining <= 0.0f)
-	{
-		AddRecoilToView(PlayerController, PendingRecoil);
-		PendingRecoil = FVector2D::ZeroVector;
-	}
+	CameraEffects->AddRecoil(Kick, State->Stats);
 
 	LastRecoilTime = Now;
 	++RecoilShotIndex;
 	RecoilSlot = Slot;
-	RecoilRecoveryDelay = State->Stats.GetFireInterval();
-	RecoilRecoverySpeed = State->Stats.RecoilRecovery;
 }
 
-void USavaEquipmentComponent::UpdateRecoil(float DeltaTime)
-{
-	APlayerController* PlayerController = GetLocalPlayerController();
-	if (!PlayerController)
-	{
-		return;
-	}
-
-	//溜まった反動を足す。残りの割合を (残り時間 / Kick Time)^2 で減らすので、最初は速く、だんだんゆっくりになり、ちょうど Kick Time で足し終わる
-	//(撃つたびに残り時間は Kick Time に戻り、前の 1 発の残りもまとめて足す)
-	if (RecoilKickTimeRemaining > 0.0f)
-	{
-		const float NewRemaining = FMath::Max(RecoilKickTimeRemaining - DeltaTime, 0.0f);
-		const float RemainingRatio = FMath::Square(NewRemaining / RecoilKickTimeRemaining);
-		const FVector2D Step = PendingRecoil * (1.0f - RemainingRatio);
-		AddRecoilToView(PlayerController, Step);
-		PendingRecoil -= Step;
-		RecoilKickTimeRemaining = NewRemaining;
-		if (RecoilKickTimeRemaining <= 0.0f)
-		{
-			PendingRecoil = FVector2D::ZeroVector;
-		}
-		return;
-	}
-
-	if (RecoilPitchToRecover <= 0.0f)
-	{
-		return;
-	}
-
-	//撃ち続けている間は戻さない(反動を足し終え、次の 1 発までの間隔が過ぎたら戻し始める)
-	if (GetWorld()->GetTimeSeconds() - LastRecoilTime < RecoilRecoveryDelay)
-	{
-		return;
-	}
-
-	FRotator ControlRotation = PlayerController->GetControlRotation();
-	const float CurrentPitch = FRotator::NormalizeAxis(ControlRotation.Pitch);
-	AbsorbPlayerPitchInput(CurrentPitch);
-
-	const float Step = FMath::Min(RecoilPitchToRecover, RecoilRecoverySpeed * DeltaTime);
-	if (Step <= 0.0f)
-	{
-		return;
-	}
-	ControlRotation.Pitch = CurrentPitch - Step;
-	PlayerController->SetControlRotation(ControlRotation);
-
-	RecoilPitchToRecover -= Step;
-	LastRecoilPitch = ControlRotation.Pitch;
-}
-
-void USavaEquipmentComponent::UpdateVisualKick(float DeltaTime)
-{
-	const AsavaCharacter* Character = Cast<AsavaCharacter>(GetOwner());
-	UCameraComponent* Camera = Character ? Character->GetFirstPersonCameraComponent() : nullptr;
-	USkeletalMeshComponent* Arms = Character ? Character->GetMesh1P() : nullptr;
-	if (!Camera || !Arms)
-	{
-		return;
-	}
-
-	//揺れても ADS でもない間は、腕に触らない(元の位置を覚え直すだけ)
-	if (!bArmsModified)
-	{
-		ArmsBaseTransform = Arms->GetRelativeTransform();
-	}
-	const FVector ADSOffset = ADSViewAlpha > 0.0f ? CalculateADSArmsOffset(Arms) * ADSViewAlpha : FVector::ZeroVector;
-	const bool bADSOffsetActive = !ADSOffset.IsNearlyZero(0.01f);
-	if (!bVisualKickActive && !bADSOffsetActive && !bArmsModified)
-	{
-		return;
-	}
-
-	const bool bKickWasActive = bVisualKickActive;
-	if (bVisualKickActive)
-	{
-		//行きすぎない一番速いバネ(臨界減衰)の式で進める(フレームの長さによらず同じ動きになる)
-		const float W = VisualKickStiffness;
-		const float Decay = FMath::Exp(-W * DeltaTime);
-		const FVector Temp = VisualKickVelocity + VisualKickOffset * W;
-		VisualKickOffset = (VisualKickOffset + Temp * DeltaTime) * Decay;
-		VisualKickVelocity = (VisualKickVelocity - Temp * (W * DeltaTime)) * Decay;
-
-		//十分小さくなったら止める
-		if (VisualKickOffset.IsNearlyZero(0.001f) && VisualKickVelocity.IsNearlyZero(0.01f))
-		{
-			VisualKickOffset = FVector::ZeroVector;
-			VisualKickVelocity = FVector::ZeroVector;
-			bVisualKickActive = false;
-		}
-	}
-
-	//画面(カメラの見た目だけの回転)と腕を同じだけ回す。視点の向き(Control Rotation)は変えないので、弾の向きは変わらない
-	//ADS の分は、カメラから見た向きに腕をずらす(腕はカメラに付いているので、相対位置に足す)
-	const FTransform Kick(FRotator(VisualKickOffset.X, VisualKickOffset.Y, VisualKickOffset.Z));
-	FTransform ArmsTransform = bVisualKickActive ? ArmsBaseTransform * Kick : ArmsBaseTransform;
-	ArmsTransform.AddToTranslation(ADSOffset);
-	Arms->SetRelativeTransform(ArmsTransform);
-
-	if (bKickWasActive)
-	{
-		Camera->ClearAdditiveOffset();
-		if (bVisualKickActive)
-		{
-			Camera->AddAdditiveOffset(Kick, 0.0f);
-		}
-	}
-
-	//元の位置に戻しきったら、次のフレームからは触らない
-	bArmsModified = bVisualKickActive || bADSOffsetActive;
-}
-
-FVector USavaEquipmentComponent::CalculateADSArmsOffset(const USkeletalMeshComponent* Arms) const
+FVector USavaEquipmentComponent::CalculateADSArmsOffset(const USkeletalMeshComponent* Arms, const FTransform& ArmsBaseTransform) const
 {
 	const USavaWeaponData* Weapon = GetCurrentWeaponData();
 	if (!Weapon || !Arms)
@@ -907,35 +774,6 @@ FVector USavaEquipmentComponent::CalculateADSArmsOffset(const USkeletalMeshCompo
 		Offset += FVector(Weapon->ADSSightDistance, 0.0f, 0.0f) - SightInCamera;
 	}
 	return Offset;
-}
-
-void USavaEquipmentComponent::AddRecoilToView(APlayerController* PlayerController, const FVector2D& Kick)
-{
-	//角度を上書きせず差分を足すので、反動を足している間もプレイヤーの視点操作はそのまま効く
-	FRotator ControlRotation = PlayerController->GetControlRotation();
-	const float CurrentPitch = FRotator::NormalizeAxis(ControlRotation.Pitch);
-	AbsorbPlayerPitchInput(CurrentPitch);
-
-	ControlRotation.Pitch = CurrentPitch + Kick.Y;
-	ControlRotation.Yaw += Kick.X;
-	PlayerController->SetControlRotation(ControlRotation);
-
-	//下向きの反動の分は、戻す量から引く
-	RecoilPitchToRecover = FMath::Max(0.0f, RecoilPitchToRecover + Kick.Y);
-	LastRecoilPitch = ControlRotation.Pitch;
-}
-
-void USavaEquipmentComponent::AbsorbPlayerPitchInput(float CurrentPitch)
-{
-	if (RecoilPitchToRecover <= 0.0f)
-	{
-		return;
-	}
-	const float PlayerDelta = FRotator::NormalizeAxis(CurrentPitch - LastRecoilPitch);
-	if (PlayerDelta < 0.0f)
-	{
-		RecoilPitchToRecover = FMath::Max(0.0f, RecoilPitchToRecover + PlayerDelta);
-	}
 }
 
 //--------------------------------Weapon Visual

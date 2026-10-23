@@ -8,6 +8,7 @@
 #include "AbilitySystem/SavaInputConfig.h"
 #include "Player/SavaPlayerState.h"
 #include "Weapon/SavaEquipmentComponent.h"
+#include "Camera/SavaCameraEffectComponent.h"
 #include "Lobby/SavaInteractable.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
@@ -58,6 +59,7 @@ AsavaCharacter::AsavaCharacter(const FObjectInitializer& ObjectInitializer)
 	Mesh1P->CastShadow = false;
 	Mesh1P->SetRelativeLocation(FVector(-30.f, 0.f, -150.f));
 
+	CameraEffectComponent = CreateDefaultSubobject<USavaCameraEffectComponent>(TEXT("CameraEffects"));
 	EquipmentComponent = CreateDefaultSubobject<USavaEquipmentComponent>(TEXT("Equipment"));
 	AbilityLoadoutComponent = CreateDefaultSubobject<USavaAbilityLoadoutComponent>(TEXT("AbilityLoadout"));
 }
@@ -237,7 +239,6 @@ void AsavaCharacter::StopCrouch() {
 void AsavaCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	CameraBaseLocation = FirstPersonCameraComponent->GetRelativeLocation();
 }
 
 void AsavaCharacter::Tick(float DeltaSeconds)
@@ -259,13 +260,6 @@ void AsavaCharacter::Tick(float DeltaSeconds)
 		}
 	}
 
-	//しゃがみ切り替え時のカメラのずれを滑らかに戻す(見た目だけの処理)
-	if (!CrouchCameraOffset.IsZero())
-	{
-		CrouchCameraOffset = FMath::VInterpTo(CrouchCameraOffset, FVector::ZeroVector, DeltaSeconds, CrouchCameraInterpSpeed);
-		UpdateFirstPersonCameraLocation();
-	}
-
 	//壁の向きを他のプレイヤーへ同期する(サーバーだけが書き込む。値が変わったときだけ送られる)
 	if (HasAuthority())
 	{
@@ -274,7 +268,6 @@ void AsavaCharacter::Tick(float DeltaSeconds)
 	}
 
 	UpdateWallRunCameraYawLimit(DeltaSeconds);
-	UpdateWallRunCameraTilt(DeltaSeconds);
 }
 
 void AsavaCharacter::UpdateWallRunCameraYawLimit(float DeltaSeconds)
@@ -347,67 +340,16 @@ float AsavaCharacter::GetWallRunSide() const
 	return FVector::DotProduct(WallNormal, GetActorRightVector()) < 0.0f ? 1.0f : -1.0f;
 }
 
-void AsavaCharacter::UpdateWallRunCameraTilt(float DeltaSeconds)
-{
-	//視点の回転に傾き(ロール)を足す。カメラに付いた腕も一緒に傾き、狙う方向には影響しない
-	APlayerController* PlayerController = Cast<APlayerController>(Controller);
-	if (!PlayerController || !IsLocallyControlled())
-	{
-		return;
-	}
-
-	//右の壁なら左へ、左の壁なら右へ傾ける
-	const float TargetRoll = -GetWallRunSide() * WallRunCameraTiltAngle;
-	FRotator ControlRotation = PlayerController->GetControlRotation();
-	const float CurrentRoll = FRotator::NormalizeAxis(ControlRotation.Roll);
-	if (CurrentRoll == TargetRoll)
-	{
-		return;
-	}
-
-	ControlRotation.Roll = FMath::FInterpTo(CurrentRoll, TargetRoll, DeltaSeconds, WallRunCameraTiltSpeed);
-	PlayerController->SetControlRotation(ControlRotation);
-}
-
 void AsavaCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
-
-	//カプセルの上端は中心より ScaledHalfHeightAdjust だけ下がるので、カメラも同じだけ下げる
-	//(下げないと、しゃがんだときに目がカプセルの上に出て、自分は撃てるのに撃たれない高さができる)
-	CrouchCameraDrop = ScaledHalfHeightAdjust;
-	float CameraJump = ScaledHalfHeightAdjust;
-
-	//地上ではカプセルが足元基準で縮み、中心も一瞬で下がる
-	if (GetCharacterMovement()->bCrouchMaintainsBaseLocation)
-	{
-		CameraJump += ScaledHalfHeightAdjust;
-	}
-
-	//一瞬で下がった分を打ち消して、元の高さから補間させる
-	CrouchCameraOffset.Z += CameraJump;
-	UpdateFirstPersonCameraLocation();
+	CameraEffectComponent->NotifyStartCrouch(ScaledHalfHeightAdjust);
 }
 
 void AsavaCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
 {
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
-
-	CrouchCameraDrop = 0.0f;
-	float CameraJump = ScaledHalfHeightAdjust;
-
-	if (GetCharacterMovement()->bCrouchMaintainsBaseLocation)
-	{
-		CameraJump += ScaledHalfHeightAdjust;
-	}
-
-	CrouchCameraOffset.Z -= CameraJump;
-	UpdateFirstPersonCameraLocation();
-}
-
-void AsavaCharacter::UpdateFirstPersonCameraLocation()
-{
-	FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation - FVector(0.0f, 0.0f, CrouchCameraDrop) + CrouchCameraOffset);
+	CameraEffectComponent->NotifyEndCrouch(ScaledHalfHeightAdjust);
 }
 
 //--------------------------------キャラクター
@@ -460,12 +402,7 @@ void AsavaCharacter::ApplyCharacterStats(const FSavaCharacterRow& Row)
 	Movement->MaxWalkSpeed = Row.MoveSpeed;
 
 	//目はカプセルの上端から決まった距離に置く(しゃがみ中は OnStartCrouch で縮んだ分だけ下げる)
-	//BeginPlay 前(複製が先に届いた)ならまだ控えがないので、今の位置を元にする
-	FVector BaseLocation = HasActorBegunPlay() ? CameraBaseLocation : FirstPersonCameraComponent->GetRelativeLocation();
-	BaseLocation.Z = HalfHeight - Row.EyeHeightBelowTop;
-	CameraBaseLocation = BaseLocation;
-	CrouchCameraOffset = FVector::ZeroVector;
-	UpdateFirstPersonCameraLocation();
+	CameraEffectComponent->SetEyeHeight(HalfHeight - Row.EyeHeightBelowTop);
 }
 
 bool AsavaCharacter::CanJumpInternal_Implementation() const

@@ -23,6 +23,7 @@ class USavaAbilitySystemComponent;
 class USavaInputConfig;
 class USavaEquipmentComponent;
 class USavaAbilityLoadoutComponent;
+class USavaCameraEffectComponent;
 class ASavaInteractable;
 struct FSavaCharacterRow;
 class USoundBase;
@@ -92,6 +93,10 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FirstPersonCameraComponent;
 
+	//1人称カメラの演出(しゃがみの高さ・壁走りの傾き・ADS の視野角・反動など)をまとめて動かす
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<USavaCameraEffectComponent> CameraEffectComponent;
+
 	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputMappingContext* DefaultMappingContext;
@@ -114,25 +119,6 @@ class AsavaCharacter : public ACharacter, public IAbilitySystemInterface
 	/** Crouch / Slide Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* CrouchAction;
-
-	//しゃがみ切り替え時にカメラが目標の高さへ追いつく速さ
-	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0"))
-	float CrouchCameraInterpSpeed = 12.0f;
-
-	FVector CameraBaseLocation = FVector::ZeroVector; //カメラ本来の相対位置
-	FVector CrouchCameraOffset = FVector::ZeroVector; //しゃがみ切り替え直後のずれ(0 へ補間する)
-	float CrouchCameraDrop = 0.0f; //しゃがみ中にカメラを下げる量(カプセルが縮んだ分。目がカプセルの上に出ないように)
-
-	//カメラを「本来の位置 - しゃがみで下げる量 + 切り替え直後のずれ」に置く
-	void UpdateFirstPersonCameraLocation();
-
-	//壁走り中にカメラを壁と反対側へ傾ける角度(マイナスにすると壁側へ傾く)
-	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "-45", ClampMax = "45", ForceUnits = "Deg"))
-	float WallRunCameraTiltAngle = 12.0f;
-
-	//カメラの傾きが目標の角度へ追いつく速さ
-	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0"))
-	float WallRunCameraTiltSpeed = 8.0f;
 
 	//壁走り中に見回せる範囲(進行方向から、壁と反対側へ何度まで)。90 以上にすると壁に背を向けられてしまう
 	UPROPERTY(EditDefaultsOnly, Category = Camera, meta = (AllowPrivateAccess = "true", ClampMin = "0", ClampMax = "180", ForceUnits = "Deg"))
@@ -232,9 +218,6 @@ protected:
 	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	virtual bool CanJumpInternal_Implementation() const override;
 
-	//壁走り中のカメラの傾き(自分の画面だけの演出)
-	void UpdateWallRunCameraTilt(float DeltaSeconds);
-
 	//壁走り中に見回せる範囲を制限する(自分の画面だけ。サーバーには制限後の向きが送られる)
 	void UpdateWallRunCameraYawLimit(float DeltaSeconds);
 
@@ -298,6 +281,7 @@ public:
 	USavaCharacterMovementComponent* GetSavaCharacterMovementComponent() const;
 	USavaEquipmentComponent* GetEquipmentComponent() const { return EquipmentComponent; }
 	USavaAbilityLoadoutComponent* GetAbilityLoadoutComponent() const { return AbilityLoadoutComponent; }
+	USavaCameraEffectComponent* GetCameraEffectComponent() const { return CameraEffectComponent; }
 
 	//ダメージを受けた(受けた本人の画面で呼ばれる)。ダメージ方向の表示は、これで Source Location を覚え、
 	//毎フレーム Get Damage Direction Angle で矢印を回す(振り向くと矢印も回る)
