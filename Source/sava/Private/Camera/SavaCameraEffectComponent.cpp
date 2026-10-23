@@ -1,12 +1,16 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "Camera/SavaCameraEffectComponent.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "SavaCharacterMovementComponent.h"
 #include "SavaGameUserSettings.h"
+#include "SavaGameplayTags.h"
 #include "SavaGrappleRootMotionSource.h"
 #include "Skill/SavaBlinkAbility.h"
 #include "Weapon/SavaEquipmentComponent.h"
@@ -107,6 +111,8 @@ void USavaCameraEffectComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	ImpulseRotationSpring.Step(DeltaTime);
 	ImpulseLocationSpring.Step(DeltaTime);
 	UpdateHeadBob(DeltaTime);
+	UpdateExplosionShake(DeltaTime);
+	UpdateStun(DeltaTime);
 
 	if (const AsavaCharacter* Character = GetCharacter())
 	{
@@ -359,6 +365,107 @@ void USavaCameraEffectComponent::UpdateHeadBob(float DeltaTime)
 	HeadBobAlpha = FMath::FInterpTo(HeadBobAlpha, TargetAlpha, DeltaTime, HeadBobBlendSpeed);
 }
 
+//--------------------------------被弾・爆発
+
+void USavaCameraEffectComponent::NotifyDamageTaken(const FSavaDamageTakenInfo& Info)
+{
+	const AsavaCharacter* Character = GetCharacter();
+	if (!Character || !GetLocalPlayerController() || Info.Damage <= 0.0f)
+	{
+		return;
+	}
+
+	const float Alpha = FMath::Lerp(DamageMinScale, 1.0f, FMath::Clamp(Info.Damage / DamageForMaxKick, 0.0f, 1.0f));
+	if (Info.bHasSourceLocation && !Info.bSelfDamage)
+	{
+		//来た向き(0 = 正面、90 = 右)。前から撃たれると上を向き、右から撃たれると左へ傾き、来た向きと反対へ押される
+		const float Angle = FMath::DegreesToRadians(Character->GetDamageDirectionAngle(Info.SourceLocation));
+		const float Front = FMath::Cos(Angle);
+		const float Right = FMath::Sin(Angle);
+		ImpulseRotationSpring.AddKick(FVector(Front * DamageMaxPitch, 0.0f, -Right * DamageMaxRoll) * Alpha, DamageKickTime);
+		ImpulseLocationSpring.AddKick(FVector(-Front, -Right, 0.0f) * DamageMaxPush * Alpha, DamageKickTime);
+	}
+	else
+	{
+		//向きが分からない(自分の攻撃など): 小さく下へ揺らす
+		ImpulseRotationSpring.AddKick(FVector(-0.5f * DamageMaxPitch * Alpha, 0.0f, 0.0f), DamageKickTime);
+	}
+}
+
+void USavaCameraEffectComponent::AddExplosionShake(const FVector& Location, float Radius, float Strength)
+{
+	const UCameraComponent* Camera = GetCamera();
+	if (!Camera || !GetLocalPlayerController())
+	{
+		return;
+	}
+
+	const float Falloff = CalculateExplosionFalloff(FVector::Dist(Camera->GetComponentLocation(), Location), Radius);
+	ExplosionShakeAmount = FMath::Min(ExplosionShakeAmount + Falloff * FMath::Max(Strength, 0.0f), 1.0f);
+}
+
+void USavaCameraEffectComponent::PlayExplosionShake(const UObject* WorldContextObject, FVector Location, float Radius, float Strength)
+{
+	const UWorld* World = GEngine ? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull) : nullptr;
+	if (!World)
+	{
+		return;
+	}
+
+	//専用サーバーでは、操作している人がいないので何もしない
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		const APlayerController* PlayerController = It->Get();
+		const AsavaCharacter* Character = PlayerController && PlayerController->IsLocalController() ? Cast<AsavaCharacter>(PlayerController->GetPawn()) : nullptr;
+		if (Character && Character->GetCameraEffectComponent())
+		{
+			Character->GetCameraEffectComponent()->AddExplosionShake(Location, Radius, Strength);
+		}
+	}
+}
+
+float USavaCameraEffectComponent::CalculateExplosionFalloff(float Distance, float Radius)
+{
+	if (Radius <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return FMath::Clamp(1.0f - Distance / Radius, 0.0f, 1.0f);
+}
+
+void USavaCameraEffectComponent::UpdateExplosionShake(float DeltaTime)
+{
+	if (ExplosionShakeAmount <= 0.0f)
+	{
+		ExplosionShakeTime = 0.0f;
+		return;
+	}
+	ExplosionShakeTime += DeltaTime;
+	ExplosionShakeAmount = FMath::Max(ExplosionShakeAmount - ExplosionShakeDecay * DeltaTime, 0.0f);
+}
+
+//--------------------------------スタン・スロー
+
+void USavaCameraEffectComponent::UpdateStun(float DeltaTime)
+{
+	const float TargetAlpha = HasStateTag(SavaGameplayTags::State_Stunning) ? 1.0f : 0.0f;
+	StunAlpha = FMath::FInterpTo(StunAlpha, TargetAlpha, DeltaTime, StunBlendSpeed);
+	if (StunAlpha > 0.0f)
+	{
+		StunTime += DeltaTime;
+	}
+	else
+	{
+		StunTime = 0.0f;
+	}
+}
+
+bool USavaCameraEffectComponent::HasStateTag(const FGameplayTag& Tag) const
+{
+	const UAbilitySystemComponent* AbilitySystem = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner());
+	return AbilitySystem && AbilitySystem->HasMatchingGameplayTag(Tag);
+}
+
 //--------------------------------壁走り
 
 void USavaCameraEffectComponent::UpdateWallRunTilt(APlayerController* PlayerController, float DeltaTime)
@@ -406,6 +513,10 @@ float USavaCameraEffectComponent::CalculateTargetMoveFOVScale() const
 		{
 			Scale *= SprintFOVScale;
 		}
+	}
+	if (HasStateTag(SavaGameplayTags::State_Slowed))
+	{
+		Scale *= SlowFOVScale;
 	}
 	return Scale;
 }
@@ -466,6 +577,23 @@ FTransform USavaCameraEffectComponent::CalculateViewOffset() const
 		const float Side = FMath::Sin(HeadBobPhase);
 		Location += FVector(0.0f, Side * HeadBobHorizontalAmplitude, FMath::Sin(2.0f * HeadBobPhase) * HeadBobVerticalAmplitude) * HeadBobAlpha;
 		Rotation.Z += Side * HeadBobRollAmplitude * HeadBobAlpha;
+	}
+
+	//爆発の揺れ(大きさの 2 乗で効かせ、収まり際を早く小さくする)。揺らぎは軸ごとにずらした値を使う(整数では 0 になるので半端な値)
+	if (ExplosionShakeAmount > 0.0f)
+	{
+		const float Amount = FMath::Square(ExplosionShakeAmount);
+		const float T = ExplosionShakeTime * ExplosionShakeFrequency;
+		Rotation += FVector(FMath::PerlinNoise1D(T + 0.37f), FMath::PerlinNoise1D(T + 13.71f), FMath::PerlinNoise1D(T + 27.13f)) * ExplosionShakeMaxRotation * Amount;
+		Location += FVector(0.0f, FMath::PerlinNoise1D(T + 41.59f), FMath::PerlinNoise1D(T + 55.97f)) * ExplosionShakeMaxLocation * Amount;
+	}
+
+	//スタンのふらつき(ゆっくり大きく)
+	if (StunAlpha > 0.0f)
+	{
+		const float T = StunTime * StunWobbleFrequency;
+		Rotation += FVector(FMath::PerlinNoise1D(T + 3.31f), FMath::PerlinNoise1D(T + 17.77f), FMath::PerlinNoise1D(T + 31.03f)) * StunWobbleRotation * StunAlpha;
+		Location += FVector(0.0f, FMath::PerlinNoise1D(T + 47.29f), FMath::PerlinNoise1D(T + 61.83f)) * StunWobbleLocation * StunAlpha;
 	}
 
 	//ここまでが設定の「画面の揺れの強さ」を掛けるもの

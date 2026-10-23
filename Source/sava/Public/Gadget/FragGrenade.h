@@ -103,6 +103,26 @@ protected:
 	bool m_bBlockedByWalls = true;
 
 	/**
+	 * 爆発で画面が揺れる距離(ダメージの範囲より広くしてよい)。
+	 *
+	 * 爆発の中心から離れるほど弱くなり、この距離で揺れなくなる。
+	 */
+	UPROPERTY(
+		EditDefaultsOnly,
+		Category = "Gadget|Frag|Camera",
+		meta = (DisplayName = "Camera Shake Radius", ClampMin = "0", ForceUnits = "cm"))
+	float m_CameraShakeRadius = 1500.0f;
+
+	/**
+	 * 爆発の中心での画面の揺れの大きさ(1 で一番大きく揺れる)。
+	 */
+	UPROPERTY(
+		EditDefaultsOnly,
+		Category = "Gadget|Frag|Camera",
+		meta = (DisplayName = "Camera Shake Strength", ClampMin = "0", ClampMax = "1"))
+	float m_CameraShakeStrength = 1.0f;
+
+	/**
 	 * 爆発の範囲とダメージを画面に表示する(調整用)。
 	 *
 	 * サーバーの画面(リッスンサーバーのホスト・一人プレイ)にだけ表示される。

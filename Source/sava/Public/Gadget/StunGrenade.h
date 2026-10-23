@@ -114,6 +114,28 @@ protected:
 	bool m_bBlockedByWalls = true;
 
 	/**
+	 * 爆発で画面が揺れる距離(スタンの範囲より広くしてよい)。
+	 *
+	 * 爆発の中心から離れるほど弱くなり、この距離で揺れなくなる。
+	 */
+	UPROPERTY(
+		EditDefaultsOnly,
+		Category = "Gadget|Stun|Camera",
+		meta = (
+			DisplayName = "Camera Shake Radius", ClampMin = "0", ForceUnits = "cm"))
+	float m_CameraShakeRadius = 1200.0f;
+
+	/**
+	 * 爆発の中心での画面の揺れの大きさ(1 で一番大きく揺れる)。
+	 */
+	UPROPERTY(
+		EditDefaultsOnly,
+		Category = "Gadget|Stun|Camera",
+		meta = (
+			DisplayName = "Camera Shake Strength", ClampMin = "0", ClampMax = "1"))
+	float m_CameraShakeStrength = 0.6f;
+
+	/**
 	 * 起爆時のデバッグ表示。
 	 *
 	 * 調整中のみ使用する。

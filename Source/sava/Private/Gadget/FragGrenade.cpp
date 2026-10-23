@@ -1,6 +1,7 @@
 #include "Gadget/FragGrenade.h"
 
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
+#include "Camera/SavaCameraEffectComponent.h"
 #include "Components/SphereComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/OverlapResult.h"
@@ -202,4 +203,5 @@ void AFragGrenade::Multicast_PlayExplosion_Implementation(
 	const FVector_NetQuantize& ExplosionLocation)
 {
 	OnExploded(ExplosionLocation);
+	USavaCameraEffectComponent::PlayExplosionShake(this, ExplosionLocation, m_CameraShakeRadius, m_CameraShakeStrength);
 }

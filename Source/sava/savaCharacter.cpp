@@ -675,6 +675,7 @@ void AsavaCharacter::ClientDamageTaken_Implementation(const FSavaDamageTakenInfo
 	{
 		UGameplayStatics::PlaySound2D(this, DamageTakenSound);
 	}
+	CameraEffectComponent->NotifyDamageTaken(Info);
 	OnDamageTaken.Broadcast(Info);
 }
 
