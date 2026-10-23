@@ -345,14 +345,17 @@ void USavaCameraEffectComponent::HandleWallJumped()
 void USavaCameraEffectComponent::UpdateHeadBob(float DeltaTime)
 {
 	//地上を歩いている間だけ(スライディング・壁走り・空中では揺らさない)
+	//大きさと速さは歩き・ダッシュで決める(キャラクターの歩く速さには合わせない)
 	float TargetAlpha = 0.0f;
 	const USavaCharacterMovementComponent* Movement = GetMovement();
-	if (Movement && (Movement->MovementMode == MOVE_Walking || Movement->MovementMode == MOVE_NavWalking))
+	if (Movement && (Movement->MovementMode == MOVE_Walking || Movement->MovementMode == MOVE_NavWalking)
+		&& Movement->Velocity.Size2D() >= HeadBobMinSpeed)
 	{
-		const float Speed = Movement->Velocity.Size2D();
-		TargetAlpha = FMath::Min(Speed / HeadBobReferenceSpeed, HeadBobMaxScale);
-		//2 歩で 1 周する
-		HeadBobPhase = FMath::Fmod(HeadBobPhase + Speed * DeltaTime / (2.0f * HeadBobStepLength) * UE_TWO_PI, UE_TWO_PI);
+		const bool bSprinting = Movement->IsSprinting();
+		TargetAlpha = bSprinting ? HeadBobSprintScale : 1.0f;
+		//1 歩で半周(上下は 1 歩で 1 往復、左右は 2 歩で 1 往復)
+		const float StepsPerSecond = bSprinting ? HeadBobSprintStepsPerSecond : HeadBobWalkStepsPerSecond;
+		HeadBobPhase = FMath::Fmod(HeadBobPhase + StepsPerSecond * UE_PI * DeltaTime, UE_TWO_PI);
 	}
 
 	//ADS 中は弱める
@@ -459,6 +462,11 @@ float USavaCameraEffectComponent::CalculateTargetMoveFOVScale() const
 		{
 			Scale *= SprintFOVScale;
 		}
+	}
+	//スキルで速くなっている(加速・スティムなど。GAS の移動速度の倍率で受け取る)
+	if (const USavaCharacterMovementComponent* Movement = GetMovement(); Movement && Movement->GetAbilityMoveSpeedMultiplier() > 1.01f)
+	{
+		Scale *= SpeedBoostFOVScale;
 	}
 	if (HasStateTag(SavaGameplayTags::State_Slowed))
 	{

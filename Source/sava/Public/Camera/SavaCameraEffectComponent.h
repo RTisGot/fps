@@ -113,6 +113,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0.5", ClampMax = "2"))
 	float GrappleFOVScale = 1.12f;
 
+	//スキルで速くなっている間(移動速度の倍率が 1 より大きい)の視野角の倍率。ダッシュなどの倍率にさらに掛かる
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0.5", ClampMax = "2"))
+	float SpeedBoostFOVScale = 1.1f;
+
 	//ブリンクで動いている間(一瞬)の視野角の倍率
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|MoveFOV", meta = (ClampMin = "0.5", ClampMax = "2"))
 	float BlinkFOVScale = 1.25f;
@@ -163,24 +167,29 @@ protected:
 
 	//--------------------------------歩行の揺れ
 
-	//1 歩の長さ(この距離を進むごとに 1 回上下する。長いほどゆっくり揺れる)
-	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "1", ForceUnits = "cm"))
-	float HeadBobStepLength = 250.0f;
+	//歩き・ダッシュで 1 秒に何歩分揺れるか(1 歩ごとに 1 回上下する)
+	//キャラクターごとの歩く速さの違いで揺れ方が変わらないように、速さではなく歩き・ダッシュで決める
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0"))
+	float HeadBobWalkStepsPerSecond = 1.8f;
 
-	//この速さのときに、下の大きさで揺れる(速いほど大きく、Max Scale 倍まで)
-	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "1", ForceUnits = "cm/s"))
-	float HeadBobReferenceSpeed = 600.0f;
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0"))
+	float HeadBobSprintStepsPerSecond = 2.6f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "1"))
-	float HeadBobMaxScale = 1.5f;
-
-	//上下に揺れる大きさ
+	//上下に揺れる大きさ(歩き)
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "cm"))
-	float HeadBobVerticalAmplitude = 0.6f;
+	float HeadBobVerticalAmplitude = 2.0f;
 
-	//左右に揺れる大きさ(2 歩で 1 往復)
+	//左右に揺れる大きさ(歩き。2 歩で 1 往復)
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "cm"))
-	float HeadBobHorizontalAmplitude = 0.4f;
+	float HeadBobHorizontalAmplitude = 1.0f;
+
+	//ダッシュ中の揺れの大きさの倍率
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0"))
+	float HeadBobSprintScale = 1.3f;
+
+	//これより遅いときは、止まっているとみなして揺らさない
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "cm/s"))
+	float HeadBobMinSpeed = 50.0f;
 
 	//歩き始め・止まったときに、揺れの大きさが追いつく速さ
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0"))
@@ -323,7 +332,7 @@ private:
 	FSavaCameraSpring ImpulseRotationSpring;
 	FSavaCameraSpring ImpulseLocationSpring;
 
-	//歩行の揺れ: 進んだ距離で進む位相と、今の大きさ(速さに合わせて滑らかに変わる)
+	//歩行の揺れ: 時間で進む位相と、今の大きさ(歩き始め・止まったときに滑らかに変わる)
 	float HeadBobPhase = 0.0f;
 	float HeadBobAlpha = 0.0f;
 
