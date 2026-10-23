@@ -120,19 +120,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaLadderClimbUpTest, "Sava.Ladder.ClimbUpAnd
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FSavaLadderClimbUpTest::RunTest(const FString&)
 {
-	//梯子へ歩いて掴まり、前を見たまま前入力で登り、頂上でよじ登って奥の足場に乗る
+	//梯子へ歩いて掴まり、前を見たまま前入力で登り、上端から前へ進んで奥の足場に乗る(よじ登りの動きは挟まない)
 	TSharedRef<bool> bSawLadder = MakeShared<bool>(false);
-	TSharedRef<bool> bSawMantle = MakeShared<bool>(false);
 	ADD_LATENT_AUTOMATION_COMMAND(FLadderCommand(FVector(-300, 0, 100), FRotator::ZeroRotator, nullptr,
-		[this, bSawLadder, bSawMantle](FLadderTestWorld& W, int32 Frame)
+		[this, bSawLadder](FLadderTestWorld& W, int32 Frame)
 		{
 			*bSawLadder |= W.Movement->IsOnLadder();
-			*bSawMantle |= *bSawLadder && W.Movement->IsMantling();
-			if (W.Movement->IsOnLadder())
-			{
-				TestTrue(TEXT("Stays in front of the ladder while climbing"), W.Character->GetActorLocation().X < 0.0f);
-			}
-			if (*bSawMantle && W.Movement->MovementMode == MOVE_Walking)
+			TestFalse(TEXT("Climbing over the top does not mantle"), W.Movement->IsMantling());
+			if (*bSawLadder && W.Movement->MovementMode == MOVE_Walking)
 			{
 				TestTrue(TEXT("Ends on top of the platform"), W.FeetZ() > 390.0f && W.Character->GetActorLocation().X > 0.0f);
 				return true;
@@ -140,9 +135,9 @@ bool FSavaLadderClimbUpTest::RunTest(const FString&)
 			W.Forward();
 			return false;
 		},
-		FSimpleDelegate::CreateLambda([this, bSawLadder, bSawMantle]()
+		FSimpleDelegate::CreateLambda([this, bSawLadder]()
 		{
-			AddError(FString::Printf(TEXT("Did not climb over the ladder (ladder %d, mantle %d)"), *bSawLadder, *bSawMantle));
+			AddError(FString::Printf(TEXT("Did not climb over the ladder (ladder %d)"), *bSawLadder));
 		})));
 	return true;
 }
@@ -243,9 +238,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaLadderEnterFromTopTest, "Sava.Ladder.Enter
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FSavaLadderEnterFromTopTest::RunTest(const FString&)
 {
-	//上の足場から梯子の方(-X)へ、下を見て歩く → 上から掴まり、そのまま床まで降りる
+	//上の足場で壁(+X)の方を向き、下を見たまま後ろへ下がって端から降りる → 梯子へ向かって入力すると掴まり、そのまま床まで降りる
 	TSharedRef<bool> bSawLadder = MakeShared<bool>(false);
-	ADD_LATENT_AUTOMATION_COMMAND(FLadderCommand(FVector(200, 0, 500), FRotator(0, 180, 0),
+	ADD_LATENT_AUTOMATION_COMMAND(FLadderCommand(FVector(100, 0, 500), FRotator::ZeroRotator,
 		[](FLadderTestWorld& W) { W.Look(-60.0f); },
 		[this, bSawLadder](FLadderTestWorld& W, int32 Frame)
 		{
@@ -256,7 +251,12 @@ bool FSavaLadderEnterFromTopTest::RunTest(const FString&)
 				TestTrue(TEXT("Stands on the floor"), W.FeetZ() < 10.0f);
 				return true;
 			}
-			TestFalse(TEXT("Does not fall off the platform edge"), !*bSawLadder && W.Movement->IsFalling() && W.Character->GetActorLocation().X < 0.0f);
+			if (!*bSawLadder && W.Movement->IsMovingOnGround())
+			{
+				TestTrue(TEXT("Does not grab from behind the ladder (on the platform)"), W.FeetZ() > 390.0f);
+				W.Character->AddMovementInput(-W.Character->GetActorForwardVector(), 1.0f);
+				return false;
+			}
 			W.Forward();
 			return false;
 		},
@@ -264,6 +264,38 @@ bool FSavaLadderEnterFromTopTest::RunTest(const FString&)
 		{
 			AddError(FString::Printf(TEXT("Did not climb down from the top (ladder %d)"), *bSawLadder));
 		})));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaLadderFreeMovementTest, "Sava.Ladder.FreeMovement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FSavaLadderFreeMovementTest::RunTest(const FString&)
+{
+	//掴まった後、横に歩くと吸い寄せられずにそのまま動いて範囲から出る。掴まっている間は上下の入力がなければ落ちない
+	TSharedRef<float> LadderZ = MakeShared<float>(0.0f);
+	ADD_LATENT_AUTOMATION_COMMAND(FLadderCommand(FVector(-80, 0, 300), FRotator::ZeroRotator,
+		[](FLadderTestWorld& W) { W.Movement->SetMovementMode(MOVE_Falling); },
+		[this, LadderZ](FLadderTestWorld& W, int32 Frame)
+		{
+			if (*LadderZ == 0.0f)
+			{
+				W.Forward();
+				if (W.Movement->IsOnLadder())
+				{
+					*LadderZ = W.Character->GetActorLocation().Z;
+				}
+				return false;
+			}
+			if (W.Movement->IsOnLadder())
+			{
+				TestTrue(TEXT("No gravity on the ladder without climb input"), FMath::IsNearlyEqual(W.Character->GetActorLocation().Z, *LadderZ, 1.0f));
+				W.Character->AddMovementInput(FVector::RightVector, 1.0f);
+				return false;
+			}
+			TestTrue(TEXT("Strafing leaves the ladder freely"), W.Movement->IsFalling() && W.Character->GetActorLocation().Y > 40.0f);
+			return true;
+		},
+		FSimpleDelegate::CreateLambda([this]() { AddError(TEXT("Did not leave the ladder by strafing")); })));
 	return true;
 }
 

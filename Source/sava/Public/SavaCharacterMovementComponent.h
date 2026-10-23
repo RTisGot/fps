@@ -512,36 +512,29 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Mantle")
 	bool IsMantling() const;
 
-	//----- 梯子(ASavaLadder): 梯子へ向かって入力すると掴まる。前入力で、上を見ていれば登り・下を見ていれば降りる(後ろ入力は逆) -----
-	//頂上ではよじ登りで上の足場に乗る。上の足場から梯子の方へ下を見て進むと、上から乗り込める。ジャンプで後ろへ飛び降りる
+	//----- 梯子(ASavaLadder): 梯子の範囲の中で梯子へ向かって入力すると掴まる -----
+	//掴まっている間も水平は歩きと同じく自由に動け、重力がかからない。梯子へ向かう入力で、上を見ていれば登り・下を見ていれば降りる
+	//横・後ろへ歩けばそのまま範囲から出て離れる。上端まで登って前へ進めば上の足場に乗れる。ジャンプで後ろへ飛び降りる
 
 	//登り降りの速さ
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "cm/s"))
 	float LadderClimbSpeed = 400.0f;
 
+	//梯子に掴まっている間の水平の速さ = 歩き速度 MaxWalkSpeed × この倍率(スキルの速度倍率も掛かる)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0"))
+	float LadderMoveSpeedMultiplier = 1.0f;
+
 	//入力が梯子の方向からこれ以内なら掴まる
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ClampMax = "90", ForceUnits = "Deg"))
 	float LadderMaxEntryAngle = 60.0f;
 
-	//視線の上下の角度がこれより下なら、前入力で降りる(マイナス = 水平より下)
+	//視線の上下の角度がこれより下なら、梯子へ向かう入力で降りる(マイナス = 水平より下)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "-89", ClampMax = "89", ForceUnits = "Deg"))
 	float LadderLookDownPitch = -30.0f;
 
-	//梯子に掴まっている間の、カプセルの表面から梯子の面までの距離
+	//足元が梯子の上端からこの高さまで登れる(上の足場の床より少し上まで上がり、前へ進めば足場に乗れる)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "cm"))
-	float LadderStandOffDistance = 15.0f;
-
-	//梯子の中心線へ寄せる速さ(掴まった直後・上から乗り込むとき)
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "cm/s"))
-	float LadderSnapSpeed = 500.0f;
-
-	//頂上で上の足場に乗り始める高さ(足元が梯子の上端からこれだけ下に来たら)
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "cm"))
-	float LadderTopExitHeight = 40.0f;
-
-	//頂上で上の足場に乗るのにかかる時間
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0.05", ForceUnits = "s"))
-	float LadderTopMantleDuration = 0.35f;
+	float LadderTopClimbHeight = 10.0f;
 
 	//ジャンプで飛び降りるときの、梯子から離れる方向の速度 / 上向きの速度
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sava|Ladder", meta = (ClampMin = "0", ForceUnits = "cm/s"))
@@ -666,11 +659,8 @@ private:
 	void PhysMantle(float DeltaTime, int32 Iterations);
 
 	ASavaLadder* FindLadder() const;
-	float GetLadderClimbInput() const;
-	FVector GetLadderSnapLocation(const ASavaLadder* Ladder) const;
+	float GetLadderClimbInput(const ASavaLadder* Ladder) const;
 	bool TryStartLadder();
-	bool TryLadderTopExit(const ASavaLadder* Ladder);
-	void ExitLadder(EMovementMode NewMode);
 	void DoLadderJump();
 	void PhysLadder(float DeltaTime, int32 Iterations);
 
@@ -735,7 +725,7 @@ private:
 	float MantleElapsed = 0.0f;
 	float MantleDuration = 0.0f;
 
-	//梯子: 視線が下を向いているか(前入力で降りる)。ダッシュと同じく入力としてサーバーへ送る
+	//梯子: 視線が下を向いているか(梯子へ向かう入力で降りる)。ダッシュと同じく入力としてサーバーへ送る
 	bool bLadderLookDown = false;
 
 	//梯子から離れた直後、また掴まれない残り時間
