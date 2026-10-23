@@ -17,6 +17,7 @@ struct FGameplayAbilityTargetDataHandle;
 //
 //撃ち方: 単発 = 押すたびに 1 回 / バースト = 押すたびに Burst Count 回 / フルオート = 押している間
 //マガジンが空で撃とうとすると、自動でリロードする
+//リロード中は弾が入った後なら撃てて、リロードの残りを飛ばす(1 発ずつ込める武器は、1 発でも入っていれば撃てる)
 //
 //※ Blueprint で子クラスを作る場合、Event ActivateAbility は使わないこと(下のイベントだけを実装する)
 UCLASS()
@@ -27,6 +28,7 @@ class SAVA_API USavaWeaponFireAbility : public USavaWeaponAbility
 public:
 	USavaWeaponFireAbility();
 
+	virtual bool CanActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags = nullptr, const FGameplayTagContainer* TargetTags = nullptr, FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
 

@@ -39,6 +39,15 @@ namespace
 		return CVar && CVar->GetBool();
 	}
 
+	//拡散の確認用の表示(着弾点は SavaWeaponFireAbility.cpp で描く)
+	TAutoConsoleVariable<bool> CVarSpreadDebug(
+		TEXT("sava.Weapon.SpreadDebug"),
+		false,
+		TEXT("拡散を表示する。文字 = 今の拡散の内訳 / 円 = 5m 先での拡散(白: 全体 / 緑: 基本だけ) / 点 = 着弾点(3 秒)"));
+
+	//拡散の円を描く距離
+	constexpr float SpreadDebugDistance = 500.0f;
+
 	ESavaWeaponSlot GetOtherSlot(ESavaWeaponSlot Slot)
 	{
 		return Slot == ESavaWeaponSlot::Primary ? ESavaWeaponSlot::Secondary : ESavaWeaponSlot::Primary;
@@ -119,6 +128,18 @@ void USavaEquipmentComponent::BeginPlay()
 	}
 
 	UpdateWeaponMesh();
+
+#if WITH_EDITOR
+	WeaponDataEditedHandle = USavaWeaponData::OnWeaponDataEdited.AddUObject(this, &USavaEquipmentComponent::OnWeaponDataEdited);
+#endif
+}
+
+void USavaEquipmentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+#if WITH_EDITOR
+	USavaWeaponData::OnWeaponDataEdited.Remove(WeaponDataEditedHandle);
+#endif
+	Super::EndPlay(EndPlayReason);
 }
 
 void USavaEquipmentComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -135,8 +156,10 @@ void USavaEquipmentComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	if (GetLocalPlayerController())
 	{
 		UpdateADS(DeltaTime);
+		UpdateMovementSpread(DeltaTime);
 		UpdateRecoil(DeltaTime);
 		UpdateVisualKick(DeltaTime);
+		DrawSpreadDebug();
 	}
 
 	//デバッグ描画(エディタ・ゲーム画面のすべてで可視)
@@ -198,6 +221,26 @@ void USavaEquipmentComponent::ApplyLoadout()
 
 	UpdateWeaponMesh();
 }
+
+#if WITH_EDITOR
+void USavaEquipmentComponent::OnWeaponDataEdited(const USavaWeaponData* Weapon)
+{
+	for (int32 Index = 0; Index < UE_ARRAY_COUNT(SlotStates); ++Index)
+	{
+		FSlotState& State = SlotStates[Index];
+		if (!Weapon || State.AppliedWeapon != Weapon)
+		{
+			continue;
+		}
+
+		//弾数は満タンに戻さない(マガジンが小さくなった分だけ減らす)
+		State.Stats = USavaWeaponLibrary::ApplyWeaponModifiers(Weapon->Stats, State.AppliedModifiers);
+		State.AmmoInMagazine = FMath::Min(State.AmmoInMagazine, State.Stats.GetMagazineCapacity(true));
+		State.ReserveAmmo = FMath::Min(State.ReserveAmmo, State.Stats.MaxReserveAmmo);
+		BroadcastAmmoChanged(static_cast<ESavaWeaponSlot>(Index));
+	}
+}
+#endif
 
 void USavaEquipmentComponent::RefillAllAmmo()
 {
@@ -264,7 +307,7 @@ bool USavaEquipmentComponent::HasInfiniteReserveAmmo(ESavaWeaponSlot Slot) const
 bool USavaEquipmentComponent::CanReload(ESavaWeaponSlot Slot) const
 {
 	const FSlotState* State = FindSlotState(Slot);
-	if (!State || !State->AppliedWeapon || State->AmmoInMagazine >= State->Stats.MagazineSize)
+	if (!State || !State->AppliedWeapon || State->AmmoInMagazine >= State->Stats.GetMagazineCapacity(State->AmmoInMagazine > 0))
 	{
 		return false;
 	}
@@ -301,12 +344,36 @@ float USavaEquipmentComponent::GetRemainingEquipTime() const
 
 float USavaEquipmentComponent::GetCurrentSpreadAngle() const
 {
+	return GetCurrentSpreadBreakdown().Total;
+}
+
+FSavaSpreadBreakdown USavaEquipmentComponent::GetCurrentSpreadBreakdown() const
+{
 	const FSlotState* State = FindSlotState(CurrentSlot);
 	if (!State || !State->AppliedWeapon)
 	{
-		return 0.0f;
+		return FSavaSpreadBreakdown();
 	}
 
+	//撃つのをやめて Recoil Reset Time 経った(反動のパターンが 1 発目に戻るのと同じ)なら 1 発目
+	//(Local Last Fire Time はレイを飛ばす前に更新されるので、レイの後に更新される連射の拡散の時刻で調べる)
+	const bool bFirstShot = GetWorld()->GetTimeSeconds() - State->ShotSpreadTime > State->Stats.RecoilResetTime;
+	return State->Stats.CalculateSpreadBreakdown(ADSAlpha, SmoothedMovementSpread, GetShotSpread(*State), bFirstShot);
+}
+
+void USavaEquipmentComponent::UpdateMovementSpread(float DeltaTime)
+{
+	const FSlotState* State = FindSlotState(CurrentSlot);
+	if (!State || !State->AppliedWeapon)
+	{
+		SmoothedMovementSpread = 0.0f;
+		return;
+	}
+	SmoothedMovementSpread = State->Stats.BlendMovementSpread(SmoothedMovementSpread, CalculateTargetMovementSpread(State->Stats), DeltaTime);
+}
+
+float USavaEquipmentComponent::CalculateTargetMovementSpread(const FSavaWeaponStats& Stats) const
+{
 	float MoveAlpha = 0.0f;
 	bool bInAir = false;
 	ESavaSpreadMovement SpreadMovement = ESavaSpreadMovement::Walk;
@@ -340,7 +407,50 @@ float USavaEquipmentComponent::GetCurrentSpreadAngle() const
 			SpreadMovement = ESavaSpreadMovement::Sprint;
 		}
 	}
-	return State->Stats.CalculateSpread(ADSAlpha, MoveAlpha, bInAir, GetShotSpread(*State), SpreadMovement);
+	return Stats.CalculateMovementSpread(MoveAlpha, bInAir, SpreadMovement);
+}
+
+void USavaEquipmentComponent::DrawSpreadDebug() const
+{
+#if ENABLE_DRAW_DEBUG
+	if (!CVarSpreadDebug.GetValueOnGameThread())
+	{
+		return;
+	}
+	const APlayerController* PlayerController = GetLocalPlayerController();
+	if (!PlayerController || !PlayerController->PlayerCameraManager)
+	{
+		return;
+	}
+
+	const FSavaSpreadBreakdown Spread = GetCurrentSpreadBreakdown();
+	const FSavaWeaponStats Stats = GetStats(CurrentSlot);
+	if (GEngine)
+	{
+		const FString Text = FString::Printf(TEXT("Spread %.2f deg = Base %.2f%s + Move %.2f + Shot %.2f  (ADS %.0f%%, CenterRatio %.2f%s)"),
+			Spread.Total, Spread.Base, Spread.bFirstShot ? TEXT(" [1st]") : TEXT(""), Spread.Movement, Spread.Shot,
+			ADSAlpha * 100.0f, Stats.SpreadCenterRatio,
+			Stats.PelletCount > 1 ? *FString::Printf(TEXT(", Pellet %d x %.1f deg"), Stats.PelletCount, Stats.PelletSpread) : TEXT(""));
+		GEngine->AddOnScreenDebugMessage(static_cast<uint64>(reinterpret_cast<UPTRINT>(this)), 0.0f, FColor::White, Text);
+	}
+
+	//カメラの 5m 先に、拡散の円を描く(この 1 フレームだけ)
+	const FVector ViewLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
+	const FRotationMatrix View(PlayerController->PlayerCameraManager->GetCameraRotation());
+	const FVector Center = ViewLocation + View.GetUnitAxis(EAxis::X) * SpreadDebugDistance;
+	const FVector Right = View.GetUnitAxis(EAxis::Y);
+	const FVector Up = View.GetUnitAxis(EAxis::Z);
+	auto DrawCircle = [&](float Angle, const FColor& Color)
+	{
+		const float Radius = SpreadDebugDistance * FMath::Tan(FMath::DegreesToRadians(Angle));
+		if (Radius > 0.01f)
+		{
+			DrawDebugCircle(GetWorld(), Center, Radius, 48, Color, false, -1.0f, SDPG_Foreground, 0.5f, Right, Up, false);
+		}
+	};
+	DrawCircle(Spread.Total, FColor::White);
+	DrawCircle(Spread.Base, FColor::Green);
+#endif
 }
 
 float USavaEquipmentComponent::GetShotSpread(const FSlotState& State) const
@@ -479,17 +589,21 @@ bool USavaEquipmentComponent::TryConsumeServerShot(ESavaWeaponSlot Slot, float I
 	return !bTooFast && !bEquipping && !bJustSprinted;
 }
 
-void USavaEquipmentComponent::FinishReload(ESavaWeaponSlot Slot)
+int32 USavaEquipmentComponent::LoadAmmo(ESavaWeaponSlot Slot, int32 MaxRounds, int32 Capacity)
 {
 	FSlotState* State = FindSlotState(Slot);
-	if (!State || !CanReload(Slot))
+	if (!State || !State->AppliedWeapon)
 	{
-		return;
+		return 0;
 	}
 
-	const int32 Needed = State->Stats.MagazineSize - State->AmmoInMagazine;
+	const int32 Needed = FMath::Min(Capacity - State->AmmoInMagazine, MaxRounds);
 	const bool bInfinite = HasInfiniteReserveAmmo(Slot);
 	const int32 Loaded = bInfinite ? Needed : FMath::Min(Needed, State->ReserveAmmo);
+	if (Loaded <= 0)
+	{
+		return 0;
+	}
 	State->AmmoInMagazine += Loaded;
 	if (!bInfinite)
 	{
@@ -503,6 +617,7 @@ void USavaEquipmentComponent::FinishReload(ESavaWeaponSlot Slot)
 	{
 		ClientSyncReserveAmmo(Slot, State->ReserveAmmo);
 	}
+	return Loaded;
 }
 
 void USavaEquipmentComponent::ClientSyncReserveAmmo_Implementation(ESavaWeaponSlot Slot, int32 ReserveAmmo)

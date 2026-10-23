@@ -23,6 +23,7 @@ namespace SavaWeaponData
 		Result.MovementSpreadMultiplier = Inverse(Modifier.MovementSpreadMultiplier);
 		Result.JumpSpreadMultiplier = Inverse(Modifier.JumpSpreadMultiplier);
 		Result.ADSMovementSpreadScaleMultiplier = Inverse(Modifier.ADSMovementSpreadScaleMultiplier);
+		Result.ADSShotSpreadScaleMultiplier = Inverse(Modifier.ADSShotSpreadScaleMultiplier);
 		Result.VerticalRecoilMultiplier = Inverse(Modifier.VerticalRecoilMultiplier);
 		Result.HorizontalRecoilMultiplier = Inverse(Modifier.HorizontalRecoilMultiplier);
 		Result.RecoilRecoveryMultiplier = Inverse(Modifier.RecoilRecoveryMultiplier);
@@ -32,6 +33,7 @@ namespace SavaWeaponData
 		Result.FalloffStartMultiplier = Inverse(Modifier.FalloffStartMultiplier);
 		Result.FalloffEndMultiplier = Inverse(Modifier.FalloffEndMultiplier);
 		Result.MinimumDamageMultiplier = Inverse(Modifier.MinimumDamageMultiplier);
+		Result.PelletSpreadMultiplier = Inverse(Modifier.PelletSpreadMultiplier);
 		Result.HitScanRadiusMultiplier = Inverse(Modifier.HitScanRadiusMultiplier);
 		return Result;
 	}
@@ -75,6 +77,7 @@ USavaWeaponData::USavaWeaponData()
 	FSavaWeaponModifier Stock;
 	Stock.ADSTimeMultiplier = 1.2f;
 	Stock.ADSMovementSpreadScaleMultiplier = 0.7f;
+	Stock.ADSShotSpreadScaleMultiplier = 0.7f;
 	Stock.RecoilRecoveryMultiplier = 1.2f;
 	TuningSliders.Add(SavaWeaponData::MakeSlider(TEXT("Stock"), NSLOCTEXT("SavaWeapon", "StockName", "ストック"),
 		NSLOCTEXT("SavaWeapon", "StockMin", "素早い構え"), NSLOCTEXT("SavaWeapon", "StockMax", "安定した構え"), Stock));
@@ -93,6 +96,16 @@ USavaWeaponData::USavaWeaponData()
 	TuningSliders.Add(SavaWeaponData::MakeSlider(TEXT("Frame"), NSLOCTEXT("SavaWeapon", "FrameName", "フレーム"),
 		NSLOCTEXT("SavaWeapon", "FrameMin", "軽量"), NSLOCTEXT("SavaWeapon", "FrameMax", "重量"), Frame));
 }
+
+#if WITH_EDITOR
+USavaWeaponData::FOnWeaponDataEdited USavaWeaponData::OnWeaponDataEdited;
+
+void USavaWeaponData::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+	OnWeaponDataEdited.Broadcast(this);
+}
+#endif
 
 const FSavaWeaponTuningSlider* USavaWeaponData::FindTuningSlider(FName Id) const
 {

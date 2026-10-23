@@ -47,7 +47,7 @@ public:
 	ESavaFireMode FireMode = ESavaFireMode::FullAuto;
 
 	//カスタムを付ける前の数値
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon", meta = (ShowOnlyInnerProperties))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	FSavaWeaponStats Stats;
 
 	//--------------------------------カスタマイズ(ロードアウト画面にはここに並べた順で出る)
@@ -128,17 +128,38 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<UAnimMontage> FireMontage;
 
-	//リロード中に腕で再生するアニメーション
+	//リロード中に腕で再生するアニメーション(リロードの時間で終わる速さで再生する)
+	//マガジン式: 弾が残っているときのリロード / 1 発ずつ込める: 1 発込めるごとに再生する
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<UAnimMontage> ReloadMontage;
+
+	//マガジン式: マガジンが空のときのリロード。空なら Reload Montage を使う
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TObjectPtr<UAnimMontage> EmptyReloadMontage;
+
+	//1 発ずつ込める: 込め始める前(Reload Start Time)・込め終わった後(Reload End Time)のアニメーション。空なら再生しない
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TObjectPtr<UAnimMontage> ReloadStartMontage;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TObjectPtr<UAnimMontage> ReloadEndMontage;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<USoundBase> FireSound;
 
+	//マガジン式: リロードを始めたときに鳴らす / 1 発ずつ込める: 1 発込めるごとに鳴らす
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<USoundBase> ReloadSound;
 
 	//予備弾が無限か(サブ武器)
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
 	bool HasInfiniteReserveAmmo() const { return Slot == ESavaWeaponSlot::Secondary; }
+
+#if WITH_EDITOR
+	//エディタで数値を書き換えた(プレイ中なら、持っているキャラクターの数値がすぐ変わる)
+	DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponDataEdited, const USavaWeaponData*);
+	static FOnWeaponDataEdited OnWeaponDataEdited;
+
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 };

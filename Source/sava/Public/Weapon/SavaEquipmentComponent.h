@@ -48,6 +48,7 @@ public:
 	static USavaEquipmentComponent* FindEquipmentComponent(const AActor* Actor);
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -115,6 +116,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
 	float GetCurrentSpreadAngle() const;
 
+	//今の拡散の内訳(基本・移動・連射。自分の画面だけ正しい値になる)
+	UFUNCTION(BlueprintPure, Category = "Sava|Weapon")
+	FSavaSpreadBreakdown GetCurrentSpreadBreakdown() const;
+
+	//ダッシュ中か
+	bool IsOwnerSprinting() const;
+
 	//--------------------------------デバッグ描画
 
 	//マズル位置をデバッグ描画する(エディタ・ゲーム画面のすべてで可視)
@@ -151,8 +159,9 @@ public:
 	//(短すぎる場合も弾は使う。自分の画面の弾数とずれないようにするため)
 	bool TryConsumeServerShot(ESavaWeaponSlot Slot, float IntervalTolerance);
 
-	//リロードを完了する(自分の画面とサーバーの両方で呼ぶ)
-	void FinishReload(ESavaWeaponSlot Slot);
+	//リロードで弾を込める(自分の画面とサーバーの両方で呼ぶ)。最大 MaxRounds 発、マガジンが Capacity 発になるまで、予備弾から入れる
+	//入れた弾数を返す
+	int32 LoadAmmo(ESavaWeaponSlot Slot, int32 MaxRounds, int32 Capacity);
 
 	//自分の画面: 反動で視点を動かす
 	void ApplyRecoil(ESavaWeaponSlot Slot);
@@ -294,7 +303,21 @@ private:
 	//最後にダッシュしていた時刻(自分の画面とサーバーがそれぞれ持つ)
 	double LastSprintTime = -1.0e9;
 
-	bool IsOwnerSprinting() const;
+	//拡散: 移動・空中の拡散を、Movement Spread In/Out Time で滑らかにする(自分の画面だけ)
+	void UpdateMovementSpread(float DeltaTime);
+	//拡散: 今の動き方での移動・空中の拡散(滑らかにする前)
+	float CalculateTargetMovementSpread(const FSavaWeaponStats& Stats) const;
+	//拡散: 確認用の表示(コンソールで sava.Weapon.SpreadDebug 1)
+	void DrawSpreadDebug() const;
+
+#if WITH_EDITOR
+	//プレイ中に武器データを書き換えたら、数値を計算し直す(弾数はそのまま)
+	void OnWeaponDataEdited(const USavaWeaponData* Weapon);
+	FDelegateHandle WeaponDataEditedHandle;
+#endif
+
+	//拡散: 滑らかにした移動・空中の拡散
+	float SmoothedMovementSpread = 0.0f;
 
 	//ADS
 	float ADSAlpha = 0.0f;

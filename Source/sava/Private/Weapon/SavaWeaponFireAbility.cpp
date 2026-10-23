@@ -4,6 +4,7 @@
 #include "Weapon/SavaCombatTestDummyCharacter.h"
 #include "Weapon/SavaEquipmentComponent.h"
 #include "Weapon/SavaWeaponData.h"
+#include "Weapon/SavaWeaponReloadAbility.h"
 #include "Skill/SavaDomeShield.h"
 #include "AbilitySystem/SavaAbilitySystemLibrary.h"
 #include "Abilities/GameplayAbilityTargetTypes.h"
@@ -42,6 +43,13 @@ namespace
 		return CVarWeaponDebug.GetValueOnGameThread();
 	}
 
+	//拡散の確認用の表示(SavaEquipmentComponent.cpp で定義している sava.Weapon.SpreadDebug を使う)
+	bool IsSpreadDebugEnabled()
+	{
+		static const IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("sava.Weapon.SpreadDebug"));
+		return CVar && CVar->GetBool();
+	}
+
 	//サーバーの判定結果を、当たった位置に表示してログにも出す
 	void DrawServerResult(const UWorld* World, const FHitResult& Hit, const FColor& Color, const FString& Text)
 	{
@@ -60,9 +68,30 @@ USavaWeaponFireAbility::USavaWeaponFireAbility()
 	ActivationPolicy = ESavaAbilityActivationPolicy::OnInputTriggered;
 
 	AddAssetTag(SavaGameplayTags::Ability_Weapon_Fire);
-	ActivationBlockedTags.AddTag(SavaGameplayTags::State_Weapon_Reloading);
+	//撃つとリロードの残りを飛ばす(撃てるのは弾が入った後だけ。CanActivateAbility で止める)
+	//※ リロード中のタグで止めない: サーバーはリロードを遅れて始めるので、弾が入った直後の射撃を止めてしまうため
+	CancelAbilitiesWithTag.AddTag(SavaGameplayTags::Ability_Weapon_Reload);
 	//撃っている間(撃つのを待っている間も)はダッシュしない
 	ActivationOwnedTags.AddTag(SavaGameplayTags::State_SprintBlocked);
+}
+
+bool USavaWeaponFireAbility::CanActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayTagContainer* SourceTags, const FGameplayTagContainer* TargetTags, FGameplayTagContainer* OptionalRelevantTags) const
+{
+	if (!Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags))
+	{
+		return false;
+	}
+
+	//リロード中は、弾が入るまで撃てない(自分の画面だけで止める。サーバーで止めると、遅れて始めたリロードのせいで食い違う)
+	if (ActorInfo->IsLocallyControlled())
+	{
+		const USavaWeaponReloadAbility* Reload = USavaWeaponReloadAbility::FindActiveReload(ActorInfo->AbilitySystemComponent.Get());
+		if (Reload && !Reload->CanBeInterruptedByFire())
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 void USavaWeaponFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
@@ -488,13 +517,28 @@ void USavaWeaponFireAbility::TraceShot(const FSavaWeaponStats& Stats, float Spre
 	);
 
 	// 照準方向はカメラの向きを基準にする
-	const FVector AimDirection = ViewRotation.Vector();
-	const float SpreadHalfAngle = FMath::DegreesToRadians(SpreadAngle);
+	const FRotationMatrix View(ViewRotation);
+	const FVector Forward = View.GetUnitAxis(EAxis::X);
+	const FVector Right = View.GetUnitAxis(EAxis::Y);
+	const FVector Up = View.GetUnitAxis(EAxis::Z);
 
-	for (int32 Pellet = 0; Pellet < FMath::Max(Stats.PelletCount, 1); ++Pellet)
+	//狙いのブレ: 1 回分の弾すべてで同じだけずれる(Spread Center Ratio に合わせて中心に集まる)
+	const FVector2D AimOffset = Stats.SampleSpreadOffset(SpreadAngle, FMath::FRand(), FMath::FRand());
+
+	const int32 NumPellets = FMath::Max(Stats.PelletCount, 1);
+	for (int32 Pellet = 0; Pellet < NumPellets; ++Pellet)
 	{
-		// 狙った方向から最大 SpreadAngle だけランダムにずらす
-		const FVector Direction = SpreadHalfAngle > 0.0f ? FMath::VRandCone(AimDirection, SpreadHalfAngle) : AimDirection;
+		//粒の広がり: 2 発以上なら、ずれた狙いを中心に Pellet Spread の円の中に均等に散らす
+		FVector2D Offset = AimOffset;
+		if (NumPellets > 1)
+		{
+			Offset += FSavaWeaponStats::SampleConeOffset(Stats.PelletSpread, 0.25f, FMath::FRand(), FMath::FRand());
+		}
+
+		// 狙った方向から Offset(度)だけずらす
+		const FVector Direction = (Forward
+			+ Right * FMath::Tan(FMath::DegreesToRadians(Offset.X))
+			+ Up * FMath::Tan(FMath::DegreesToRadians(Offset.Y))).GetSafeNormal();
 
 		// レイの開始位置と終了位置はカメラを基準にする
 		const FVector TraceEnd = ViewLocation + Direction * MaxTraceDistance;
@@ -563,6 +607,16 @@ void USavaWeaponFireAbility::TraceShot(const FSavaWeaponStats& Stats, float Spre
 		}
 
 		OutHits.Add(Hit);
+	}
+
+	//拡散の確認用: 着弾点(当たらなかった弾は 5m 先の位置)を表示する
+	if (IsSpreadDebugEnabled())
+	{
+		for (const FHitResult& Hit : OutHits)
+		{
+			const FVector Point = Hit.bBlockingHit ? FVector(Hit.ImpactPoint) : ViewLocation + (Hit.TraceEnd - ViewLocation).GetSafeNormal() * 500.0f;
+			DrawDebugPoint(World, Point, 6.0f, FColor::Orange, false, DebugDrawTime, SDPG_Foreground);
+		}
 	}
 }
 

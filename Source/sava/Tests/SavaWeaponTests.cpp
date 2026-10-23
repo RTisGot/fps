@@ -37,23 +37,43 @@ bool FSavaWeaponSpreadTest::RunTest(const FString&)
 	Stats.MovementSpread = 1.5f;
 	Stats.JumpSpread = 4.0f;
 	Stats.ADSMovementSpreadScale = 0.5f;
+	Stats.ADSShotSpreadScale = 0.5f;
 
-	TestEqual(TEXT("Hip, standing still"), Stats.CalculateSpread(0.0f, 0.0f, false), 2.0f);
-	TestEqual(TEXT("Hip, moving and in the air: full movement spread"), Stats.CalculateSpread(0.0f, 1.0f, true), 2.0f + 1.5f + 4.0f);
-	TestEqual(TEXT("ADS, moving and in the air: movement spread halved"), Stats.CalculateSpread(1.0f, 1.0f, true), 0.4f + (1.5f + 4.0f) * 0.5f);
-	TestEqual(TEXT("Halfway into ADS: scale is halfway too"), Stats.CalculateSpread(0.5f, 1.0f, false), 1.2f + 1.5f * 0.75f);
-	TestEqual(TEXT("Hip, shot spread is added"), Stats.CalculateSpread(0.0f, 0.0f, false, 1.0f), 3.0f);
-	TestEqual(TEXT("ADS, shot spread is scaled like movement"), Stats.CalculateSpread(1.0f, 0.0f, false, 1.0f), 0.4f + 0.5f);
+	//移動・空中の拡散 → ADS で減らして足す
+	auto Spread = [&Stats](float ADSAlpha, float MoveAlpha, bool bInAir, float ShotSpread = 0.0f, ESavaSpreadMovement Movement = ESavaSpreadMovement::Walk)
+	{
+		return Stats.CalculateSpreadBreakdown(ADSAlpha, Stats.CalculateMovementSpread(MoveAlpha, bInAir, Movement), ShotSpread).Total;
+	};
+	TestEqual(TEXT("Hip, standing still"), Spread(0.0f, 0.0f, false), 2.0f);
+	TestEqual(TEXT("Hip, moving and in the air: full movement spread"), Spread(0.0f, 1.0f, true), 2.0f + 1.5f + 4.0f);
+	TestEqual(TEXT("ADS, moving and in the air: movement spread halved"), Spread(1.0f, 1.0f, true), 0.4f + (1.5f + 4.0f) * 0.5f);
+	TestEqual(TEXT("Halfway into ADS: scale is halfway too"), Spread(0.5f, 1.0f, false), 1.2f + 1.5f * 0.75f);
+	TestEqual(TEXT("Hip, shot spread is added"), Spread(0.0f, 0.0f, false, 1.0f), 3.0f);
+	TestEqual(TEXT("ADS, shot spread is scaled by its own scale"), Spread(1.0f, 0.0f, false, 1.0f), 0.4f + 0.5f);
 
 	//動き方ごとの拡散(歩きの拡散の代わりに使う)
 	Stats.SprintSpread = 3.0f;
 	Stats.SlideSpread = 2.0f;
 	Stats.GrappleSpread = 5.0f;
-	TestEqual(TEXT("Sprint replaces walk spread"), Stats.CalculateSpread(0.0f, 1.0f, false, 0.0f, ESavaSpreadMovement::Sprint), 2.0f + 3.0f);
-	TestEqual(TEXT("Sprint (boosted walk) scales with speed"), Stats.CalculateSpread(0.0f, 0.5f, false, 0.0f, ESavaSpreadMovement::Sprint), 2.0f + 1.5f);
-	TestEqual(TEXT("Slide ignores speed"), Stats.CalculateSpread(0.0f, 0.2f, false, 0.0f, ESavaSpreadMovement::Slide), 2.0f + 2.0f);
-	TestEqual(TEXT("Grapple ignores air"), Stats.CalculateSpread(0.0f, 1.0f, true, 0.0f, ESavaSpreadMovement::Grapple), 2.0f + 5.0f);
-	TestEqual(TEXT("ADS scales sprint spread"), Stats.CalculateSpread(1.0f, 1.0f, false, 0.0f, ESavaSpreadMovement::Sprint), 0.4f + 3.0f * 0.5f);
+	TestEqual(TEXT("Sprint replaces walk spread"), Spread(0.0f, 1.0f, false, 0.0f, ESavaSpreadMovement::Sprint), 2.0f + 3.0f);
+	TestEqual(TEXT("Sprint (boosted walk) scales with speed"), Spread(0.0f, 0.5f, false, 0.0f, ESavaSpreadMovement::Sprint), 2.0f + 1.5f);
+	TestEqual(TEXT("Slide ignores speed"), Spread(0.0f, 0.2f, false, 0.0f, ESavaSpreadMovement::Slide), 2.0f + 2.0f);
+	TestEqual(TEXT("Grapple ignores air"), Spread(0.0f, 1.0f, true, 0.0f, ESavaSpreadMovement::Grapple), 2.0f + 5.0f);
+	TestEqual(TEXT("ADS scales sprint spread"), Spread(1.0f, 1.0f, false, 0.0f, ESavaSpreadMovement::Sprint), 0.4f + 3.0f * 0.5f);
+
+	//移動と連射は、ADS で別々の割合に減る
+	Stats.ADSShotSpreadScale = 0.25f;
+	const FSavaSpreadBreakdown Separate = Stats.CalculateSpreadBreakdown(1.0f, 2.0f, 2.0f);
+	TestEqual(TEXT("ADS movement scale"), Separate.Movement, 1.0f);
+	TestEqual(TEXT("ADS shot scale"), Separate.Shot, 0.5f);
+	TestEqual(TEXT("Total is the sum"), Separate.Total, 0.4f + 1.0f + 0.5f);
+
+	//1 発目は基本の拡散だけ減る
+	Stats.FirstShotSpreadScale = 0.0f;
+	const FSavaSpreadBreakdown First = Stats.CalculateSpreadBreakdown(0.0f, 1.0f, 0.0f, true);
+	TestEqual(TEXT("First shot removes base spread"), First.Base, 0.0f);
+	TestEqual(TEXT("First shot keeps movement spread"), First.Movement, 1.0f);
+	TestEqual(TEXT("Not the first shot: base spread stays"), Stats.CalculateSpreadBreakdown(0.0f, 0.0f, 0.0f, false).Base, 2.0f);
 
 	FSavaWeaponModifier HeavyFrame;
 	HeavyFrame.MovementSpreadMultiplier = 2.0f;
@@ -68,6 +88,104 @@ bool FSavaWeaponSpreadTest::RunTest(const FString&)
 	TestEqual(TEXT("Shot spread holds within the fire interval"), Stats.CalculateShotSpread(1.0f, 0.1f), 1.0f);
 	TestEqual(TEXT("Shot spread recovers after the fire interval"), Stats.CalculateShotSpread(1.0f, 0.15f), 0.5f, KINDA_SMALL_NUMBER);
 	TestEqual(TEXT("Shot spread never goes below 0"), Stats.CalculateShotSpread(1.0f, 5.0f), 0.0f);
+	Stats.ShotSpreadRecoveryDelay = 0.3f;
+	TestEqual(TEXT("Recovery delay holds longer than the interval"), Stats.CalculateShotSpread(1.0f, 0.25f), 1.0f);
+	TestEqual(TEXT("Recovery starts after the delay"), Stats.CalculateShotSpread(1.0f, 0.35f), 0.5f, KINDA_SMALL_NUMBER);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponSpreadBlendTest, "Sava.Weapon.SpreadBlend",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaWeaponSpreadBlendTest::RunTest(const FString&)
+{
+	FSavaWeaponStats Stats;
+	Stats.MovementSpreadInTime = 0.1f;
+	Stats.MovementSpreadOutTime = 0.4f;
+
+	//Blend Time で差の 95% が縮む
+	TestEqual(TEXT("Grows to 95% in the in time"), Stats.BlendMovementSpread(0.0f, 4.0f, 0.1f), 4.0f * 0.95f, 0.01f);
+	TestEqual(TEXT("Shrinks to 5% in the out time"), Stats.BlendMovementSpread(4.0f, 0.0f, 0.4f), 4.0f * 0.05f, 0.01f);
+	TestTrue(TEXT("Shrinking is slower than growing"), Stats.BlendMovementSpread(4.0f, 0.0f, 0.1f) > 4.0f - Stats.BlendMovementSpread(0.0f, 4.0f, 0.1f));
+
+	//時間を刻んでも、まとめて進めても同じ
+	float Stepped = 0.0f;
+	for (int32 Step = 0; Step < 10; ++Step)
+	{
+		Stepped = Stats.BlendMovementSpread(Stepped, 4.0f, 0.01f);
+	}
+	TestEqual(TEXT("Frame rate independent"), Stepped, Stats.BlendMovementSpread(0.0f, 4.0f, 0.1f), 0.001f);
+
+	Stats.MovementSpreadInTime = 0.0f;
+	TestEqual(TEXT("0 = instant"), Stats.BlendMovementSpread(0.0f, 4.0f, 0.001f), 4.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponSpreadDistributionTest, "Sava.Weapon.SpreadDistribution",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaWeaponSpreadDistributionTest::RunTest(const FString&)
+{
+	//乱数 0.25 で半径の半分 = 均等(Center Ratio 0.25)。乱数 0.5 で半径の半分 = Center Ratio 0.5
+	TestEqual(TEXT("Uniform: half radius at rand 0.25"), static_cast<float>(FSavaWeaponStats::SampleConeOffset(4.0f, 0.25f, 0.25f, 0.0f).Size()), 2.0f, 0.001f);
+	TestEqual(TEXT("Ratio 0.5: half radius at rand 0.5"), static_cast<float>(FSavaWeaponStats::SampleConeOffset(4.0f, 0.5f, 0.5f, 0.0f).Size()), 2.0f, 0.001f);
+	TestEqual(TEXT("Never beyond the cone"), static_cast<float>(FSavaWeaponStats::SampleConeOffset(4.0f, 0.9f, 1.0f, 0.3f).Size()), 4.0f, 0.001f);
+	TestTrue(TEXT("No spread"), FSavaWeaponStats::SampleConeOffset(0.0f, 0.5f, 0.7f, 0.3f).IsZero());
+
+	//向き: 0 で右、0.25 で上
+	TestTrue(TEXT("Angle 0 points right"), FSavaWeaponStats::SampleConeOffset(2.0f, 0.5f, 1.0f, 0.0f).Equals(FVector2D(2.0f, 0.0f), 0.001f));
+	TestTrue(TEXT("Angle 0.25 points up"), FSavaWeaponStats::SampleConeOffset(2.0f, 0.5f, 1.0f, 0.25f).Equals(FVector2D(0.0f, 2.0f), 0.001f));
+
+	//たくさん撃つと、半径の半分より内側に入る割合が Center Ratio になる
+	FSavaWeaponStats Stats;
+	Stats.SpreadCenterRatio = 0.7f;
+	FRandomStream Random(1234);
+	int32 Inside = 0;
+	constexpr int32 NumShots = 20000;
+	for (int32 Shot = 0; Shot < NumShots; ++Shot)
+	{
+		if (Stats.SampleSpreadOffset(2.0f, Random.FRand(), Random.FRand()).Size() < 1.0f)
+		{
+			++Inside;
+		}
+	}
+	TestEqual(TEXT("Center ratio matches the share inside half radius"), static_cast<float>(Inside) / NumShots, 0.7f, 0.02f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSavaWeaponReloadStatsTest, "Sava.Weapon.ReloadStats",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSavaWeaponReloadStatsTest::RunTest(const FString&)
+{
+	FSavaWeaponStats Stats;
+	Stats.MagazineSize = 30;
+	Stats.ReloadTime = 2.0f;
+	Stats.EmptyReloadTime = 3.0f;
+	Stats.ReloadInsertRatio = 0.5f;
+
+	TestEqual(TEXT("Tactical reload time"), Stats.GetReloadDuration(false), 2.0f);
+	TestEqual(TEXT("Empty reload time"), Stats.GetReloadDuration(true), 3.0f);
+	TestEqual(TEXT("Tactical insert time"), Stats.GetReloadInsertTime(false), 1.0f);
+	TestEqual(TEXT("Empty insert time"), Stats.GetReloadInsertTime(true), 1.5f);
+
+	TestEqual(TEXT("No chamber: same capacity"), Stats.GetMagazineCapacity(true), 30);
+	Stats.bChamberRound = true;
+	TestEqual(TEXT("Chamber: +1 when a round was left"), Stats.GetMagazineCapacity(true), 31);
+	TestEqual(TEXT("Chamber: no +1 from empty"), Stats.GetMagazineCapacity(false), 30);
+
+	//Reload Time Multiplier はリロードの時間すべてに掛かる
+	FSavaWeaponModifier Fast;
+	Fast.ReloadTimeMultiplier = 0.5f;
+	Stats.ReloadStartTime = 0.4f;
+	Stats.ReloadRoundTime = 0.6f;
+	Stats.ReloadEndTime = 0.2f;
+	const FSavaWeaponStats Tuned = USavaWeaponLibrary::ApplyWeaponModifiers(Stats, { Fast });
+	TestEqual(TEXT("Tactical time scaled"), Tuned.ReloadTime, 1.0f);
+	TestEqual(TEXT("Empty time scaled"), Tuned.EmptyReloadTime, 1.5f);
+	TestEqual(TEXT("Start time scaled"), Tuned.ReloadStartTime, 0.2f);
+	TestEqual(TEXT("Round time scaled"), Tuned.ReloadRoundTime, 0.3f);
+	TestEqual(TEXT("End time scaled"), Tuned.ReloadEndTime, 0.1f);
 	return true;
 }
 

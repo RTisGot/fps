@@ -130,7 +130,13 @@ namespace SavaLoadoutStat
 			{ NSLOCTEXT("SavaLoadout", "StatEffectiveRange", "有効射程"), [](const FSavaWeaponStats& S) { return S.FalloffStartDistance / 100.0f; }, true, EUnit::Meters, 0 },
 			{ NSLOCTEXT("SavaLoadout", "StatMaxRange", "最大射程"), [](const FSavaWeaponStats& S) { return S.FalloffEndDistance / 100.0f; }, true, EUnit::Meters, 0 },
 			{ NSLOCTEXT("SavaLoadout", "StatMagazine", "マガジン"), [](const FSavaWeaponStats& S) { return static_cast<float>(S.MagazineSize); }, true, EUnit::None, 0 },
-			{ NSLOCTEXT("SavaLoadout", "StatReload", "リロード"), [](const FSavaWeaponStats& S) { return S.ReloadTime; }, false, EUnit::Seconds, 1 },
+			//弾が残っているときのリロード(1 発ずつ込める武器は、空から満タンまで込める時間)
+			{ NSLOCTEXT("SavaLoadout", "StatReload", "リロード"), [](const FSavaWeaponStats& S)
+				{
+					return S.ReloadType == ESavaReloadType::PerRound
+						? S.ReloadStartTime + S.MagazineSize * S.ReloadRoundTime + S.ReloadEndTime
+						: S.ReloadTime;
+				}, false, EUnit::Seconds, 1 },
 			{ NSLOCTEXT("SavaLoadout", "StatEquipTime", "持ち替え"), [](const FSavaWeaponStats& S) { return S.EquipTime; }, false, EUnit::Seconds, 2 },
 			//ダッシュをやめてから撃てるまで
 			{ NSLOCTEXT("SavaLoadout", "StatSprintToFireTime", "射撃遅延"), [](const FSavaWeaponStats& S) { return S.SprintToFireTime; }, false, EUnit::Seconds, 2 },
