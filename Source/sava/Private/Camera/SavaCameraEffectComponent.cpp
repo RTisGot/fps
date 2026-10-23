@@ -353,9 +353,17 @@ void USavaCameraEffectComponent::UpdateHeadBob(float DeltaTime)
 	{
 		const bool bSprinting = Movement->IsSprinting();
 		TargetAlpha = bSprinting ? HeadBobSprintScale : 1.0f;
-		//1 歩で半周(上下は 1 歩で 1 往復、左右は 2 歩で 1 往復)
+		//1 歩で半周(上下は 1 歩で 1 回跳ね、左右は 2 歩で 1 往復)
 		const float StepsPerSecond = bSprinting ? HeadBobSprintStepsPerSecond : HeadBobWalkStepsPerSecond;
-		HeadBobPhase = FMath::Fmod(HeadBobPhase + StepsPerSecond * UE_PI * DeltaTime, UE_TWO_PI);
+		const float NewPhase = HeadBobPhase + StepsPerSecond * UE_PI * DeltaTime;
+
+		//半周をまたいだ = 足が着いた。下へうなずいて沈み、バネで戻る(揺れの大きさに合わせる)
+		if (FMath::FloorToInt(NewPhase / UE_PI) != FMath::FloorToInt(HeadBobPhase / UE_PI))
+		{
+			ImpulseRotationSpring.AddKick(FVector(-HeadBobStepKickPitch, 0.0f, 0.0f) * HeadBobAlpha, HeadBobStepKickTime);
+			ImpulseLocationSpring.AddKick(FVector(0.0f, 0.0f, -HeadBobStepKickDrop) * HeadBobAlpha, HeadBobStepKickTime);
+		}
+		HeadBobPhase = FMath::Fmod(NewPhase, UE_TWO_PI);
 	}
 
 	//ADS 中は弱める
@@ -525,10 +533,12 @@ FTransform USavaCameraEffectComponent::CalculateViewOffset() const
 	Rotation += ImpulseRotationSpring.Value;
 	Location += ImpulseLocationSpring.Value;
 
-	//歩行の揺れ(1 歩ごとに上下、2 歩で左右に 1 往復。画面は傾けない)
+	//歩行の揺れ(1 歩ごとに跳ね、2 歩で左右に 1 往復。画面は傾けない)
+	//上下は |sin| の形: 足が着く瞬間(0)に鋭く一番下まで沈み、丸い弧を描いて浮き上がる
 	if (HeadBobAlpha > 0.0f)
 	{
-		Location += FVector(0.0f, FMath::Sin(HeadBobPhase) * HeadBobHorizontalAmplitude, FMath::Sin(2.0f * HeadBobPhase) * HeadBobVerticalAmplitude) * HeadBobAlpha;
+		const float Bounce = FMath::Pow(FMath::Abs(FMath::Sin(HeadBobPhase)), HeadBobBounceSharpness) * 2.0f - 1.0f;
+		Location += FVector(0.0f, FMath::Sin(HeadBobPhase) * HeadBobHorizontalAmplitude, Bounce * HeadBobVerticalAmplitude) * HeadBobAlpha;
 	}
 
 	//ここまでが設定の「画面の揺れの強さ」を掛けるもの

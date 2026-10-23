@@ -183,6 +183,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "cm"))
 	float HeadBobHorizontalAmplitude = 1.0f;
 
+	//跳ね方の鋭さ。1 = 着地で鋭く沈み、丸く浮き上がる / 小さいほど上にいる時間が長く、着地の沈みが一瞬になる
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0.2", ClampMax = "2"))
+	float HeadBobBounceSharpness = 0.7f;
+
+	//踏んだ瞬間に、画面が下へうなずく角度(バネで戻る。勢いを出す)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "Deg"))
+	float HeadBobStepKickPitch = 0.6f;
+
+	//踏んだ瞬間に、カメラが沈む量(上下の揺れに足される)
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0", ForceUnits = "cm"))
+	float HeadBobStepKickDrop = 0.8f;
+
+	//踏んだときのうなずき・沈みが一番大きくなるまでの時間
+	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0.005", ForceUnits = "s"))
+	float HeadBobStepKickTime = 0.05f;
+
 	//ダッシュ中の揺れの大きさの倍率
 	UPROPERTY(EditDefaultsOnly, Category = "Sava|Camera|HeadBob", meta = (ClampMin = "0"))
 	float HeadBobSprintScale = 1.3f;
